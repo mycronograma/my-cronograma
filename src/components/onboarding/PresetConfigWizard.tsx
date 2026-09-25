@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -15,6 +15,7 @@ import type {
   WeekdayKey,
 } from '@/types';
 import { computeStudyPreferences } from '@/services/presetConfigurator';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { cn, formatDuration, timeToMinutes } from '@/lib/utils';
 
 interface PresetConfigWizardProps {
@@ -235,11 +236,22 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
     onClose();
   };
 
+  // A11y: role/aria-modal, Escape e prisão de foco. O lock de scroll já é feito
+  // pelo effect próprio deste componente, por isso lockScroll: false.
+  const { dialogRef, dialogProps } = useDialogA11y({
+    open: isOpen && mounted,
+    onClose,
+    lockScroll: false,
+    ariaLabel: `Configurar trilha ${presetName}`,
+  });
+
   if (!isOpen || !mounted) return null;
 
   return createPortal(
     <AnimatePresence>
       <motion.div
+        ref={dialogRef}
+        {...dialogProps}
         className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-md overflow-y-auto"
         variants={overlayVariants}
         initial="hidden"

@@ -5,6 +5,13 @@ import {
   buildPasswordResetIdentifier,
   hashPasswordResetToken,
 } from '@/lib/password-reset';
+import {
+  AUTH_RATE_LIMITS,
+  emailKey,
+  consumeRateLimit,
+  rateLimitResponse,
+  resetRateLimit,
+} from '@/lib/rateLimit';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -25,6 +32,12 @@ export async function POST(request: Request) {
         { message: 'A senha deve ter no mínimo 8 caracteres.' },
         { status: 400 }
       );
+    }
+
+    const attemptKey = emailKey('password-reset-confirm', email);
+    const limit = consumeRateLimit(attemptKey, AUTH_RATE_LIMITS.passwordResetConfirm);
+    if (!limit.ok) {
+      return rateLimitResponse(limit, 'Muitas tentativas. Solicite um novo link de recuperação.');
     }
 
     const identifier = buildPasswordResetIdentifier(email);
@@ -67,7 +80,14 @@ export async function POST(request: Request) {
       prisma.verificationToken.deleteMany({
         where: { identifier },
       }),
+      // Trocar a senha precisa derrubar as sessões ativas: antes, quem já
+      // tivesse sessão aberta continuava com acesso após a redefinição.
+      prisma.session.deleteMany({
+        where: { userId: user.id },
+      }),
     ]);
+
+    resetRateLimit(attemptKey);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -295,32 +295,6 @@ export function generateWeeklySchedule(config: ScheduleConfig): GeneratedSchedul
   };
 }
 
-/**
- * Optimize an existing schedule by reordering blocks
- * Uses simulated annealing to find better arrangements
- */
-export function optimizeSchedule(
-  blocks: StudyBlock[],
-  subjects: Subject[]
-): StudyBlock[] {
-  // Simple optimization: group same subjects together when possible
-  // More complex optimization would use actual simulated annealing
-  
-  const optimized = [...blocks];
-  
-  // Sort by date, then by subject priority within same day
-  optimized.sort((a, b) => {
-    // First by date
-    const dateCompare = a.date.getTime() - b.date.getTime();
-    if (dateCompare !== 0) return dateCompare;
-    
-    // Then by time
-    const timeCompare = timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
-    return timeCompare;
-  });
-  
-  return optimized;
-}
 
 /**
  * Reschedule a single block to a new time

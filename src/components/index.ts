@@ -12,9 +12,6 @@ export * from './ui';
 // Componentes do Dashboard
 export * from './dashboard';
 
-// Componentes do Planner
-export * from './planner';
-
 // Componentes de Disciplinas
 export * from './subjects';
 

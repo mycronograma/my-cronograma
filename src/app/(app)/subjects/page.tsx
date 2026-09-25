@@ -425,8 +425,8 @@ function SubjectsPageContent() {
         const curatedPreset = getCuratedPresetById(presetId);
         if (curatedPreset && curatedPreset.specificModules) {
           const selectedSpecificModules = curatedPreset.specificModules.filter(m => options.selectedModules!.includes(m.id));
-          for (const module of selectedSpecificModules) {
-            const moduleSubjects: Subject[] = module.subjects.map((s, index) => ({
+          for (const presetModule of selectedSpecificModules) {
+            const moduleSubjects: Subject[] = presetModule.subjects.map((s, index) => ({
               id: generateId(),
               userId: 'user1',
               name: s.name,

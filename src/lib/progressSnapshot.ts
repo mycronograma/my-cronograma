@@ -1,7 +1,15 @@
-import { levelFromXp, toLocalDateKey } from '@/lib/utils';
+import { levelFromXp, parseBlockDate, toLocalDateKey } from '@/lib/utils';
 import type { AnalyticsStore, DailyAnalyticsRecord, StudyBlock } from '@/types';
 
 type DailyAnalytics = AnalyticsStore['daily'];
+
+/**
+ * Blocos podem chegar como Date local ou como ISO string em meia-noite UTC
+ * (ex.: snapshot vindo do servidor). Usar toLocalDateKey diretamente nessa
+ * string desloca a data para o dia anterior em fusos negativos (Brasil).
+ * parseBlockDate normaliza os dois casos antes de gerar a chave local.
+ */
+const blockDateKey = (value: Date | string) => toLocalDateKey(parseBlockDate(value));
 
 export interface GamificationSnapshot {
   streak: number;
@@ -12,14 +20,12 @@ export interface GamificationSnapshot {
   xpToNextLevel: number;
 }
 
-const toDateKey = (value: Date | string) => toLocalDateKey(value);
-
 export function buildCompletedHoursByDate(plannerBlocks: StudyBlock[]): Record<string, number> {
   const totals: Record<string, number> = {};
 
   plannerBlocks.forEach((block) => {
     if (block.isBreak || block.status !== 'completed') return;
-    const key = toDateKey(block.date);
+    const key = blockDateKey(block.date);
     totals[key] = (totals[key] ?? 0) + Math.max(0, block.durationMinutes) / 60;
   });
 
@@ -31,7 +37,7 @@ export function buildCompletedSessionsByDate(plannerBlocks: StudyBlock[]): Recor
 
   plannerBlocks.forEach((block) => {
     if (block.isBreak || block.status !== 'completed') return;
-    const key = toDateKey(block.date);
+    const key = blockDateKey(block.date);
     totals[key] = (totals[key] ?? 0) + 1;
   });
 

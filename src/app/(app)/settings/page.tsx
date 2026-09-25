@@ -43,6 +43,34 @@ import { clearLocalDemoSession, isLocalDemoAuthEnabled } from '@/lib/localDemoAu
 
 const initialSettings: UserSettings = defaultSettings;
 
+/**
+ * O layout prende o scroll no <main class="app-main-content"> (raiz com
+ * overflow hidden), então ler/alterar window.scrollY não funciona. Estes
+ * helpers usam o container real e caem para a janela quando ele não existe.
+ */
+const getScrollContainer = (): HTMLElement | null => {
+  if (typeof document === 'undefined') return null;
+  return document.querySelector<HTMLElement>('.app-main-content');
+};
+
+const readScrollTop = (): number => {
+  const container = getScrollContainer();
+  if (container) return container.scrollTop;
+  if (typeof window === 'undefined') return 0;
+  return window.scrollY || document.documentElement.scrollTop || 0;
+};
+
+const scrollContainerTo = (top: number): void => {
+  const container = getScrollContainer();
+  if (container) {
+    container.scrollTo({ top, left: 0, behavior: 'auto' });
+    return;
+  }
+  if (typeof window !== 'undefined') {
+    window.scrollTo({ top, left: 0, behavior: 'auto' });
+  }
+};
+
 const aiDifficultyOptions = [
   { value: 'easy', label: 'Leve', description: 'Sessões mais curtas, mais pausas' },
   { value: 'medium', label: 'Moderado', description: 'Equilíbrio entre estudo e descanso' },
@@ -211,6 +239,8 @@ export default function SettingsPage() {
   const [hasChanges, setHasChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  /** Mensagem do servidor quando gravou só localmente (banco indisponível). */
+  const [persistWarning, setPersistWarning] = useState<string | null>(null);
   const [hasRemotePrefs, setHasRemotePrefs] = useState(false);
   const hasAttemptedRemotePrefs = useRef(false);
   const [pendingAlarmSound, setPendingAlarmSound] = useState<UserSettings['alarmSound']>(
@@ -392,11 +422,13 @@ export default function SettingsPage() {
 
     if (isMobileViewport) {
       // Keep separate scroll positions for the "root list" and the "detail screen" like iOS Settings.
+      // Obs.: quem rola é o <main class="app-main-content"> (o body tem
+      // overflow hidden), então window.scrollTo aqui não tinha efeito algum.
       if (!previousSection && activeSection) {
-        rootScrollYRef.current = window.scrollY;
-        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        rootScrollYRef.current = readScrollTop();
+        scrollContainerTo(0);
       } else if (previousSection && !activeSection) {
-        window.scrollTo({ top: rootScrollYRef.current, left: 0, behavior: 'auto' });
+        scrollContainerTo(rootScrollYRef.current);
       }
     }
 
@@ -730,7 +762,10 @@ export default function SettingsPage() {
             throw new Error(payload?.error || 'Falha ao salvar preferências.');
           }
 
-          setHasRemotePrefs(true);
+          // `persisted: false` = o servidor aceitou mas não gravou (banco fora).
+          const persisted = payload?.persisted !== false;
+          setPersistWarning(persisted ? null : payload?.warning || 'Alterações salvas apenas neste dispositivo.');
+          setHasRemotePrefs(persisted);
           setStudyPrefs({
             hoursPerDay: Number(averageHours.toFixed(1)),
             daysOfWeek: activeDays,
@@ -741,6 +776,7 @@ export default function SettingsPage() {
           setSaveState('saved');
         } catch (error) {
           console.warn('Falha ao salvar preferências no servidor:', error);
+          setPersistWarning(null);
           setSaveState('error');
         }
       } while (saveQueuedRef.current);
@@ -969,6 +1005,12 @@ export default function SettingsPage() {
   };
 
   const saveFeedback = useMemo(() => {
+    if (persistWarning && saveState !== 'saving' && saveState !== 'error') {
+      return {
+        text: persistWarning,
+        className: 'text-amber-300',
+      };
+    }
     if (saveState === 'saving') {
       return {
         text: 'Salvando alterações...',
@@ -994,7 +1036,7 @@ export default function SettingsPage() {
       };
     }
     return null;
-  }, [hasChanges, saveState]);
+  }, [hasChanges, saveState, persistWarning]);
 
   const showActionButtons = hasChanges || saveState === 'error';
 
@@ -1028,7 +1070,7 @@ export default function SettingsPage() {
               <ChevronLeft className="w-4 h-4" />
               Voltar
             </button>
-            <p className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-white">
+            <p className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-text-primary">
               {sectionMeta[activeSection].title}
             </p>
             {showActionButtons ? (

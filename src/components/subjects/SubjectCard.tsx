@@ -24,6 +24,7 @@ import type { Subject } from '@/types';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 
 interface SubjectCardProps {
   subject: Subject;
@@ -42,6 +43,14 @@ export default function SubjectCard({
   const difficultyLabel = difficultyLabels[Math.floor((subject.difficulty - 1) / 2)] || 'Médio';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
+  // A11y do modal de detalhes: role/aria-modal, Escape e prisão de foco.
+  const detailsDialog = useDialogA11y({
+    // `mounted` só controla o portal; o effect do hook é tolerante a ref nulo.
+    open: isDetailsOpen,
+    onClose: () => setIsDetailsOpen(false),
+    ariaLabel: `Detalhes da matéria ${subject.name}`,
+  });
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -191,7 +200,11 @@ export default function SubjectCard({
       {mounted && createPortal(
         <AnimatePresence>
           {isDetailsOpen && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+            <div
+              ref={detailsDialog.dialogRef}
+              {...detailsDialog.dialogProps}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+            >
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

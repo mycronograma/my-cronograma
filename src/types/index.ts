@@ -301,8 +301,11 @@ export interface PerformanceMetricsSnapshot {
   minutes: number;
   correctAnswers?: number;
   totalQuestions?: number;
-  accuracyRate: number; // 0-1
-  errorRate: number; // 0-1
+  /** 0-1. Ausente quando a sessão não registrou respostas (não inventamos). */
+  accuracyRate?: number;
+  errorRate?: number;
+  /** true quando não houve respostas registradas na sessão. */
+  accuracyEstimated?: boolean;
   focusScore: number; // 0-100
   productivityScore: number; // 0-100
   difficultyScore: number; // 1-10

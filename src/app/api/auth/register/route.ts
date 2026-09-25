@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
-import { env } from '@/lib/env';
+import { canExposeDevVerificationCode, env } from '@/lib/env';
+import {
+  AUTH_RATE_LIMITS,
+  clientKeyFromRequest,
+  consumeRateLimit,
+  rateLimitResponse,
+} from '@/lib/rateLimit';
 import { sendEmail } from '@/lib/mail';
 import {
   REGISTER_2FA_TTL_MS,
@@ -13,7 +19,7 @@ import {
 const MIN_NAME_LENGTH = 2;
 const MIN_PASSWORD_LENGTH = 8;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const allowLocalVerificationCode = process.env.NODE_ENV !== 'production';
+const allowLocalVerificationCode = canExposeDevVerificationCode;
 
 const sendRegisterCodeEmail = async ({
   name,
@@ -65,6 +71,15 @@ export async function POST(request: Request) {
         { message: 'A senha deve ter no mínimo 8 caracteres.' },
         { status: 400 }
       );
+    }
+
+    // Sem limite, dá para enumerar e-mails e criar contas em massa.
+    const limit = consumeRateLimit(
+      clientKeyFromRequest(request, 'register', email),
+      AUTH_RATE_LIMITS.register
+    );
+    if (!limit.ok) {
+      return rateLimitResponse(limit);
     }
 
     if (!allowLocalVerificationCode && (!env.emailServer || !env.emailFrom)) {

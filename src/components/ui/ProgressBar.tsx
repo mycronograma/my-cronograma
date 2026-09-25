@@ -44,7 +44,9 @@ export default function ProgressBar({
   indicatorClassName,
   animated = true,
 }: ProgressBarProps) {
-  const percentage = Math.min(100, Math.max(0, (value / max) * 100));
+  // max <= 0 resultaria em NaN/Infinity (largura "NaN%" = barra invisível).
+  const safeMax = Number.isFinite(max) && max > 0 ? max : 0;
+  const percentage = safeMax > 0 ? Math.min(100, Math.max(0, (value / safeMax) * 100)) : 0;
 
   return (
     <div className={cn('w-full', className)}>
@@ -55,7 +57,7 @@ export default function ProgressBar({
             <span className="text-sm text-text-secondary">{label}</span>
           )}
           {showLabel && (
-            <span className="text-sm font-medium text-white">
+            <span className="text-sm font-medium text-text-primary">
               {Math.round(percentage)}%
             </span>
           )}
@@ -77,7 +79,8 @@ export default function ProgressBar({
           transition={{ duration: 1, ease: 'easeOut' }}
           className={cn(
             'h-full rounded-full',
-            colorStyles[color]
+            colorStyles[color],
+            indicatorClassName
           )}
           style={{
             boxShadow: percentage > 0 

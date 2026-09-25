@@ -17,12 +17,19 @@ export async function GET() {
       const prefs = await prisma.userPreferences.findUnique({
         where: { userId },
       });
-      return NextResponse.json({ success: true, data: prefs });
+      return NextResponse.json({ success: true, data: prefs, persisted: true });
     } catch (error) {
       console.warn('Preferences API: failed to load preferences from DB.', error);
     }
 
-    return NextResponse.json({ success: true, data: null });
+    // `persisted: false` avisa o cliente de que a resposta veio do fallback,
+    // não do banco — antes o mesmo payload de sucesso escondia a diferença.
+    return NextResponse.json({
+      success: true,
+      data: null,
+      persisted: false,
+      warning: 'Não foi possível ler as preferências salvas no servidor.',
+    });
   } catch {
     return NextResponse.json(
       { success: false, error: 'Falha ao carregar preferencias.' },
@@ -74,6 +81,9 @@ export async function POST(request: Request) {
         ? Prisma.JsonNull
         : (persistedDailyHours as unknown as Prisma.InputJsonValue);
 
+    let profilePersisted = true;
+    let preferencesPersisted = true;
+
     try {
       if (settings.name) {
         await prisma.user.update({
@@ -82,6 +92,7 @@ export async function POST(request: Request) {
         });
       }
     } catch (error) {
+      profilePersisted = false;
       console.warn('Preferences API: failed to update user profile.', error);
     }
 
@@ -129,10 +140,22 @@ export async function POST(request: Request) {
         },
       });
     } catch (error) {
+      preferencesPersisted = false;
       console.warn('Preferences API: database unavailable, using local fallback.', error);
     }
 
-    return NextResponse.json({ success: true });
+    if (!preferencesPersisted || !profilePersisted) {
+      // Continua 200 para o fluxo offline não quebrar, mas deixa explícito que
+      // os dados ficaram só no dispositivo.
+      return NextResponse.json({
+        success: true,
+        persisted: false,
+        warning:
+          'Alterações salvas apenas neste dispositivo: o servidor não conseguiu gravar suas preferências.',
+      });
+    }
+
+    return NextResponse.json({ success: true, persisted: true });
   } catch (error) {
     console.error('Erro ao salvar preferencias:', error);
     return NextResponse.json(

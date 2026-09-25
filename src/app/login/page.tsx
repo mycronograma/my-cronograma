@@ -31,6 +31,7 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   Callback:
     'Falha ao validar sua sessao. Tente novamente ou contate o suporte.',
   SessionRequired: 'Sua sessao expirou. Faca login novamente.',
+  RateLimited: 'Muitas tentativas de login. Aguarde alguns minutos e tente novamente.',
 };
 
 const mapAuthErrorMessage = (errorCode?: string | null) => {

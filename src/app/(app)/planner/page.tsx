@@ -7,8 +7,10 @@ import { cn, getWeekStart, timeToMinutes, minutesToTime, parseLocalDateKey, pars
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { isEnemGoal, upgradeSubjectsToOfficialEnemStructure } from '@/lib/enemCatalog';
 import { generateChronologicalSchedule, getPhaseForDate } from '@/services/roadmapEngine';
+import { resolveScheduleConstraints } from '@/services/scheduleConstraints';
 import { buildSubjectPerformanceProfiles, inferUserLearningLevel } from '@/services/adaptiveStudyIntelligence';
 import { useLocalStorage } from '@/hooks';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 import type {
   AnalyticsStore,
   StudyBlock,
@@ -22,9 +24,10 @@ import { defaultSettings } from '@/lib/defaultSettings';
 
 const weekDayKeys: WeekdayKey[] = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
 
-const DEFAULT_DAILY_HOURS_BY_WEEKDAY: UserSettings['dailyHoursByWeekday'] = {
-  dom: 0, seg: 3, ter: 3, qua: 3, qui: 3, sex: 3, sab: 2,
-};
+// Fonte única: defaultSettings.dailyHoursByWeekday. Antes o planner tinha o
+// próprio default (17h/semana) divergindo do restante do app (24h/semana), o que
+// fazia a mesma configuração gerar cargas diferentes em telas distintas.
+const DEFAULT_DAILY_HOURS_BY_WEEKDAY = defaultSettings.dailyHoursByWeekday;
 const DEFAULT_DAILY_AVAILABILITY_BY_WEEKDAY: UserSettings['dailyAvailabilityByWeekday'] = {
   dom: { start: '', end: '' }, seg: { start: '', end: '' }, ter: { start: '', end: '' }, qua: { start: '', end: '' }, qui: { start: '', end: '' }, sex: { start: '', end: '' }, sab: { start: '', end: '' },
 };
@@ -205,6 +208,23 @@ export default function PlannerPage() {
   const [newBlockStart, setNewBlockStart] = useState('09:00');
   const [newBlockDuration, setNewBlockDuration] = useState(60);
 
+  // A11y dos três diálogos do planner: role/aria-modal, Escape e prisão de foco.
+  const addBlockDialog = useDialogA11y({
+    open: addBlockModal.open,
+    onClose: () => setAddBlockModal({ open: false, date: null }),
+    ariaLabel: 'Adicionar bloco de estudo',
+  });
+  const mapFilterDialog = useDialogA11y({
+    open: showMapFilter,
+    onClose: () => setShowMapFilter(false),
+    ariaLabel: 'Filtros do mapa de estudos',
+  });
+  const roadmapDialog = useDialogA11y({
+    open: showRoadmap,
+    onClose: () => setShowRoadmap(false),
+    ariaLabel: 'Roadmap de estudos',
+  });
+
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date(displayedWeekStart);
@@ -313,22 +333,45 @@ export default function PlannerPage() {
     try {
       const weekStart = displayedWeekStart;
       const weekEnd = plannerEndDate ?? (() => { const d = new Date(displayedWeekStart); d.setDate(d.getDate() + 6); return d; })();
+      // As mesmas restrições que o Mapa de Carga exibe e que a API
+      // /api/planner/generate aplica. Antes o botão gerava sem restDays,
+      // dailyLimitByDate, janelas de disponibilidade e regras de simulado:
+      // para 3h seg-sex + 2h sab o botão produzia 22,8h/semana contra 17h da API.
+      const constraints = resolveScheduleConstraints({
+        userSettings: {
+          ...userSettings,
+          dailyHoursByWeekday:
+            userSettings.dailyHoursByWeekday ?? DEFAULT_DAILY_HOURS_BY_WEEKDAY,
+          dailyAvailabilityByWeekday:
+            userSettings.dailyAvailabilityByWeekday ?? DEFAULT_DAILY_AVAILABILITY_BY_WEEKDAY,
+        },
+        studyPrefs,
+        startDate: weekStart,
+        endDate: weekEnd,
+        dailyLimitsOverride: dailyLimits,
+      });
+
       const schedule = await generateChronologicalSchedule({
         subjects,
         preferences: studyPrefs,
         startDate: weekStart,
         endDate: weekEnd,
-        preferredStart: userSettings.preferredStart,
-        preferredEnd: userSettings.preferredEnd,
-        maxBlockMinutes: userSettings.maxBlockMinutes,
-        breakMinutes: userSettings.breakMinutes,
+        preferredStart: constraints.preferredStart,
+        preferredEnd: constraints.preferredEnd,
+        maxBlockMinutes: constraints.maxBlockMinutes,
+        breakMinutes: constraints.breakMinutes,
+        restDays: constraints.restDays,
+        dailyLimitByDate: constraints.dailyLimitByDate,
+        dailyTimeWindowByDate: constraints.dailyTimeWindowByDate,
+        simuladoRules: constraints.simuladoRules,
         firstCycleAllSubjects,
       });
 
       const enrichedBlocks = schedule.blocks.map((block) => ({
         ...block,
         id: `${block.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        date: new Date(block.date),
+        date: parseBlockDate(block.date),
+        originalDate: block.originalDate ? parseBlockDate(block.originalDate) : block.originalDate,
       }));
 
       setBlocks(enrichedBlocks);
@@ -344,7 +387,7 @@ export default function PlannerPage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [subjects, studyPrefs, userSettings, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate]);
+  }, [subjects, studyPrefs, userSettings, dailyLimits, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate]);
 
   const handleResetPlanner = () => {
     setBlocks([]);
@@ -402,6 +445,8 @@ export default function PlannerPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          ref={addBlockDialog.dialogRef}
+          {...addBlockDialog.dialogProps}
           className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
           onClick={() => setAddBlockModal({ open: false, date: null })}
         >
@@ -582,6 +627,8 @@ export default function PlannerPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          ref={mapFilterDialog.dialogRef}
+          {...mapFilterDialog.dialogProps}
           className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setShowMapFilter(false)}
         >
@@ -736,6 +783,8 @@ export default function PlannerPage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          ref={roadmapDialog.dialogRef}
+          {...roadmapDialog.dialogProps}
           className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setShowRoadmap(false)}
         >

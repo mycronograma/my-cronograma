@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 /**
  * ActivityHeatmap Component
@@ -32,16 +32,20 @@ const dayLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 export default function ActivityHeatmap({ data, weeks = 12 }: ActivityHeatmapProps) {
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Ancora a janela no domingo da semana atual e volta (weeks - 1) semanas.
+  // Antes o início era `today - weeks*7 + 1` e só depois alinhado ao domingo,
+  // o que empurrava a janela inteira para trás: com 12 semanas o último dia
+  // exibido ficava até 6 dias antes de hoje (o dia atual nunca aparecia).
   const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - weeks * 7 + 1);
+  startDate.setDate(startDate.getDate() - startDate.getDay());
+  startDate.setDate(startDate.getDate() - (weeks - 1) * 7);
 
   const dataMap = new Map(data.map((d) => [d.date, d]));
 
   const weeksData: HeatmapData[][] = [];
-  let currentDate = new Date(startDate);
-
-  const dayOfWeek = currentDate.getDay();
-  currentDate.setDate(currentDate.getDate() - dayOfWeek);
+  const currentDate = new Date(startDate);
 
   for (let week = 0; week < weeks; week++) {
     const weekData: HeatmapData[] = [];
@@ -60,8 +64,11 @@ export default function ActivityHeatmap({ data, weeks = 12 }: ActivityHeatmapPro
     weeksData.push(weekData);
   }
 
-  const totalHours = data.reduce((sum, d) => sum + d.hours, 0);
-  const activeDays = data.filter((d) => d.hours > 0).length;
+  // Estatísticas do período exibido (antes somavam todo o histórico, embora o
+  // título fale em "últimas N semanas").
+  const visibleDays = weeksData.flat();
+  const totalHours = visibleDays.reduce((sum, d) => sum + d.hours, 0);
+  const activeDays = visibleDays.filter((d) => d.hours > 0).length;
 
   return (
     <Card className="h-full">

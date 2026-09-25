@@ -10,13 +10,19 @@ import ThemeBootstrap from '@/components/providers/ThemeBootstrap';
 import PWARegister from '@/components/PWARegister';
 
 export const metadata: Metadata = {
-  title: 'My Cronograma - Estudo Inteligente',
-  description: 'Transform your learning with AI-powered study planning, smart scheduling, and gamified progress tracking.',
-  keywords: ['study', 'learning', 'AI', 'productivity', 'education', 'planning'],
-  authors: [{ name: 'My Cronograma Team' }],
+  title: 'Nexora - Estudo Inteligente',
+  description: 'Planejamento de estudos com cronogramas inteligentes, sessões guiadas e progresso gamificado.',
+  keywords: ['estudo', 'aprendizado', 'IA', 'produtividade', 'educação', 'planejamento', 'ENEM'],
+  authors: [{ name: 'Nexora' }],
+  applicationName: 'Nexora',
   icons: {
-    icon: '/icon.svg',
-    apple: '/icon.svg',
+    icon: [
+      { url: '/icon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    // iOS ignora SVG: sem PNG o app instalado fica sem ícone.
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
 };
 
@@ -63,8 +69,11 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="icon" href="/icon-32.png" sizes="32x32" type="image/png" />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/icon.svg" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="Nexora" />
       </head>
       <body className="font-body antialiased">
         <ThemeBootstrap />

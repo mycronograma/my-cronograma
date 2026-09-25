@@ -106,13 +106,36 @@ export async function GET() {
       },
     });
 
-    const normalizedPresets = presets.map((preset) => {
+    /**
+     * Linha de matéria de preset como vem do banco. Tipada explicitamente para
+     * o endpoint não depender da inferência do client Prisma gerado.
+     */
+    type PresetSubjectRow = {
+      id: string;
+      presetId: string;
+      name: string;
+      priority: number;
+      difficulty: number;
+      recommendedWeeklyHours: number;
+      createdAt: Date;
+      updatedAt: Date;
+    };
+    type PresetRow = {
+      id: string;
+      name: string;
+      description: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      subjects: PresetSubjectRow[];
+    };
+
+    const normalizedPresets = presets.map((preset: PresetRow) => {
       const isEnem = preset.name.toLowerCase() === 'enem';
       const curated = getCuratedPresetByName(preset.name);
 
       if (!isEnem && !curated) return preset;
 
-      const dbSubjectsByCanonical = new Map(
+      const dbSubjectsByCanonical = new Map<string, PresetSubjectRow>(
         preset.subjects.map((subject) => [getCanonicalSubjectName(subject.name), subject])
       );
 

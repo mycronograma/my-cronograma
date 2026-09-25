@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { env } from '@/lib/env';
+import {
+  AUTH_RATE_LIMITS,
+  clientKeyFromRequest,
+  emailKey,
+  consumeRateLimit,
+  rateLimitResponse,
+} from '@/lib/rateLimit';
 import { sendEmail } from '@/lib/mail';
 import {
   PASSWORD_RESET_TTL_MS,
@@ -22,6 +29,19 @@ export async function POST(request: Request) {
     if (!emailRegex.test(email)) {
       return NextResponse.json({ message: genericSuccessMessage });
     }
+
+    // Dois limites: por IP (varredura) e por e-mail (bombardeio de inbox).
+    const ipLimit = consumeRateLimit(
+      clientKeyFromRequest(request, 'password-reset-request'),
+      AUTH_RATE_LIMITS.passwordResetRequest
+    );
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit, genericSuccessMessage);
+
+    const emailLimit = consumeRateLimit(
+      emailKey('password-reset-request', email),
+      AUTH_RATE_LIMITS.passwordResetRequest
+    );
+    if (!emailLimit.ok) return rateLimitResponse(emailLimit, genericSuccessMessage);
 
     if (!env.emailServer || !env.emailFrom) {
       return NextResponse.json(

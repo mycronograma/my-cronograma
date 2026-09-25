@@ -9,7 +9,8 @@ import type {
   UserLearningLevel,
 } from '@/types';
 import { getEnemDisciplineByName, normalizeEnemText } from '@/lib/enemCatalog';
-import { toLocalDateKey } from '@/lib/utils';
+import { parseBlockDate, toLocalDateKey } from '@/lib/utils';
+import { computeSessionScores } from '@/services/sessionScoring';
 
 export interface AdaptiveScoreFactors {
   weight: number;
@@ -36,15 +37,6 @@ export interface IntelligentAnalyticsSummary {
   avgFocusScore: number;
   avgProductivityScore: number;
 }
-
-const DEFAULT_SESSION_ACCURACY_BY_BLOCK: Record<string, number> = {
-  AULA: 0.88,
-  EXERCICIOS: 0.68,
-  REVISAO: 0.78,
-  SIMULADO_AREA: 0.62,
-  SIMULADO_COMPLETO: 0.6,
-  ANALISE: 0.75,
-};
 
 const DEFAULT_AREA_WEIGHT: Record<string, number> = {
   matematica: 1.0,
@@ -231,14 +223,6 @@ export function buildSubjectPerformanceProfiles(
   return output;
 }
 
-function inferAccuracyForCompletedBlock(block: StudyBlock, minutesSpent: number): number {
-  const base = DEFAULT_SESSION_ACCURACY_BY_BLOCK[block.type || 'AULA'] ?? 0.72;
-  const planned = Math.max(1, block.durationMinutes);
-  const adherence = clamp(minutesSpent / planned, 0.5, 1.3);
-  const adherenceBonus = adherence >= 1 ? 0.03 : -0.05;
-  return clamp(base + adherenceBonus, 0.35, 0.98);
-}
-
 function resolveSessionKind(block: StudyBlock): PerformanceMetricsSnapshot['sessionType'] {
   if (block.type === 'AULA' || block.sessionType === 'teoria') return 'AULA';
   if (block.type === 'EXERCICIOS' || block.sessionType === 'pratica') return 'EXERCICIOS';
@@ -293,14 +277,23 @@ export function applyBlockCompletionMetrics(params: {
       ? Math.min(totalQuestions, Math.max(0, Math.round(params.correctAnswers)))
       : undefined;
   const hasRealAccuracy = totalQuestions > 0 && typeof correctAnswers === 'number';
-  const accuracyRate = hasRealAccuracy
-    ? clamp(correctAnswers / totalQuestions, 0, 1)
-    : inferAccuracyForCompletedBlock(block, minutesSpent);
-  const errorRate = clamp(1 - accuracyRate, 0.02, 1);
-  const focusScore = Math.round(clamp(70 + (minutesSpent >= block.durationMinutes ? 12 : 4), 45, 98));
-  const productivityScore = Math.round(clamp(68 + accuracyRate * 20, 40, 98));
+  // FIX: foco/produtividade eram constantes disfarçadas (74 ou 82 de foco, 68 +
+  // acurácia de produtividade) e a acurácia era inventada por tipo de bloco
+  // quando não havia respostas. Agora tudo deriva de dados reais e a acurácia
+  // fica `null` quando não foi medida — sem contaminar perfil, tópicos e
+  // tendência.
+  const scores = computeSessionScores({
+    plannedMinutes: Math.max(1, block.durationMinutes),
+    actualMinutes: minutesSpent,
+    correctAnswers,
+    totalQuestions,
+  });
+  const accuracyRate = scores.accuracyRate;
+  const errorRate = scores.errorRate;
+  const focusScore = scores.focusScore;
+  const productivityScore = scores.productivityScore;
   const difficultyScore = clamp(subject.difficulty || 5, 1, 10);
-  const dateKey = toLocalDateKey(block.date);
+  const dateKey = toLocalDateKey(parseBlockDate(block.date));
 
   const snapshot: PerformanceMetricsSnapshot = {
     date: now.toISOString(),
@@ -309,8 +302,9 @@ export function applyBlockCompletionMetrics(params: {
     minutes: Math.round(minutesSpent),
     correctAnswers: hasRealAccuracy ? correctAnswers : undefined,
     totalQuestions: hasRealAccuracy ? totalQuestions : undefined,
-    accuracyRate: Number(accuracyRate.toFixed(4)),
-    errorRate: Number(errorRate.toFixed(4)),
+    accuracyRate: accuracyRate ?? undefined,
+    errorRate: errorRate ?? undefined,
+    accuracyEstimated: !hasRealAccuracy,
     focusScore,
     productivityScore,
     difficultyScore,
@@ -355,8 +349,18 @@ export function applyBlockCompletionMetrics(params: {
     subjectName: subject.name,
     area: subject.area,
     totalSessions: nextTotal,
-    accuracyRate: Number(avg(existingProfile.accuracyRate, accuracyRate, totalBefore).toFixed(4)),
-    errorRate: Number(avg(existingProfile.errorRate, errorRate, totalBefore).toFixed(4)),
+    accuracyRate: Number(
+      (accuracyRate === null
+        ? existingProfile.accuracyRate
+        : avg(existingProfile.accuracyRate, accuracyRate, totalBefore)
+      ).toFixed(4)
+    ),
+    errorRate: Number(
+      (errorRate === null
+        ? existingProfile.errorRate
+        : avg(existingProfile.errorRate, errorRate, totalBefore)
+      ).toFixed(4)
+    ),
     averageFocusScore: Math.round(avg(existingProfile.averageFocusScore, focusScore, totalBefore)),
     averageProductivityScore: Math.round(
       avg(existingProfile.averageProductivityScore, productivityScore, totalBefore)
@@ -388,15 +392,23 @@ export function applyBlockCompletionMetrics(params: {
       };
 
     const topicSessionsBefore = existingTopic.sessionsCount || 0;
+    // Sem acurácia medida creditamos apenas participação (valores baixos),
+    // em vez de multiplicar um índice inventado.
     const masteryDelta =
       sessionType === 'AULA'
         ? 8
         : sessionType === 'EXERCICIOS'
-        ? 14 * accuracyRate
+        ? accuracyRate === null
+          ? 6
+          : 14 * accuracyRate
         : sessionType === 'REVISAO'
-        ? 10 * accuracyRate
+        ? accuracyRate === null
+          ? 5
+          : 10 * accuracyRate
         : sessionType === 'SIMULADO'
-        ? 16 * accuracyRate
+        ? accuracyRate === null
+          ? 7
+          : 16 * accuracyRate
         : 6;
 
     const updatedTopic: TopicProgress = {
@@ -405,7 +417,12 @@ export function applyBlockCompletionMetrics(params: {
       disciplineName: subject.name,
       sessionsCount: topicSessionsBefore + 1,
       mastery: Number(clamp((existingTopic.mastery || 0) + masteryDelta, 0, 100).toFixed(1)),
-      accuracyRate: Number(avg(existingTopic.accuracyRate, accuracyRate, topicSessionsBefore).toFixed(4)),
+      accuracyRate: Number(
+        (accuracyRate === null
+          ? existingTopic.accuracyRate
+          : avg(existingTopic.accuracyRate, accuracyRate, topicSessionsBefore)
+        ).toFixed(4)
+      ),
       lastStudiedAt: now.toISOString(),
       nextReviewDate: nextTopicReviewDate(sessionType, now),
     };
@@ -420,17 +437,37 @@ export function applyBlockCompletionMetrics(params: {
     };
   }
 
-  const recentSubjectHistory = [...(performance.sessionHistory || []), snapshot]
-    .filter((entry) => entry.subjectId === subject.id)
-    .slice(-14);
-  if (recentSubjectHistory.length >= 2) {
-    const half = Math.max(1, Math.floor(recentSubjectHistory.length / 2));
-    const first = recentSubjectHistory.slice(0, half);
-    const second = recentSubjectHistory.slice(-half);
-    const firstAvg = first.reduce((sum, item) => sum + item.accuracyRate, 0) / first.length;
-    const secondAvg = second.reduce((sum, item) => sum + item.accuracyRate, 0) / second.length;
-    updatedProfile.trend7d = Number((secondAvg - firstAvg).toFixed(4));
-  }
+  /**
+   * FIX: trend7d comparava as duas metades das últimas 14 SESSÕES — nada a ver
+   * com 7 dias (14 sessões podem caber em 2 dias) — e usava acurácia inventada.
+   * Agora é a diferença entre a acurácia média dos últimos 7 dias e a dos 7 dias
+   * anteriores, considerando apenas sessões com respostas registradas. Sem
+   * dados suficientes nas duas janelas, o valor anterior é preservado.
+   */
+  const subjectHistory = [...(performance.sessionHistory || []), snapshot].filter(
+    (entry) => entry.subjectId === subject.id
+  );
+  const measuredHistory = subjectHistory.filter(
+    (entry) => !entry.accuracyEstimated && typeof entry.accuracyRate === 'number'
+  );
+  const windowAverage = (fromDaysAgo: number, toDaysAgo: number): number | null => {
+    const from = now.getTime() - fromDaysAgo * 86_400_000;
+    const to = now.getTime() - toDaysAgo * 86_400_000;
+    const entries = measuredHistory.filter((entry) => {
+      const at = Date.parse(entry.date);
+      return Number.isFinite(at) && at >= to && at < from;
+    });
+    if (entries.length === 0) return null;
+    return (
+      entries.reduce((sum, entry) => sum + (entry.accuracyRate as number), 0) / entries.length
+    );
+  };
+  const recentWindowAvg = windowAverage(7, 0);
+  const previousWindowAvg = windowAverage(14, 7);
+  updatedProfile.trend7d =
+    recentWindowAvg !== null && previousWindowAvg !== null
+      ? Number((recentWindowAvg - previousWindowAvg).toFixed(4))
+      : existingProfile.trend7d ?? 0;
 
   const updatedPerformance = {
     ...performance,
@@ -455,18 +492,24 @@ export function applyBlockCompletionMetrics(params: {
         productivityScoreAvg: Number(
           avg(previousDaily.productivityScoreAvg, productivityScore, previousDaily.sessions || 0).toFixed(2)
         ),
-        accuracyRateAvg: Number(
-          avg(previousDaily.accuracyRateAvg, accuracyRate, previousDaily.sessions || 0).toFixed(4)
-        ),
+        accuracyRateAvg:
+          accuracyRate === null
+            ? previousDaily.accuracyRateAvg
+            : Number(
+                avg(previousDaily.accuracyRateAvg, accuracyRate, previousDaily.sessions || 0).toFixed(4)
+              ),
         bySubject: {
           ...(previousDaily.bySubject || {}),
           [subject.id]: {
             ...subjectDaily,
             hours: Number((subjectDaily.hours + addedHours).toFixed(2)),
             sessions: nextSubjectDailySessions,
-            accuracyRateAvg: Number(
-              avg(subjectDaily.accuracyRateAvg, accuracyRate, subjectDaily.sessions || 0).toFixed(4)
-            ),
+            accuracyRateAvg:
+              accuracyRate === null
+                ? subjectDaily.accuracyRateAvg
+                : Number(
+                    avg(subjectDaily.accuracyRateAvg, accuracyRate, subjectDaily.sessions || 0).toFixed(4)
+                  ),
             focusScoreAvg: Number(avg(subjectDaily.focusScoreAvg, focusScore, subjectDaily.sessions || 0).toFixed(2)),
             productivityScoreAvg: Number(
               avg(subjectDaily.productivityScoreAvg, productivityScore, subjectDaily.sessions || 0).toFixed(2)
@@ -481,7 +524,8 @@ export function applyBlockCompletionMetrics(params: {
   return {
     analytics: updatedAnalytics,
     snapshot,
-    subjectRollingAccuracy: updatedProfile.accuracyRate,
+    // Só propaga para a matéria quando houve medição real nesta sessão.
+    subjectRollingAccuracy: accuracyRate === null ? undefined : updatedProfile.accuracyRate,
   };
 }
 
@@ -515,7 +559,18 @@ export function computeIntelligentAnalyticsSummary(params: {
     return analytics.daily[dateKey] || { hours: 0, sessions: 0 };
   });
   const studyDays = last30DayRecords.filter((record) => (record.hours || 0) > 0).length;
-  const consistencyRate = studyDays / 30;
+  // FIX: o denominador era sempre 30, então quem começou ontem aparecia com
+  // 3% de consistência. A janela real é o menor valor entre 30 dias e o tempo
+  // desde o primeiro registro local.
+  const firstRecordTime = Object.keys(analytics.daily || {})
+    .map((key) => Date.parse(`${key}T00:00:00`))
+    .filter((time) => Number.isFinite(time))
+    .sort((a, b) => a - b)[0];
+  const daysSinceFirstRecord = Number.isFinite(firstRecordTime)
+    ? Math.floor((now.getTime() - (firstRecordTime as number)) / 86_400_000) + 1
+    : 1;
+  const consistencyWindow = Math.min(30, Math.max(1, daysSinceFirstRecord));
+  const consistencyRate = studyDays / consistencyWindow;
 
   const avgTrend = list.length > 0 ? list.reduce((sum, profile) => sum + (profile.trend7d || 0), 0) / list.length : 0;
   const projectedImprovement30d =

@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { env } from '@/lib/env';
+import { canExposeDevVerificationCode, env } from '@/lib/env';
+import {
+  AUTH_RATE_LIMITS,
+  emailKey,
+  consumeRateLimit,
+  rateLimitResponse,
+} from '@/lib/rateLimit';
 import { sendEmail } from '@/lib/mail';
 import {
   REGISTER_2FA_TTL_MS,
@@ -10,7 +16,7 @@ import {
 } from '@/lib/register-2fa';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const allowLocalVerificationCode = process.env.NODE_ENV !== 'production';
+const allowLocalVerificationCode = canExposeDevVerificationCode;
 
 export async function POST(request: Request) {
   try {
@@ -21,13 +27,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'E-mail inválido.' }, { status: 400 });
     }
 
+    const limit = consumeRateLimit(emailKey('register-2fa-resend', email), AUTH_RATE_LIMITS.resendCode);
+    if (!limit.ok) {
+      return rateLimitResponse(limit, 'Aguarde alguns minutos antes de pedir outro código.');
+    }
+
     const user = await prisma.user.findUnique({
       where: { email },
       select: { name: true, email: true },
     });
 
     if (!user) {
-      return NextResponse.json({ message: 'Conta não encontrada.' }, { status: 404 });
+      // Não revelar se o e-mail existe (antes devolvia 404 "Conta não encontrada").
+      return NextResponse.json({
+        success: true,
+        codeSent: false,
+        message: 'Se a conta existir e estiver pendente de verificação, um novo código foi enviado.',
+      });
     }
 
     if (!allowLocalVerificationCode && (!env.emailServer || !env.emailFrom)) {

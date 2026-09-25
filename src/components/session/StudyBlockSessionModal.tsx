@@ -12,6 +12,7 @@ import { X, Play, Pause, CheckCircle2, Coffee, SkipForward } from 'lucide-react'
 import { cn, formatDuration } from '@/lib/utils';
 import type { StudyBlock, UserSettings } from '@/types';
 import { useLocalStorage } from '@/hooks';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { defaultSettings } from '@/lib/defaultSettings';
 
 function ProgressRing({ radius, stroke, progress, color }: {
@@ -295,6 +296,14 @@ export default function StudyBlockSessionModal({
     return () => clearInterval(interval);
   }, [sessionState, timeRemaining, finishSession]);
 
+  // A11y: role/aria-modal, Escape e prisão de foco (antes era só uma div).
+  // Precisa vir antes do early return para respeitar as regras dos hooks.
+  const { dialogRef, dialogProps } = useDialogA11y({
+    open: isOpen && Boolean(block) && mounted,
+    onClose,
+    ariaLabel: 'Sessão de estudo',
+  });
+
   if (!isOpen || !block || !mounted) return null;
 
   const subjectName = block.isBreak ? 'Intervalo' : block.subject?.name || 'Sessão de Estudo';
@@ -313,6 +322,8 @@ export default function StudyBlockSessionModal({
   return createPortal(
     <AnimatePresence>
       <motion.div
+        ref={dialogRef}
+        {...dialogProps}
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="fixed inset-0 z-[10020] flex items-center justify-center p-4"
         style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(16px)' }}

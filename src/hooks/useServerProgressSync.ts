@@ -33,6 +33,33 @@ type StoreSyncEventDetail = {
 
 const serverProgressKeySet = new Set<string>(SERVER_PROGRESS_STORE_KEYS);
 
+/**
+ * Marca d'água do último dado gravado localmente. Sem ela o snapshot remoto
+ * sobrescrevia o estado local mesmo quando o local era mais novo (ex.: estudar
+ * offline por horas e reconectar → perdia tudo).
+ */
+const LOCAL_PROGRESS_AT_KEY = 'nexora_local_progress_at';
+
+/** Tolerância de relógio entre cliente e servidor (o servidor costuma estar à frente). */
+const CLOCK_SKEW_MS = 60_000;
+
+const readLocalSavedAt = (): number => {
+  try {
+    const parsed = Number(window.localStorage.getItem(LOCAL_PROGRESS_AT_KEY) ?? 0);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  } catch {
+    return 0;
+  }
+};
+
+export const markLocalProgressTouched = (at: number = Date.now()): void => {
+  try {
+    window.localStorage.setItem(LOCAL_PROGRESS_AT_KEY, String(at));
+  } catch {
+    // sem localStorage: segue com a comparação só por presença de dados
+  }
+};
+
 const LEGACY_KEY_MAP: Record<string, ServerProgressStoreKey> = {
   subjects: 'nexora_subjects',
   plannerBlocks: 'nexora_planner_blocks',
@@ -182,10 +209,20 @@ export function useServerProgressSync() {
         const currentPayload = buildPayload();
         const entriesToApply: ServerProgressPayload = {};
 
+        const remoteSavedAt = Date.parse(typeof result.updatedAt === 'string' ? result.updatedAt : '') || 0;
+        const localSavedAt = readLocalSavedAt();
+        const hasBothTimestamps = remoteSavedAt > 0 && localSavedAt > 0;
+        // Empate (dentro do skew) fica com o remoto: normalmente é o mesmo dado
+        // que acabou de subir.
+        const remoteIsNewer = hasBothTimestamps
+          ? remoteSavedAt + CLOCK_SKEW_MS >= localSavedAt
+          : true;
+
         for (const key of SERVER_PROGRESS_STORE_KEYS) {
           if (!(key in incoming)) continue;
           const incomingValue = incoming[key];
-          if (source === 'snapshot' || isEmptyValue(currentPayload[key])) {
+          const localIsEmpty = isEmptyValue(currentPayload[key]);
+          if (localIsEmpty || (source === 'snapshot' && remoteIsNewer)) {
             entriesToApply[key] = incomingValue;
           }
         }
@@ -200,8 +237,12 @@ export function useServerProgressSync() {
           ...entriesToApply,
         };
 
-        if (source === 'snapshot') {
+        if (source === 'snapshot' && remoteIsNewer) {
           lastSavedHashRef.current = JSON.stringify(merged);
+        } else if (!remoteIsNewer) {
+          // Local mais novo: não marca como salvo para o schedulePersist()
+          // enviar o estado local (o servidor faz merge por chave).
+          lastSavedHashRef.current = '';
         }
       } catch (error) {
         if (!cancelled) {
@@ -234,16 +275,31 @@ export function useServerProgressSync() {
       const changedKey = customEvent.detail?.key;
       if (!changedKey || !serverProgressKeySet.has(changedKey)) return;
       if (applyingRemoteRef.current) return;
+      markLocalProgressTouched();
+      schedulePersist();
+    };
+
+    /**
+     * `storage` só dispara em OUTRA aba: sem este listener, mudanças feitas em
+     * uma segunda aba nunca subiam para o servidor nesta.
+     */
+    const handleNativeStorage = (event: StorageEvent) => {
+      const changedKey = event.key;
+      if (!changedKey || !serverProgressKeySet.has(changedKey)) return;
+      if (applyingRemoteRef.current) return;
+      markLocalProgressTouched();
       schedulePersist();
     };
 
     window.addEventListener(LOCAL_STORAGE_SYNC_EVENT, handleStoreSync);
+    window.addEventListener('storage', handleNativeStorage);
 
     // Garante criação/atualização do snapshot mesmo sem interação imediata.
     schedulePersist();
 
     return () => {
       window.removeEventListener(LOCAL_STORAGE_SYNC_EVENT, handleStoreSync);
+      window.removeEventListener('storage', handleNativeStorage);
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;

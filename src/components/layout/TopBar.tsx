@@ -75,7 +75,7 @@ const resolveRouteTitle = (pathname: string) => {
   if (matched) return matched.label;
 
   const [firstSegment] = pathname.split('/').filter(Boolean);
-  if (!firstSegment) return 'My Cronograma';
+  if (!firstSegment) return 'Nexora';
   return toTitleCase(decodeURIComponent(firstSegment));
 };
 
@@ -260,12 +260,13 @@ function TopBarDesktop({
           )}
         </motion.button>
 
-        <motion.button
-          type="button"
-          whileHover={{ scale: 1.05 }}
-          className="flex max-w-full cursor-pointer items-center gap-2 xl:gap-3 rounded-xl p-2 transition-colors hover:bg-card-bg"
-          onClick={onSignOut}
-          aria-label="Sair da conta"
+        {/* Perfil: no desktop o avatar levava direto ao logout (um clique
+            acidental derrubava a sessão). Agora abre as configurações, igual ao
+            mobile, e o logout fica em um botão próprio. */}
+        <Link
+          href="/settings"
+          className="flex max-w-full items-center gap-2 xl:gap-3 rounded-xl p-2 transition-colors hover:bg-card-bg"
+          aria-label="Abrir perfil e configurações"
         >
           {user.avatar ? (
             <Image
@@ -283,7 +284,18 @@ function TopBarDesktop({
           <span className="hidden max-w-[10rem] truncate text-sm font-medium text-text-primary 2xl:inline">
             {user.name}
           </span>
-          <LogOut className="h-4 w-4 text-text-muted" />
+        </Link>
+
+        <motion.button
+          type="button"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={onSignOut}
+          className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-card-bg transition-colors"
+          aria-label="Sair da conta"
+          title="Sair da conta"
+        >
+          <LogOut className="h-5 w-5 text-text-secondary" />
         </motion.button>
       </div>
     </AppContainer>
@@ -588,6 +600,9 @@ export default function TopBar({ user }: TopBarProps) {
           <div className="app-mobile-safe-overlay lg:hidden">
             <motion.div
               ref={mobilePanelRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Central de notificações"
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 12 }}

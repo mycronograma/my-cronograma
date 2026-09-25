@@ -1070,7 +1070,7 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
     log(
       `Dia ${dayKey}: ${
         blocks.filter(
-          (b) => !b.isBreak && toLocalDateKey(b.date) === dayKey
+          (b) => !b.isBreak && toLocalDateKey(parseBlockDate(b.date)) === dayKey
         ).length
       } blocos.`
     );
@@ -1109,16 +1109,3 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
   return cloneScheduleResult(result, false);
 }
 
-export function replanAfterPerformanceUpdate(
-  config: ChronologicalScheduleConfig,
-  performance: Record<string, 'completed' | 'skipped' | 'late'>
-) {
-  const updatedSubjects = config.subjects.map((subject) => {
-    const status = performance[subject.id];
-    if (status === 'skipped') {
-      return { ...subject, priority: Math.min(10, (subject.priority || 5) + 1) };
-    }
-    return subject;
-  });
-  return generateChronologicalSchedule({ ...config, subjects: updatedSubjects, debug: true });
-}

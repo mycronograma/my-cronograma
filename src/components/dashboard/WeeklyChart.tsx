@@ -48,7 +48,7 @@ const CustomTooltip = ({
   if (active && payload && payload.length) {
     return (
       <div className="glass-card p-3">
-        <p className="text-sm font-medium text-white">{label}</p>
+        <p className="text-sm font-medium text-text-primary">{label}</p>
         <p className="text-sm text-neon-blue">
           {formatHoursDuration(payload[0].value)} estudadas
         </p>
@@ -101,10 +101,10 @@ export default function WeeklyChart({ data, className, compact = false }: Weekly
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-neon-blue to-neon-purple" />
             <span className="text-[11px] text-text-secondary">Realizado</span>
-            <div className="w-2.5 h-2.5 rounded-full bg-neon-cyan/50 ml-2" />
-            <span className="text-[11px] text-text-secondary">Meta</span>
           </div>
-          <span className="text-xs font-bold text-neon-purple">{achievedTargetDays}/{totalTargetDays || 7} dias</span>
+          <span className="text-xs font-bold text-neon-purple">
+            {totalTargetDays > 0 ? `${achievedTargetDays}/${totalTargetDays} dias na meta` : 'Sem meta configurada'}
+          </span>
         </div>
       </div>
     );
@@ -114,7 +114,7 @@ export default function WeeklyChart({ data, className, compact = false }: Weekly
     <Card className={cn('h-full', className)}>
       <div className="mb-5 flex min-w-0 flex-col gap-3 max-[479px]:gap-2 sm:mb-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-xl max-[479px]:text-lg font-heading font-bold text-white">Progresso Semanal</h2>
+          <h2 className="text-xl max-[479px]:text-lg font-heading font-bold text-text-primary">Progresso Semanal</h2>
           <p className="text-sm max-[479px]:text-xs text-text-secondary mt-1">
             Horas de estudo esta semana
           </p>
@@ -123,10 +123,6 @@ export default function WeeklyChart({ data, className, compact = false }: Weekly
           <div className="flex items-center gap-2 max-[479px]:gap-1">
             <div className="w-3 h-3 max-[479px]:w-2.5 max-[479px]:h-2.5 rounded-full bg-gradient-to-r from-neon-blue to-neon-purple" />
             <span className="text-xs text-text-secondary">Realizado</span>
-          </div>
-          <div className="flex items-center gap-2 max-[479px]:gap-1">
-            <div className="w-3 h-3 max-[479px]:w-2.5 max-[479px]:h-2.5 rounded-full bg-neon-cyan/50" />
-            <span className="text-xs text-text-secondary">Meta</span>
           </div>
         </div>
       </div>
@@ -176,14 +172,14 @@ export default function WeeklyChart({ data, className, compact = false }: Weekly
       {/* Estatísticas Rápidas */}
       <div className="mt-4 flex flex-wrap items-start justify-between gap-3 border-t border-card-border pt-4 max-[479px]:mt-3 max-[479px]:pt-3">
         <div className="min-w-0">
-          <p className="text-2xl max-[479px]:text-[22px] font-heading font-bold text-white">
+          <p className="text-2xl max-[479px]:text-[22px] font-heading font-bold text-text-primary">
             {formatHoursDuration(data.reduce((sum, d) => sum + d.hours, 0))}
           </p>
           <p className="text-xs text-text-secondary">Total esta semana</p>
         </div>
         <div className="min-w-0 text-left sm:text-right">
           <p className="text-2xl max-[479px]:text-[22px] font-heading font-bold text-neon-cyan">
-            {achievedTargetDays}/{totalTargetDays || 7}
+            {totalTargetDays > 0 ? `${achievedTargetDays}/${totalTargetDays}` : '—'}
           </p>
           <p className="text-xs text-text-secondary">Dias com meta atingida</p>
         </div>

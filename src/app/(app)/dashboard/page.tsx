@@ -24,10 +24,11 @@ import {
   Zap,
   Award,
 } from 'lucide-react';
-import { cn, formatDuration, formatDate, toLocalDateKey, parseBlockDate, getWeekStart, timeToMinutes, minutesToTime } from '@/lib/utils';
+import { cn, formatDuration, formatDate, toLocalDateKey, parseBlockDate, getWeekStart, timeToMinutes, minutesToTime, getHoursForDate, getWeeklyGoalHours } from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { computeGamificationSnapshot } from '@/lib/progressSnapshot';
 import { applyBlockCompletionMetrics } from '@/services/adaptiveStudyIntelligence';
+import { reportCompletedSession } from '@/lib/sessionSync';
 import { getStudyBlockDisplayTitle } from '@/lib/studyBlockLabels';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
@@ -38,8 +39,10 @@ import { LevelProgress } from '@/components/dashboard';
 import { TodayPlan } from '@/components/dashboard';
 import { WeeklyChart } from '@/components/dashboard';
 import type { StudyBlock, Subject, AnalyticsStore, StudyPreferences, UserSettings } from '@/types';
+import { useSession } from 'next-auth/react';
 import { useOnboarding, useLocalStorage } from '@/hooks';
 import { defaultTrainerTips } from '@/services/studyTrainer';
+import { defaultSettings } from '@/lib/defaultSettings';
 
 interface DashboardProps {
   className?: string;
@@ -55,6 +58,7 @@ const statusConfig = {
 
 export default function Dashboard() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [isSuggestionApplied, setIsSuggestionApplied] = useState(false);
   const [showAllTips, setShowAllTips] = useState(false);
   const { hasCompletedWelcome } = useOnboarding();
@@ -67,41 +71,27 @@ export default function Dashboard() {
     mode: 'random',
     examDate: '',
   });
-  const [userSettings] = useLocalStorage<UserSettings>('nexora_user_settings', {
-    excludeDays: [] as number[],
-    name: '',
-    email: '',
-    theme: 'dark',
-    dailyGoalHours: 3,
-    preferredStart: '08:00',
-    preferredEnd: '22:00',
-    maxBlockMinutes: 120,
-    breakMinutes: 15,
-    aiDifficulty: 'adaptive',
-    focusMode: true,
-    autoSchedule: false,
-    smartBreaks: false,
-    dailyReminder: false,
-    streakReminder: false,
-    achievementAlerts: false,
-    weeklyReport: false,
-    notificationsEnabled: true,
-    notificationMinutesBefore: 5,
-    notificationSoundEnabled: true,
-    backlogReminderEnabled: true,
-    allowSundayBacklog: false,
-  });
+  // Usa os mesmos defaults globais das demais telas: fallbacks divergentes
+  // faziam o snapshot enviado ao servidor depender da página visitada primeiro.
+  const [userSettings] = useLocalStorage<UserSettings>('nexora_user_settings', defaultSettings);
+
+  // Mesma ordem usada no TopBar/MainLayout para o nome não divergir entre telas.
+  const displayName =
+    (userSettings.name || session?.user?.name || '').trim() || 'Estudante';
 
   const todayKey = toLocalDateKey(new Date());
   const today = todayKey;
   const currentTime = new Date().toTimeString().slice(0, 5);
   const dailyAnalytics = useMemo(() => analytics.daily[todayKey] || { hours: 0, sessions: 0, blocks: 0, correctAnswers: 0, totalQuestions: 0 }, [analytics.daily, todayKey]);
-  const todayBlocks = plannerBlocks.filter(
-    (block) => {
-      const blockDateKey = toLocalDateKey(parseBlockDate(block.date));
-      return blockDateKey === todayKey && (block.status === 'scheduled' || block.status === 'rescheduled' || block.status === 'in-progress');
-    }
+  const todayBlocksAll = plannerBlocks
+    .filter((block) => toLocalDateKey(parseBlockDate(block.date)) === todayKey)
+    .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+
+  // Blocos ainda pendentes/em andamento (usados para "recomendado agora").
+  const todayBlocks = todayBlocksAll.filter(
+    (block) => block.status === 'scheduled' || block.status === 'rescheduled' || block.status === 'in-progress'
   );
+  const completedTodayCount = todayBlocksAll.filter((block) => block.status === 'completed').length;
 
   const currentBlockIndex = todayBlocks.findIndex(
     (block) =>
@@ -132,16 +122,42 @@ export default function Dashboard() {
         date: dayKey,
         hours: dayAnalytics.hours,
         sessions: dayAnalytics.sessions,
-        target: studyPrefs.hoursPerDay,
+        // Respeita a carga configurada por dia da semana (dias de descanso = 0).
+        target: getHoursForDate(date, userSettings.dailyHoursByWeekday, studyPrefs.hoursPerDay),
       };
     });
-  }, [analytics, studyPrefs]);
+  }, [analytics, studyPrefs, userSettings.dailyHoursByWeekday]);
 
   const totalWeeklyHours = weeklyData.reduce((sum, day) => sum + day.hours, 0);
   const completedWeeklySessions = weeklyData.reduce((sum, day) => sum + day.sessions, 0);
 
-  const weeklyGoalHours = Math.max(studyPrefs.hoursPerDay * 7, 1);
-  const weeklyProgressPercent = Math.round((totalWeeklyHours / weeklyGoalHours) * 100);
+  const weeklyGoalHours = Math.max(
+    getWeeklyGoalHours(userSettings.dailyHoursByWeekday, studyPrefs.hoursPerDay),
+    1
+  );
+  const weeklyProgressPercent = Math.min(
+    100,
+    Math.round((totalWeeklyHours / weeklyGoalHours) * 100)
+  );
+
+  const todayTargetHours = getHoursForDate(
+    new Date(),
+    userSettings.dailyHoursByWeekday,
+    studyPrefs.hoursPerDay
+  );
+
+  // Revisões pendentes = blocos de revisão (hoje ou atrasados) ainda não feitos.
+  const pendingReviewsCount = useMemo(
+    () =>
+      plannerBlocks.filter((block) => {
+        if (block.isBreak) return false;
+        if (block.status === 'completed' || block.status === 'skipped') return false;
+        const isReview = block.type === 'REVISAO' || block.sessionType === 'revisao';
+        if (!isReview) return false;
+        return toLocalDateKey(parseBlockDate(block.date)) <= todayKey;
+      }).length,
+    [plannerBlocks, todayKey]
+  );
 
   const gamificationSnapshot = useMemo(
     () => computeGamificationSnapshot({ plannerBlocks, analytics }),
@@ -152,8 +168,26 @@ export default function Dashboard() {
   const [activeSessionBlock, setActiveSessionBlock] = useState<StudyBlock | null>(null);
 
   const recommendedBlock = useMemo(() => {
-    return todayBlocks.find((block) => !block.isBreak) ?? null;
-  }, [todayBlocks]);
+    const pending = todayBlocks.filter((block) => !block.isBreak);
+    if (pending.length === 0) return null;
+
+    // 1) sessão já em andamento, 2) bloco que cobre o horário atual,
+    // 3) próximo bloco do dia, 4) primeiro pendente.
+    return (
+      pending.find((block) => block.status === 'in-progress') ??
+      pending.find(
+        (block) =>
+          (block.status === 'scheduled' || block.status === 'rescheduled') &&
+          block.startTime <= currentTime &&
+          block.endTime > currentTime
+      ) ??
+      pending.find(
+        (block) =>
+          (block.status === 'scheduled' || block.status === 'rescheduled') && block.startTime > currentTime
+      ) ??
+      pending[0]
+    );
+  }, [currentTime, todayBlocks]);
 
   const aiSuggestion = useMemo(() => {
     if (subjects.length === 0) return null;
@@ -179,8 +213,10 @@ export default function Dashboard() {
       title: 'Reforço com base na IA',
       text: `${weakest.subject.name} - ${weakest.subject.area || 'Tópico principal'}`,
       reason: `Baixo desempenho recente (${Math.round((1 - weakest.accuracyRate) * 100)}% de erros estimados)`,
-      action: '+2 sessões p/ semana',
+      action: '+2h/semana na meta',
       priority: 'high',
+      subjectId: weakest.subject.id,
+      subjectName: weakest.subject.name,
     };
   }, [subjects, analytics]);
 
@@ -198,12 +234,34 @@ export default function Dashboard() {
     };
   }, [gamificationSnapshot, dailyAnalytics]);
 
+  const handleApplySuggestion = () => {
+    if (!aiSuggestion || isSuggestionApplied) return;
+
+    // Antes o botão só marcava um estado local e a tela afirmava que o
+    // cronograma tinha sido ajustado. Agora a sugestão altera de fato a meta
+    // semanal da matéria sugerida.
+    setSubjects((prev) =>
+      prev.map((subject) =>
+        subject.id === aiSuggestion.subjectId
+          ? { ...subject, targetHours: Number((subject.targetHours + 2).toFixed(2)) }
+          : subject
+      )
+    );
+    setIsSuggestionApplied(true);
+  };
+
   const handleStartBlock = (block: StudyBlock) => {
+    // Blocos concluídos/pulados não podem voltar a "em andamento": isso permitia
+    // concluir duas vezes e contar horas/XP em duplicidade.
+    if (block.status === 'completed' || block.status === 'skipped') return;
+
+    // O horário planejado é preservado (antes era substituído pelo horário atual,
+    // o que podia gerar endTime anterior ao startTime ao iniciar com atraso).
     const updatedBlocks = plannerBlocks.map((b) =>
-      b.id === block.id ? { ...b, status: 'in-progress' as const, startTime: currentTime } : b
+      b.id === block.id ? { ...b, status: 'in-progress' as const } : b
     );
     setPlannerBlocks(updatedBlocks);
-    setActiveSessionBlock({ ...block, status: 'in-progress' as const, startTime: currentTime });
+    setActiveSessionBlock({ ...block, status: 'in-progress' as const });
   };
 
 const handleCompleteBlock = (
@@ -270,19 +328,50 @@ const handleCompleteBlock = (
         };
       });
     }
+    // Registra a sessão concluída no servidor (XP/streak/conquistas,
+    // notificações e relatório semanal). Fire-and-forget: falha de rede não
+    // altera o estado local, que continua sendo a fonte de verdade da UI.
+    if (!blockRef.isBreak) {
+      const plannedStart = parseBlockDate(blockRef.date);
+      const startMinutes = blockRef.startTime ? timeToMinutes(blockRef.startTime) : NaN;
+      if (Number.isFinite(startMinutes)) {
+        plannedStart.setHours(Math.floor(startMinutes / 60), Math.round(startMinutes % 60), 0, 0);
+      }
+      const startedAt = Number.isNaN(plannedStart.getTime())
+        ? new Date(now.getTime() - effectiveMinutes * 60_000)
+        : plannedStart;
+
+      reportCompletedSession({
+        subjectId: blockRef.subjectId,
+        blockId: blockRef.id,
+        startedAt,
+        endedAt: now,
+        plannedMinutes: Math.max(1, blockRef.durationMinutes),
+        actualMinutes: Math.max(1, effectiveMinutes),
+        correctAnswers: performance?.correctAnswers ?? null,
+        totalQuestions: performance?.totalQuestions ?? null,
+        source: 'block',
+      });
+    }
+
     setActiveSessionBlock(null);
   };
 
   const handlePostponeBlock = (block: StudyBlock) => {
-    const shift = (time: string) => minutesToTime(timeToMinutes(time) + 15);
-    setPlannerBlocks((prev) =>
-      prev.map((b) =>
-        b.id === block.id ? { ...b, startTime: shift(b.startTime), endTime: shift(b.endTime) } : b
-      )
+    const END_OF_DAY_MINUTES = 24 * 60 - 1;
+    const duration = Math.max(1, block.durationMinutes || timeToMinutes(block.endTime) - timeToMinutes(block.startTime));
+    const nextStart = Math.min(
+      timeToMinutes(block.startTime) + 15,
+      Math.max(0, END_OF_DAY_MINUTES - duration)
     );
-    setActiveSessionBlock((prev) =>
-      prev && prev.id === block.id ? { ...prev, startTime: shift(prev.startTime), endTime: shift(prev.endTime) } : prev
-    );
+    const shifted = {
+      ...block,
+      startTime: minutesToTime(nextStart),
+      endTime: minutesToTime(nextStart + duration),
+    };
+
+    setPlannerBlocks((prev) => prev.map((b) => (b.id === block.id ? shifted : b)));
+    setActiveSessionBlock((prev) => (prev && prev.id === block.id ? shifted : prev));
   };
 
   const handleSkipBlock = (blockId: string) => {
@@ -331,7 +420,7 @@ const handleCompleteBlock = (
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h1 className="text-2xl font-heading font-bold text-text-primary">
-                    Olá, Lucas! 🎓
+                    Olá, {displayName}! 🎓
                   </h1>
                   <p className="text-text-secondary mt-1">
                     {formatDate(new Date())}, dia {['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'][new Date().getDay()]}
@@ -342,7 +431,7 @@ const handleCompleteBlock = (
                     <div className="text-right">
                       <p className="text-xs text-text-muted">Meta Semanal</p>
                       <p className="text-sm font-bold text-neon-blue">
-                        {totalWeeklyHours}h / {studyPrefs.hoursPerDay * 7}h
+                        {totalWeeklyHours}h / {weeklyGoalHours}h
                       </p>
                     </div>
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-neon-blue to-neon-purple flex items-center justify-center">
@@ -422,16 +511,16 @@ const handleCompleteBlock = (
 
               <div className="mt-6">
                 <TodayPlan
-                  blocks={todayBlocks}
+                  blocks={todayBlocksAll}
                   onStartSession={(blockId) => {
-                    const block = todayBlocks.find((b) => b.id === blockId);
+                    const block = todayBlocksAll.find((b) => b.id === blockId);
                     if (block) handleStartBlock(block);
                   }}
                   onSkipBlock={handleSkipBlock}
                   onCompleteBlock={handleCompleteBlock}
                   onStartBlock={handleStartBlock}
                   title="Agenda de Hoje"
-                  subtitle={`${todayBlocks.filter((b) => b.status === 'completed').length} de ${todayBlocks.length} concluídos`}
+                  subtitle={`${completedTodayCount} de ${todayBlocksAll.length} concluídos`}
                 />
               </div>
             </motion.div>
@@ -490,7 +579,8 @@ const handleCompleteBlock = (
                     
                     {isSuggestionApplied ? (
                       <p className="text-sm text-emerald-400/90 mt-2 leading-relaxed">
-                        O seu cronograma foi ajustado com sucesso pela inteligência artificial. Bons estudos!
+                        A meta semanal de {aiSuggestion.subjectName} foi aumentada em 2 horas. Gere um
+                        novo cronograma na Agenda Inteligente para redistribuir as sessões.
                       </p>
                     ) : (
                       <>
@@ -506,7 +596,7 @@ const handleCompleteBlock = (
                             variant="secondary"
                             size="sm"
                             className="text-xs h-8 px-4 w-full xl:w-auto bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 border border-amber-500/20 transition-all flex-shrink-0 whitespace-nowrap"
-                            onClick={() => setIsSuggestionApplied(true)}
+                            onClick={handleApplySuggestion}
                           >
                             {aiSuggestion.action}
                           </Button>
@@ -542,11 +632,17 @@ const handleCompleteBlock = (
                 <div className="mt-4 pt-4 border-t border-card-border">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-text-secondary">Revisões pendentes</span>
-                    <span className="font-bold text-amber-400">3</span>
+                    <span className="font-bold text-amber-400">{pendingReviewsCount}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm mt-2">
-                    <span className="text-text-secondary">Conquistas desbloqueadas</span>
-                    <span className="font-bold text-neon-purple">Nv. 12</span>
+                    <span className="text-text-secondary">Meta de hoje</span>
+                    <span className="font-bold text-neon-purple">
+                      {dailyAnalytics.hours}h / {todayTargetHours}h
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm mt-2">
+                    <span className="text-text-secondary">Blocos concluídos hoje</span>
+                    <span className="font-bold text-neon-cyan">{completedTodayCount}</span>
                   </div>
                 </div>
               </Card>

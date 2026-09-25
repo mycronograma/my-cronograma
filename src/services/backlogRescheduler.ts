@@ -66,12 +66,29 @@ const isReviewType = (block: StudyBlock) => block.type === 'REVISAO';
 const isSimuladoType = (block: StudyBlock) =>
   block.type === 'SIMULADO_AREA' || block.type === 'SIMULADO_COMPLETO';
 
-const getBlockDateKey = (block: StudyBlock) => toDateKey(parseBlockDate(block.date));
+// O remanejamento percorre os mesmos blocos muitas vezes (por dia, por janela).
+// parseBlockDate/toDateKey criam objetos e strings a cada chamada, então o
+// custo real era O(blocos × dias) de parsing. Memoizamos por instância do bloco
+// (WeakMap: o cache morre junto com o array de blocos da execução).
+const blockDateKeyCache = new WeakMap<StudyBlock, string>();
+const blockOriginalDateKeyCache = new WeakMap<StudyBlock, string>();
+
+const getBlockDateKey = (block: StudyBlock) => {
+  const cached = blockDateKeyCache.get(block);
+  if (cached) return cached;
+  const key = toDateKey(parseBlockDate(block.date));
+  blockDateKeyCache.set(block, key);
+  return key;
+};
 
 const getOriginalDateKey = (block: StudyBlock) => {
+  const cached = blockOriginalDateKeyCache.get(block);
+  if (cached) return cached;
   const original = block.originalDate ? parseBlockDate(block.originalDate) : parseBlockDate(block.date);
   original.setHours(0, 0, 0, 0);
-  return toDateKey(original);
+  const key = toDateKey(original);
+  blockOriginalDateKeyCache.set(block, key);
+  return key;
 };
 
 function getSubjectWeight(block: StudyBlock) {
@@ -429,11 +446,14 @@ function chooseNextDayForSimulado(
   quotaRatio: number,
   todayKey: string
 ) {
+  // O snapshot é o mesmo para todos os candidatos: era recriado a cada dia
+  // (O(dias * blocos) só para montar o array).
+  const allBlocks = Array.from(blocksById.values());
+
   const candidates = dayKeys
     .filter((dayKey) => dayKey >= todayKey)
     .map((dayKey) => {
       const date = parseDateKey(dayKey);
-      const allBlocks = Array.from(blocksById.values());
       const capacity = getDayCapacityMinutes(dayKey, allBlocks, dailyLimitByDate);
       const current = getCurrentStudyMinutes(allBlocks, dayKey);
       const free = Math.max(0, capacity - current);

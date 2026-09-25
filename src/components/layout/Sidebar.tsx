@@ -42,7 +42,7 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           data-tutorial="nav-dashboard"
         >
           <div className="flex items-center gap-3">
-            <Image src="/icon.svg" alt="My Cronograma" width={40} height={40} className="rounded-xl shadow-lg flex-shrink-0" />
+            <Image src="/icon.svg" alt="Nexora" width={40} height={40} className="rounded-xl shadow-lg flex-shrink-0" />
             {!isCollapsed && (
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5 leading-tight">

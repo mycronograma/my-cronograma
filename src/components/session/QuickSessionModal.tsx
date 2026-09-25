@@ -21,6 +21,8 @@ import {
 import { cn, formatDuration, toLocalDateKey } from '@/lib/utils';
 import { Button, Card, ProgressBar } from '@/components/ui';
 import { useLocalStorage } from '@/hooks';
+import { reportCompletedSession, updateSessionSelfAssessment } from '@/lib/sessionSync';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 import type { AnalyticsStore, Subject as FullSubject } from '@/types';
 
 interface Subject {
@@ -48,7 +50,12 @@ export default function QuickSessionModal({
   const [duration, setDuration] = useState(25); // minutos
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [totalTime, setTotalTime] = useState(0);
-  const [focusScore, setFocusScore] = useState(85);
+  // FIX: o foco era uma constante 85 inventada. Agora ele começa `null` e é
+  // derivado da aderência ao tempo planejado; o usuário pode registrar a
+  // autoavaliação real ao concluir (chips abaixo).
+  const [focusScore, setFocusScore] = useState<number | null>(null);
+  /** Id da sessão no servidor, para refinar a autoavaliação de foco depois. */
+  const serverSessionRef = useRef<{ id: string; subjectId: string; startedAt: string; plannedMinutes: number; actualMinutes: number } | null>(null);
   const sessionEndAtRef = useRef<number | null>(null);
   const persistedRef = useRef<string | null>(null);
   const [, setAnalytics] = useLocalStorage<AnalyticsStore>('nexora_analytics', { daily: {} });
@@ -137,6 +144,8 @@ export default function QuickSessionModal({
     setDuration(25);
     setTimeRemaining(0);
     setTotalTime(0);
+    setFocusScore(null);
+    serverSessionRef.current = null;
   };
 
   // Persistir conclusão uma única vez (evita XP duplicado / perda de dados)
@@ -150,6 +159,31 @@ export default function QuickSessionModal({
     const minutesStudied = Math.max(1, Math.floor((totalTime - timeRemaining) / 60));
     const hoursStudied = minutesStudied / 60;
     const todayKey = toLocalDateKey(new Date());
+    const endedAt = new Date();
+    const startedAt = new Date(endedAt.getTime() - minutesStudied * 60_000);
+    const planned = Math.max(1, Math.round(totalTime / 60));
+
+    // Registra no servidor: alimenta XP/nível/streak, conquistas, notificações
+    // ("você ainda não estudou hoje") e o relatório semanal. O foco ainda não
+    // foi avaliado pelo usuário neste momento — o servidor deriva da aderência e
+    // a autoavaliação (chips) é enviada depois via updateSessionSelfAssessment.
+    void reportCompletedSession({
+      subjectId: selectedSubject.id,
+      startedAt,
+      endedAt,
+      plannedMinutes: planned,
+      actualMinutes: minutesStudied,
+      source: 'quick',
+    }).then((sessionId) => {
+      if (!sessionId) return;
+      serverSessionRef.current = {
+        id: sessionId,
+        subjectId: selectedSubject.id,
+        startedAt: startedAt.toISOString(),
+        plannedMinutes: planned,
+        actualMinutes: minutesStudied,
+      };
+    });
 
     setAnalytics((prev) => {
       const day = prev.daily[todayKey] || { hours: 0, sessions: 0 };
@@ -195,18 +229,56 @@ export default function QuickSessionModal({
     onClose();
   };
 
+  const studiedSeconds = Math.max(0, totalTime - timeRemaining);
+  const studiedMinutes = Math.floor(studiedSeconds / 60);
+  const plannedMinutes = Math.max(1, Math.round(totalTime / 60));
+  const adherencePercent = Math.round(
+    Math.min(1, studiedSeconds / Math.max(1, totalTime)) * 100
+  );
+  const displayFocusScore = focusScore ?? adherencePercent;
+
   // Calcular XP ganho
   const calculateXP = () => {
-    const minutesStudied = Math.floor((totalTime - timeRemaining) / 60);
-    return Math.floor(minutesStudied * (focusScore / 100) * 1.5);
+    return Math.floor(studiedMinutes * (displayFocusScore / 100) * 1.5);
+  };
+
+  const focusOptions = [
+    { value: 30, label: 'Disperso' },
+    { value: 60, label: 'Normal' },
+    { value: 85, label: 'Focado' },
+    { value: 100, label: 'Total' },
+  ];
+
+  const handleFocusSelfAssessment = (value: number) => {
+    setFocusScore(value);
+    const registered = serverSessionRef.current;
+    if (!registered) return;
+    updateSessionSelfAssessment({
+      sessionId: registered.id,
+      subjectId: registered.subjectId,
+      startedAt: registered.startedAt,
+      plannedMinutes: registered.plannedMinutes,
+      actualMinutes: registered.actualMinutes,
+      focusScore: value,
+    });
   };
 
   const durationOptions = [15, 25, 45, 60, 90, 120];
+
+  // A11y: Escape cancela a confirmação de saída quando ela está aberta;
+  // caso contrário pede confirmação (mesmo comportamento do clique no fundo).
+  const { dialogRef, dialogProps } = useDialogA11y({
+    open: isOpen,
+    onClose: showExitConfirm ? () => setShowExitConfirm(false) : handleClose,
+    ariaLabel: 'Sessão rápida de estudo',
+  });
 
   return (
     <AnimatePresence>
       {isOpen && (
         <motion.div
+          ref={dialogRef}
+          {...dialogProps}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -228,6 +300,9 @@ export default function QuickSessionModal({
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/90 p-4"
+                    role="alertdialog"
+                    aria-modal="true"
+                    aria-label="Sair da sessão?"
                   >
                     <motion.div
                       initial={{ scale: 0.96, opacity: 0 }}
@@ -490,10 +565,40 @@ export default function QuickSessionModal({
                       <div className="p-4 rounded-xl bg-card-bg border border-card-border">
                         <BookOpen className="w-5 h-5 text-neon-cyan mx-auto mb-2" />
                         <p className="text-xl font-bold text-white">
-                          {focusScore}%
+                          {displayFocusScore}%
                         </p>
                         <p className="text-xs text-text-muted">Foco</p>
                       </div>
+                    </div>
+
+                    {/* Autoavaliação de foco (substitui o valor fixo de 85%) */}
+                    <div className="mb-8">
+                      <p className="text-sm text-text-secondary mb-3">
+                        Como foi seu foco nesta sessão?
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {focusOptions.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => handleFocusSelfAssessment(option.value)}
+                            aria-pressed={focusScore === option.value}
+                            className={cn(
+                              'px-4 py-2 rounded-lg border text-sm font-medium transition-all',
+                              focusScore === option.value
+                                ? 'border-neon-cyan bg-neon-cyan/20 text-neon-cyan'
+                                : 'border-card-border bg-card-bg text-text-secondary hover:border-neon-cyan/50'
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-text-muted mt-2">
+                        {focusScore === null
+                          ? `Sem avaliação, usamos a aderência ao tempo planejado (${adherencePercent}%).`
+                          : 'Sua avaliação foi registrada junto com a sessão.'}
+                      </p>
                     </div>
 
                     {/* Actions */}

@@ -5,6 +5,7 @@
 
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import type { DailyHoursByWeekday, WeekdayKey } from '@/types';
 
 // ============================================
 // Class Name Utilities
@@ -85,9 +86,50 @@ export function timeToMinutes(time: string): number {
  * Convert minutes since midnight to time string
  */
 export function minutesToTime(totalMinutes: number): string {
-  const hours = Math.floor(totalMinutes / 60) % 24;
-  const minutes = totalMinutes % 60;
+  // Clamp explícito no fim do dia: o `% 24` anterior fazia 23:50 + 30min virar
+  // "00:20", criando blocos com endTime anterior ao startTime.
+  const safeMinutes = Math.min(24 * 60 - 1, Math.max(0, Math.round(totalMinutes)));
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
+
+// ============================================
+// Weekly load helpers (fonte única de verdade)
+// ============================================
+
+export const WEEKDAY_KEYS: readonly WeekdayKey[] = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+
+/**
+ * Horas planejadas para uma data, respeitando a configuração por dia da semana.
+ * Cai em `fallbackHours` quando o dia não está configurado.
+ */
+export function getHoursForDate(
+  date: Date,
+  dailyHoursByWeekday?: Partial<DailyHoursByWeekday> | null,
+  fallbackHours = 0
+): number {
+  if (!dailyHoursByWeekday) return Math.max(0, fallbackHours);
+  const key = WEEKDAY_KEYS[date.getDay()];
+  const value = dailyHoursByWeekday[key];
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : Math.max(0, fallbackHours);
+}
+
+/**
+ * Meta semanal em horas: soma das horas configuradas para cada dia da semana.
+ * Dias de descanso (0h) não entram na meta — antes a meta era
+ * `hoursPerDay * 7`, o que tornava o progresso semanal inatingível para quem
+ * não estuda todos os dias.
+ */
+export function getWeeklyGoalHours(
+  dailyHoursByWeekday?: Partial<DailyHoursByWeekday> | null,
+  fallbackHours = 0
+): number {
+  if (!dailyHoursByWeekday) return Math.max(0, fallbackHours * 7);
+  return WEEKDAY_KEYS.reduce((total, key) => {
+    const value = dailyHoursByWeekday[key];
+    return total + (typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0);
+  }, 0);
 }
 
 /**
@@ -148,28 +190,47 @@ export function parseLocalDateKey(value?: string | null): Date | null {
 }
 
 /**
- * Parse a block date (date-only or ISO string) into a local midnight Date.
- * Avoids timezone shifting when the backend stores midnight UTC.
+ * Parse a block date (Date, date-only string or ISO timestamp) into a local
+ * midnight Date.
+ *
+ * Two conventions coexist in the app:
+ *  - the backend stores "date only" as UTC midnight (2026-09-28T00:00:00.000Z),
+ *    so the UTC calendar fields are the intended day;
+ *  - the client creates local midnight Dates, which serialize to an ISO string
+ *    with an offset (2026-09-28T03:00:00.000Z in UTC-3), so the LOCAL calendar
+ *    fields are the intended day.
+ *
+ * Reading both with the same rule shifts blocks by one day for part of the
+ * users, so: exact UTC midnight => use UTC fields, any other instant => use
+ * local fields.
  */
 export function parseBlockDate(value?: Date | string | null): Date {
   if (!value) return new Date(Number.NaN);
-  if (value instanceof Date) {
-    const parsed = new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
-    parsed.setHours(0, 0, 0, 0);
-    return parsed;
-  }
+
   if (typeof value === 'string') {
-    const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (match) {
-      const [year, month, day] = match[1].split('-').map(Number);
-      if (year && month && day) {
-        const parsed = new Date(year, month - 1, day);
-        parsed.setHours(0, 0, 0, 0);
-        return parsed;
-      }
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnly) {
+      const [, year, month, day] = dateOnly.map(Number);
+      const parsed = new Date(year, month - 1, day);
+      parsed.setHours(0, 0, 0, 0);
+      return parsed;
     }
   }
-  return new Date(value);
+
+  const instant = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (Number.isNaN(instant.getTime())) return instant;
+
+  const isUtcMidnight =
+    instant.getUTCHours() === 0 &&
+    instant.getUTCMinutes() === 0 &&
+    instant.getUTCSeconds() === 0 &&
+    instant.getUTCMilliseconds() === 0;
+
+  const parsed = isUtcMidnight
+    ? new Date(instant.getUTCFullYear(), instant.getUTCMonth(), instant.getUTCDate())
+    : new Date(instant.getFullYear(), instant.getMonth(), instant.getDate());
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
 }
 
 /**
@@ -354,8 +415,12 @@ export function hexToRgba(hex: string, alpha: number = 1): string {
  * Truncate string with ellipsis
  */
 export function truncate(str: string, length: number): string {
-  if (str.length <= length) return str;
-  return str.slice(0, length - 3) + '...';
+  const maxLength = Math.max(0, Math.floor(length));
+  if (str.length <= maxLength) return str;
+  // Com length < 4, `length - 3` ficava negativo e o slice devolvia uma string
+  // maior que a original (ex.: truncate('abcdef', 2) === 'abcde...').
+  if (maxLength <= 3) return str.slice(0, maxLength);
+  return str.slice(0, maxLength - 3) + '...';
 }
 
 /**
