@@ -1,0 +1,27 @@
+<svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100" height="100" rx="22" fill="url(#paint0_linear)"/>
+  
+  {/* Livro aberto em forma de 'm' fluido */}
+  <path d="M22 62C22 55.5 28 50 36 50C43 50 48 56 50 62C52 56 57 50 64 50C72 50 78 55.5 78 62V72C78 76 74 80 70 80H30C26 80 22 76 22 72V62Z" fill="white" fill-opacity="0.95"/>
+  <path d="M50 50V80" stroke="#7C3AED" stroke-width="2" stroke-linecap="round"/>
+  
+  {/* Linhas das páginas */}
+  <path d="M30 58H42M30 65H40M58 58H70M60 65H70" stroke="#9333EA" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.6"/>
+
+  {/* Estrela de Clareza no topo */}
+  <path d="M50 20L53.5 30H63.5L55 36.5L58.5 46.5L50 40L41.5 46.5L45 36.5L36.5 30H46.5L50 20Z" fill="#FACC15"/>
+
+  {/* Arco de pontos pontilhados na base */}
+  <circle cx="36" cy="88" r="2" fill="white" fill-opacity="0.8"/>
+  <circle cx="43" cy="90" r="2" fill="white" fill-opacity="0.8"/>
+  <circle cx="50" cy="90.5" r="2" fill="white" fill-opacity="0.8"/>
+  <circle cx="57" cy="90" r="2" fill="white" fill-opacity="0.8"/>
+  <circle cx="64" cy="88" r="2" fill="white" fill-opacity="0.8"/>
+
+  <defs>
+    <linearGradient id="paint0_linear" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceId">
+      <stop stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#4F46E5"/>
+    </linearGradient>
+  </defs>
+</svg>
