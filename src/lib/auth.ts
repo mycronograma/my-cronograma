@@ -101,8 +101,47 @@ export function invalidateUserSessionCache(userId: string): void {
   userExistsCache.delete(userId);
 }
 
+/**
+ * Política de cookies de sessão.
+ *
+ * O default do NextAuth (SameSite=Lax) quebra o app quando ele roda embutido
+ * (iframe) em outro domínio — é o caso do preview proxy do sandbox: o navegador
+ * não envia cookies Lax em contexto cross-site, o login autentica mas a sessão
+ * não persiste e a página volta para /login. Com
+ * NEXTAUTH_COOKIE_SAMESITE=none emitimos cookies Secure + SameSite=None, que
+ * funcionam dentro de iframe (em HTTPS). Fora disso, mantém o default seguro.
+ */
+const cookieSameSiteNone = process.env.NEXTAUTH_COOKIE_SAMESITE === 'none';
+
+const authCookieOptions = (httpOnly: boolean) =>
+  ({
+    httpOnly,
+    sameSite: cookieSameSiteNone ? 'none' : 'lax',
+    secure: cookieSameSiteNone,
+    path: '/',
+  }) as const;
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
+  ...(cookieSameSiteNone
+    ? {
+        useSecureCookies: false,
+        cookies: {
+          sessionToken: {
+            name: 'next-auth.session-token',
+            options: authCookieOptions(true),
+          },
+          callbackUrl: {
+            name: 'next-auth.callback-url',
+            options: authCookieOptions(false),
+          },
+          csrfToken: {
+            name: 'next-auth.csrf-token',
+            options: authCookieOptions(true),
+          },
+        },
+      }
+    : {}),
   secret: env.nextAuthSecret || undefined,
   session: {
     strategy: 'jwt',

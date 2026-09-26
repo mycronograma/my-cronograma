@@ -34,6 +34,7 @@ NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="harness-secret-0123456789abcdef0123456789abcdef"
 CRON_SECRET="harness-cron-secret"
 NOTIFICATIONS_CRON_SECRET="harness-cron-secret"
+NEXTAUTH_COOKIE_SAMESITE="none"
 ENV
   echo "[preview-up] .env.local criado"
 fi
