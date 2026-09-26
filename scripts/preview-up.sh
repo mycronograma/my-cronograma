@@ -35,6 +35,7 @@ NEXTAUTH_SECRET="harness-secret-0123456789abcdef0123456789abcdef"
 CRON_SECRET="harness-cron-secret"
 NOTIFICATIONS_CRON_SECRET="harness-cron-secret"
 NEXTAUTH_COOKIE_SAMESITE="none"
+NEXT_PUBLIC_LOCAL_DEMO_MODE="true"
 ENV
   echo "[preview-up] .env.local criado"
 fi

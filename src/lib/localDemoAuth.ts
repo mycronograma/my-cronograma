@@ -61,16 +61,25 @@ export const startLocalDemoSession = ({
     email: normalizedEmail,
   };
 
-  window.localStorage.setItem('nexora_demo_session', 'true');
-  window.localStorage.setItem(
-    'nexora_demo_user',
-    JSON.stringify({ email: normalizedEmail, name: nextSettings.name })
-  );
-  window.localStorage.setItem('nexora_user_settings', JSON.stringify(nextSettings));
+  try {
+    window.localStorage.setItem('nexora_demo_session', 'true');
+    window.localStorage.setItem(
+      'nexora_demo_user',
+      JSON.stringify({ email: normalizedEmail, name: nextSettings.name })
+    );
+    window.localStorage.setItem('nexora_user_settings', JSON.stringify(nextSettings));
+  } catch {
+    // Iframe com origem opaca (sandbox rígido) pode bloquear localStorage;
+    // o modo demo continua funcional via estado do layout.
+  }
 };
 
 export const clearLocalDemoSession = () => {
   if (typeof window === 'undefined') return;
-  window.localStorage.removeItem('nexora_demo_session');
-  window.localStorage.removeItem('nexora_demo_user');
+  try {
+    window.localStorage.removeItem('nexora_demo_session');
+    window.localStorage.removeItem('nexora_demo_user');
+  } catch {
+    // Sem localStorage disponível: nada a limpar.
+  }
 };

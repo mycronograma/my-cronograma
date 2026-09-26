@@ -188,6 +188,29 @@ export default function LoginPage() {
           return;
         }
 
+        // No preview o app roda embutido em iframe e alguns navegadores bloqueiam
+        // cookies de terceiros. Tenta a autenticação real primeiro (usa a conta
+        // seed e sincroniza dados com o servidor); se a sessão não persistir,
+        // cai para o modo demo local (localStorage), que não depende de cookies.
+        try {
+          const realLogin = await signIn('credentials', {
+            email: normalizedEmail,
+            password: formData.password,
+            callbackUrl,
+            redirect: false,
+          });
+
+          if (realLogin?.ok && !realLogin.error) {
+            const confirmed = await getSession();
+            if (confirmed?.user) {
+              navigateToPostLogin(router, realLogin.url || callbackUrl);
+              return;
+            }
+          }
+        } catch {
+          // Cookies/rede indisponíveis no iframe → segue para a sessão local.
+        }
+
         startLocalDemoSession({ email: normalizedEmail });
         navigateToPostLogin(router, callbackUrl);
         return;
