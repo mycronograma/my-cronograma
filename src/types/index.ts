@@ -497,6 +497,10 @@ export interface PresetWizardAnswers {
   examDate?: string;
   startDate?: string;
   endDate?: string;
+  /** Como o fim do estudo foi definido: data final explícita ou carga horária total. */
+  periodMode?: 'date' | 'hours';
+  /** Carga horária total (horas) quando periodMode === 'hours'. */
+  totalHours?: number;
   enemAreaPriorities?: EnemAreaPriorities;
   medicinaTargetExams?: MedicinaTargetExam[];
   medicinaTargetExamsOther?: string;

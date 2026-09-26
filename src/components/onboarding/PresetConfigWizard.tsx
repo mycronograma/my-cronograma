@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Sparkles, ArrowRight, ArrowLeft, Check, Clock, X } from 'lucide-react';
+import { Sparkles, ArrowRight, ArrowLeft, Check, CalendarDays, Clock, Hourglass, X } from 'lucide-react';
 import { Button } from '@/components/ui';
 import type {
   AIDifficulty,
@@ -53,6 +53,41 @@ const windowHours = (start: string, end: string) => {
   return clampHours((timeToMinutesSafe(end) - timeToMinutesSafe(start)) / 60);
 };
 
+const WEEKDAY_KEYS: WeekdayKey[] = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+const TOTAL_HOURS_QUICK = [20, 40, 60, 100, 200] as const;
+const formatTotalHours = (v: number) => `${Math.round(v * 10) / 10}h`;
+
+/**
+ * Modo "por horas": deriva a data de fim caminhando dia a dia a partir do início
+ * e abatendo as horas líquidas de cada dia da semana até quitar a carga total.
+ * Assim o restante do fluxo (planner, range) continua recebendo startDate/endDate.
+ */
+const deriveEndDateFromHours = (
+  startKey: string,
+  totalHours: number,
+  dailyHours: Record<WeekdayKey, number>
+): string => {
+  const start = new Date(`${startKey}T00:00:00`);
+  const base = Number.isNaN(start.getTime()) ? new Date() : start;
+  const weekly = WEEKDAY_KEYS.reduce((acc, k) => acc + (dailyHours[k] || 0), 0);
+  if (!(totalHours > 0) || weekly <= 0) {
+    const fallback = new Date(base);
+    fallback.setDate(fallback.getDate() + 6);
+    return toDateKey(fallback);
+  }
+  let remaining = totalHours;
+  const cursor = new Date(base);
+  for (let i = 0; i < 730; i += 1) {
+    const dayHours = dailyHours[WEEKDAY_KEYS[cursor.getDay()]] || 0;
+    if (dayHours > 0) {
+      remaining -= dayHours;
+      if (remaining <= 0.001) return toDateKey(cursor);
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return toDateKey(cursor);
+};
+
 const defaultDailyHours = (goal: PresetWizardAnswers['goal']): Record<WeekdayKey, number> => {
   if (goal === 'medicina') return { dom: 0, seg: 5, ter: 5, qua: 5, qui: 5, sex: 5, sab: 3 };
   if (goal === 'enem' || goal === 'concurso') return { dom: 0, seg: 4, ter: 4, qua: 4, qui: 4, sex: 4, sab: 2 };
@@ -89,6 +124,8 @@ const buildDefaultAnswers = (presetId: string, presetName: string, baseSettings?
     studyContentPreference: 'misto',
     startDate: start,
     endDate: toDateKey(endDateObj),
+    periodMode: 'date',
+    totalHours: 40,
     examDate: '',
   };
 };
@@ -114,6 +151,46 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
     const diffDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
     return { startKey, endKey, startLabel: fmt(startDate), endLabel: fmt(endDate), diffDays };
   }, [answers.startDate, answers.endDate, todayKey]);
+
+  const weeklyHours = useMemo(
+    () => WEEKDAY_KEYS.reduce((acc, k) => acc + (answers.dailyHoursByWeekday[k] || 0), 0),
+    [answers.dailyHoursByWeekday]
+  );
+  const isHoursMode = answers.periodMode === 'hours';
+  const derivedEndKey = useMemo(
+    () =>
+      isHoursMode
+        ? deriveEndDateFromHours(
+            answers.startDate || todayKey,
+            Number(answers.totalHours) || 0,
+            answers.dailyHoursByWeekday
+          )
+        : null,
+    [isHoursMode, answers.startDate, answers.totalHours, answers.dailyHoursByWeekday, todayKey]
+  );
+
+  useEffect(() => {
+    if (!isHoursMode || !derivedEndKey) return;
+    setAnswers((prev) =>
+      prev.periodMode === 'hours' && prev.endDate !== derivedEndKey ? { ...prev, endDate: derivedEndKey } : prev
+    );
+  }, [isHoursMode, derivedEndKey]);
+
+  const switchPeriodMode = (mode: 'date' | 'hours') => {
+    if ((answers.periodMode || 'date') === mode) return;
+    if (mode === 'hours') {
+      patchAnswers({
+        periodMode: 'hours',
+        endDate: deriveEndDateFromHours(
+          answers.startDate || todayKey,
+          Number(answers.totalHours) || 40,
+          answers.dailyHoursByWeekday
+        ),
+      });
+      return;
+    }
+    patchAnswers({ periodMode: 'date' });
+  };
 
   useEffect(() => setMounted(true), []);
   useEffect(() => {
@@ -192,6 +269,11 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
 
   const validateStep0 = () => {
     if (!answers.startDate) return 'Defina a data de início.';
+    if (answers.periodMode === 'hours') {
+      const total = Number(answers.totalHours);
+      if (!Number.isFinite(total) || total <= 0) return 'Informe a carga horária total do estudo.';
+      if (total > 4000) return 'Carga horária muito alta (máximo 4000h).';
+    }
     if (!answers.endDate) return 'Defina a data de fim.';
     const s = new Date(`${answers.startDate}T00:00:00`);
     const e = new Date(`${answers.endDate}T00:00:00`);
@@ -314,17 +396,87 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                     <span className="text-xs font-bold tracking-widest uppercase text-violet-200">Período do estudo</span>
                   </div>
                   <p className="text-sm font-semibold">Até quando vai esse estudo?</p>
+                  <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-white/15 p-1" role="radiogroup" aria-label="Modo de definição do fim do estudo">
+                    {(
+                      [
+                        { mode: 'date', label: 'Por data', Icon: CalendarDays },
+                        { mode: 'hours', label: 'Por horas', Icon: Hourglass },
+                      ] as const
+                    ).map(({ mode, label, Icon }) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="radio"
+                        aria-checked={(answers.periodMode || 'date') === mode}
+                        onClick={() => switchPeriodMode(mode)}
+                        className={cn(
+                          'h-8 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5',
+                          (answers.periodMode || 'date') === mode
+                            ? 'bg-white text-violet-700 shadow-sm'
+                            : 'text-violet-100 hover:bg-white/10'
+                        )}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="mt-3 grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-[11px] font-medium text-violet-200">Início</label>
                       <input type="date" value={answers.startDate || todayKey} onChange={(e) => patchAnswers({ startDate: e.target.value })} className="mt-1 w-full h-9 rounded-xl border-0 bg-white/95 px-3 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-white/50" />
                     </div>
-                    <div>
-                      <label className="text-[11px] font-medium text-violet-200">Fim</label>
-                      <input type="date" value={answers.endDate || formattedSelectedPeriod?.endKey || ''} onChange={(e) => patchAnswers({ endDate: e.target.value })} min={answers.startDate || todayKey} className="mt-1 w-full h-9 rounded-xl border-0 bg-white/95 px-3 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-white/50" />
-                    </div>
+                    {isHoursMode ? (
+                      <div>
+                        <label className="text-[11px] font-medium text-violet-200">Carga horária total</label>
+                        <div className="relative mt-1">
+                          <input
+                            type="number"
+                            min={1}
+                            max={4000}
+                            step={0.5}
+                            value={Number.isFinite(Number(answers.totalHours)) ? answers.totalHours : 40}
+                            onChange={(e) => patchAnswers({ totalHours: Number(e.target.value) })}
+                            aria-label="Carga horária total em horas"
+                            className="w-full h-9 rounded-xl border-0 bg-white/95 pl-3 pr-8 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-white/50"
+                          />
+                          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-500">h</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="text-[11px] font-medium text-violet-200">Fim</label>
+                        <input type="date" value={answers.endDate || formattedSelectedPeriod?.endKey || ''} onChange={(e) => patchAnswers({ endDate: e.target.value })} min={answers.startDate || todayKey} className="mt-1 w-full h-9 rounded-xl border-0 bg-white/95 px-3 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-white/50" />
+                      </div>
+                    )}
                   </div>
-                  {formattedSelectedPeriod && <p className="mt-2 text-xs text-violet-100">Período: {formattedSelectedPeriod.startLabel} → {formattedSelectedPeriod.endLabel} ({formattedSelectedPeriod.diffDays} {formattedSelectedPeriod.diffDays === 1 ? 'dia' : 'dias'}). O cronograma será gerado para todo esse intervalo.</p>}
+                  {isHoursMode && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {TOTAL_HOURS_QUICK.map((h) => (
+                        <button
+                          key={h}
+                          type="button"
+                          onClick={() => patchAnswers({ totalHours: h })}
+                          className={cn(
+                            'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all',
+                            Number(answers.totalHours) === h
+                              ? 'bg-white text-violet-700 shadow-sm'
+                              : 'bg-white/15 text-violet-50 hover:bg-white/25'
+                          )}
+                        >
+                          {h}h
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {formattedSelectedPeriod &&
+                    (isHoursMode ? (
+                      <p className="mt-2 text-xs text-violet-100">
+                        Carga horária: {formatTotalHours(Number(answers.totalHours) || 0)} a partir de {formattedSelectedPeriod.startLabel}. Com sua disponibilidade ({formatTotalHours(weeklyHours)}/semana), o término estimado é {formattedSelectedPeriod.endLabel} ({formattedSelectedPeriod.diffDays} {formattedSelectedPeriod.diffDays === 1 ? 'dia' : 'dias'}). O cronograma será gerado para todo esse intervalo.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs text-violet-100">Período: {formattedSelectedPeriod.startLabel} → {formattedSelectedPeriod.endLabel} ({formattedSelectedPeriod.diffDays} {formattedSelectedPeriod.diffDays === 1 ? 'dia' : 'dias'}). O cronograma será gerado para todo esse intervalo.</p>
+                    ))}
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 mb-1">Disponibilidade de estudo</h3>
