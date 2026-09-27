@@ -39,6 +39,11 @@ const LEGACY_KEY_MAP: Record<string, TrackedStoreKey> = {
   lastBacklogAutoRunDay: 'nexora_backlog_last_auto_run_day',
 };
 
+// O client Prisma real devolve DateTime; o harness em memória do preview devolve
+// string ISO. Aceita os dois para o endpoint não quebrar em nenhum ambiente.
+const toIso = (value: Date | string | null | undefined): string | null =>
+  value == null ? null : value instanceof Date ? value.toISOString() : String(value);
+
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 };
@@ -92,8 +97,8 @@ const serializeSubject = (subject: {
   updatedAt: Date;
 }) => ({
   ...subject,
-  createdAt: subject.createdAt.toISOString(),
-  updatedAt: subject.updatedAt.toISOString(),
+  createdAt: toIso(subject.createdAt) as string,
+  updatedAt: toIso(subject.updatedAt) as string,
 });
 
 const serializeBlock = (block: {
@@ -135,11 +140,11 @@ const serializeBlock = (block: {
   };
 }) => ({
   ...block,
-  date: block.date.toISOString(),
-  originalDate: block.originalDate ? block.originalDate.toISOString() : null,
-  completedAt: block.completedAt ? block.completedAt.toISOString() : null,
-  createdAt: block.createdAt.toISOString(),
-  updatedAt: block.updatedAt.toISOString(),
+  date: toIso(block.date) as string,
+  originalDate: toIso(block.originalDate),
+  completedAt: toIso(block.completedAt),
+  createdAt: toIso(block.createdAt) as string,
+  updatedAt: toIso(block.updatedAt) as string,
   subject: serializeSubject(block.subject),
 });
 
@@ -178,7 +183,7 @@ export async function GET() {
       return NextResponse.json({
         success: true,
         source: 'snapshot',
-        updatedAt: snapshot.updatedAt.toISOString(),
+        updatedAt: toIso(snapshot.updatedAt) as string,
         data: parseSnapshotPayload(snapshot.payload),
       });
     }
