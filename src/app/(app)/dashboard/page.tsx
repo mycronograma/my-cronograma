@@ -40,7 +40,7 @@ import { TodayPlan } from '@/components/dashboard';
 import { WeeklyChart } from '@/components/dashboard';
 import type { StudyBlock, Subject, AnalyticsStore, StudyPreferences, UserSettings } from '@/types';
 import { useSession } from 'next-auth/react';
-import { useOnboarding, useLocalStorage } from '@/hooks';
+import { useOnboarding, useLocalStorage, useClientNow } from '@/hooks';
 import { defaultTrainerTips } from '@/services/studyTrainer';
 import { defaultSettings } from '@/lib/defaultSettings';
 
@@ -55,6 +55,11 @@ const statusConfig = {
   completed: { badge: 'success', icon: CheckCircle2, label: 'Concluído' },
   skipped: { badge: 'danger', icon: SkipForward, label: 'Pulado' },
 } as const;
+
+// Valores neutros e determinísticos (independentes de fuso) usados apenas no
+// HTML servido / primeira renderização, antes do relógio do cliente existir.
+const NEUTRAL_DATE_KEY = '1970-01-01';
+const NEUTRAL_WEEKDAY_DATE = new Date(2024, 0, 1); // segunda-feira em qualquer fuso
 
 export default function Dashboard() {
   const router = useRouter();
@@ -79,9 +84,12 @@ export default function Dashboard() {
   const displayName =
     (userSettings.name || session?.user?.name || '').trim() || 'Estudante';
 
-  const todayKey = toLocalDateKey(new Date());
+  // "Agora" só após hidratar: servidor (UTC) e navegador (fuso local) podem
+  // estar em datas diferentes e new Date() em renderização quebra hidratação.
+  const clientNow = useClientNow();
+  const todayKey = clientNow ? toLocalDateKey(clientNow) : NEUTRAL_DATE_KEY;
   const today = todayKey;
-  const currentTime = new Date().toTimeString().slice(0, 5);
+  const currentTime = clientNow ? clientNow.toTimeString().slice(0, 5) : '00:00';
   const dailyAnalytics = useMemo(() => analytics.daily[todayKey] || { hours: 0, sessions: 0, blocks: 0, correctAnswers: 0, totalQuestions: 0 }, [analytics.daily, todayKey]);
   const todayBlocksAll = plannerBlocks
     .filter((block) => toLocalDateKey(parseBlockDate(block.date)) === todayKey)
@@ -110,7 +118,7 @@ export default function Dashboard() {
 
   const weeklyData = useMemo(() => {
     const dayLabels = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
-    const weekStart = getWeekStart(new Date());
+    const weekStart = getWeekStart(clientNow ?? NEUTRAL_WEEKDAY_DATE);
 
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date(weekStart);
@@ -141,7 +149,7 @@ export default function Dashboard() {
   );
 
   const todayTargetHours = getHoursForDate(
-    new Date(),
+    clientNow ?? NEUTRAL_WEEKDAY_DATE,
     userSettings.dailyHoursByWeekday,
     studyPrefs.hoursPerDay
   );
@@ -423,7 +431,9 @@ const handleCompleteBlock = (
                     Olá, {displayName}! 🎓
                   </h1>
                   <p className="text-text-secondary mt-1">
-                    {formatDate(new Date())}, dia {['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'][new Date().getDay()]}
+                    {clientNow
+                      ? `${formatDate(clientNow)}, dia ${['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'][clientNow.getDay()]}`
+                      : '\u00A0'}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

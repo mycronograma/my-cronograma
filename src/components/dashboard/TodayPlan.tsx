@@ -6,6 +6,7 @@
  */
 
 import { motion } from 'framer-motion';
+import { useClientNow } from '@/hooks';
 import { Clock, Play, CheckCircle2, SkipForward, Coffee } from 'lucide-react';
 import { cn, formatDuration } from '@/lib/utils';
 import { getStudyBlockDisplayTitle } from '@/lib/studyBlockLabels';
