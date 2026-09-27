@@ -45,6 +45,7 @@ if [ ! -f node_modules/.prisma/client/default.js ] || [ ! -f node_modules/.prism
   echo "[preview-up] gerando client em memória + seed..."
   node scripts/dev-inmemory-prisma.cjs --reset
   npm run db:seed
+  npm run db:simulate 2>&1 | tail -2
 fi
 
 # 5) Servidor (bind 0.0.0.0 para o proxy do preview alcançar).

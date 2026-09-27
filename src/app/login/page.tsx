@@ -211,6 +211,27 @@ export default function LoginPage() {
           // Cookies/rede indisponíveis no iframe → segue para a sessão local.
         }
 
+        // Sem dados locais ainda? Hidrata o preview com o snapshot da persona
+        // de simulação (1 ano de histórico) vindo do servidor, via localStorage.
+        try {
+          const hasLocalData = Boolean(window.localStorage.getItem('nexora_subjects'));
+          if (!hasLocalData) {
+            const snapRes = await fetch('/api/progress');
+            const snap = snapRes.ok ? await snapRes.json().catch(() => null) : null;
+            const snapData =
+              snap && snap.success && snap.data && typeof snap.data === 'object' ? snap.data : null;
+            if (snapData) {
+              for (const [storeKey, storeValue] of Object.entries(snapData)) {
+                if (storeValue !== undefined && storeValue !== null) {
+                  window.localStorage.setItem(storeKey, JSON.stringify(storeValue));
+                }
+              }
+            }
+          }
+        } catch {
+          // Sem simulação/snapshot disponível: demo segue do zero, como antes.
+        }
+
         startLocalDemoSession({ email: normalizedEmail });
         navigateToPostLogin(router, callbackUrl);
         return;

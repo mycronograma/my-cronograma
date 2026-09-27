@@ -12,6 +12,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:simulate": "tsx scripts/simulate-year.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "local:setup": "powershell -ExecutionPolicy Bypass -File scripts/local-setup.ps1",

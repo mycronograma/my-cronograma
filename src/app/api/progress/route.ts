@@ -146,7 +146,21 @@ const serializeBlock = (block: {
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    const userId = session?.user?.id;
+    let userId = session?.user?.id;
+
+    // No preview (modo demo local, iframe sem cookies), permite ler o snapshot
+    // da persona de simulação sem login, para o app exibir o histórico do ano.
+    if (!userId) {
+      const isLocalDemoMode =
+        process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_LOCAL_DEMO_MODE === 'true';
+      if (isLocalDemoMode) {
+        const persona = await prisma.user.findUnique({
+          where: { email: 'maya.souza@nexora.dev' },
+          select: { id: true },
+        });
+        userId = persona?.id ?? undefined;
+      }
+    }
 
     if (!userId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
