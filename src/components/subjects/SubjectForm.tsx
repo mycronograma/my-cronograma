@@ -38,6 +38,25 @@ export function subjectWeight(priority: number, difficulty: number): number {
 }
 
 const clampHours = (v: number) => Math.min(40, Math.max(0.5, Math.round(v * 12) / 12));
+
+/**
+ * Meta automática de uma matéria: fatia da carga semanal proporcional ao peso.
+ * `peerWeightSum` é a soma dos pesos das outras matérias, para a divisão
+ * fechar na carga disponível.
+ */
+export function computeAutoTargetHours(params: {
+  priority: number;
+  difficulty: number;
+  weeklyAvailableHours?: number;
+  peerWeightSum?: number;
+}): number {
+  const capacity =
+    params.weeklyAvailableHours && params.weeklyAvailableHours > 0 ? params.weeklyAvailableHours : 20;
+  const weight = subjectWeight(params.priority, params.difficulty);
+  const totalWeight = weight + Math.max(0, params.peerWeightSum ?? 0);
+  const share = totalWeight > 0 ? weight / totalWeight : 1;
+  return clampHours(capacity * share);
+}
 const hoursToHM = (v: number) => {
   const h = Math.floor(v + 1e-6);
   const m = Math.round((v - h) * 60);
@@ -70,19 +89,37 @@ export default function SubjectForm({
     () => !!subject && subject.priority !== subject.difficulty
   );
   const [weight, setWeight] = useState(subject?.priority || 5);
-  const [targetHours, setTargetHours] = useState(subject?.targetHours || 10);
-  const [manualTarget, setManualTarget] = useState(false);
+  // Se a matéria já tem uma meta diferente da calculada, ela é preservada e
+  // marcada como manual — abrir o formulário para trocar só o nome não pode
+  // sobrescrever a meta que a pessoa definiu.
+  const [targetHours, setTargetHours] = useState(
+    () =>
+      subject?.targetHours ??
+      computeAutoTargetHours({
+        priority: subject?.priority || 5,
+        difficulty: subject?.difficulty || 5,
+        weeklyAvailableHours,
+        peerWeightSum,
+      })
+  );
+  const [manualTarget, setManualTarget] = useState(() => {
+    if (!subject?.targetHours) return false;
+    const suggested = computeAutoTargetHours({
+      priority: subject.priority || 5,
+      difficulty: subject.difficulty || 5,
+      weeklyAvailableHours,
+      peerWeightSum,
+    });
+    return Math.abs(subject.targetHours - suggested) > 0.05;
+  });
   const [targetText, setTargetText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   // Meta automática: fatia da carga semanal proporcional ao peso da matéria.
-  const autoTarget = useMemo(() => {
-    const capacity = weeklyAvailableHours && weeklyAvailableHours > 0 ? weeklyAvailableHours : 20;
-    const weight = subjectWeight(priority, difficulty);
-    const totalWeight = weight + Math.max(0, peerWeightSum);
-    const share = totalWeight > 0 ? weight / totalWeight : 1;
-    return clampHours(capacity * share);
-  }, [priority, difficulty, weeklyAvailableHours, peerWeightSum]);
+  const autoTarget = useMemo(
+    () => computeAutoTargetHours({ priority, difficulty, weeklyAvailableHours, peerWeightSum }),
+    [priority, difficulty, weeklyAvailableHours, peerWeightSum]
+  );
 
   // Enquanto está no automático, a meta segue os sliders.
   useEffect(() => {
