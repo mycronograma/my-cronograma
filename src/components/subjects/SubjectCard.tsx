@@ -216,7 +216,7 @@ export default function SubjectCard({
                 initial={{ scale: 0.95, opacity: 0, y: 20 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-surface-panel shadow-2xl"
+                className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-card-border bg-surface-panel shadow-2xl"
               >
                 <div 
                   className="h-2 w-full" 
@@ -237,7 +237,7 @@ export default function SubjectCard({
                         <BookOpen className="h-7 w-7" style={{ color: subject.color }} />
                       </div>
                       <div>
-                        <h2 className="text-xl font-bold text-white mb-1">{subject.name}</h2>
+                        <h2 className="text-xl font-bold text-text-primary mb-1">{subject.name}</h2>
                         <div className="flex items-center gap-2">
                           <span
                             className="text-[11px] font-bold rounded-md px-2 py-0.5"
@@ -245,12 +245,12 @@ export default function SubjectCard({
                           >
                             Peso {subject.priority}
                           </span>
-                          <span className="text-xs font-medium text-text-muted border border-white/10 rounded-md px-2 py-0.5">{difficultyLabel}</span>
+                          <span className="text-xs font-medium text-text-muted border border-card-border rounded-md px-2 py-0.5">{difficultyLabel}</span>
                         </div>
                       </div>
                     </div>
                     <button 
-                      className="h-8 w-8 flex items-center justify-center rounded-full text-text-muted hover:text-white hover:bg-white/5 transition-colors"
+                      className="h-8 w-8 flex items-center justify-center rounded-full text-text-muted hover:text-text-primary hover:bg-card-bg transition-colors"
                       onClick={() => setIsDetailsOpen(false)}
                     >
                       <X className="h-5 w-5" />
@@ -259,17 +259,17 @@ export default function SubjectCard({
 
                   {/* METRICS GRID */}
                   <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="rounded-xl border border-white/5 bg-black/20 p-4">
+                    <div className="rounded-xl border border-card-border bg-card-bg p-4">
                       <div className="flex items-center gap-2 text-text-muted mb-2">
                         <Clock className="w-4 h-4" />
                         <span className="text-xs font-semibold uppercase tracking-wider">Tempo Estudado</span>
                       </div>
                       <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold text-white">{formatHoursDuration(subject.totalHours)}</span>
+                        <span className="text-2xl font-bold text-text-primary">{formatHoursDuration(subject.totalHours)}</span>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-white/5 bg-black/20 p-4">
+                    <div className="rounded-xl border border-card-border bg-card-bg p-4">
                       <div className="flex items-center gap-2 text-text-muted mb-2">
                         <Target className="w-4 h-4" />
                         <span className="text-xs font-semibold uppercase tracking-wider">Meta Semanal</span>
@@ -280,24 +280,24 @@ export default function SubjectCard({
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-white/5 bg-black/20 p-4">
+                    <div className="rounded-xl border border-card-border bg-card-bg p-4">
                       <div className="flex items-center gap-2 text-text-muted mb-2">
                         <BarChart2 className="w-4 h-4" />
                         <span className="text-xs font-semibold uppercase tracking-wider">Sessões Concluídas</span>
                       </div>
                       <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold text-white">{subject.sessionsCount}</span>
+                        <span className="text-2xl font-bold text-text-primary">{subject.sessionsCount}</span>
                         <span className="text-sm text-text-secondary">blocos</span>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-white/5 bg-black/20 p-4">
+                    <div className="rounded-xl border border-card-border bg-card-bg p-4">
                       <div className="flex items-center gap-2 text-text-muted mb-2">
                         <Star className="w-4 h-4" style={{ color: subject.averageScore > 70 ? '#10b981' : subject.averageScore > 0 ? '#f59e0b' : undefined }} />
                         <span className="text-xs font-semibold uppercase tracking-wider">Acerto Médio</span>
                       </div>
                       <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold text-white">
+                        <span className="text-2xl font-bold text-text-primary">
                           {subject.averageScore > 0 ? `${subject.averageScore}%` : '--'}
                         </span>
                       </div>
@@ -305,15 +305,15 @@ export default function SubjectCard({
                   </div>
 
                   {/* PROFICIENCY PREVIEW */}
-                  <div className="rounded-xl border border-white/5 bg-gradient-to-br from-surface-panel to-black/40 p-4 relative overflow-hidden">
+                  <div className="rounded-xl border border-card-border bg-card-bg p-4 relative overflow-hidden">
                     <div className="absolute right-0 top-0 bottom-0 w-32 opacity-10 pointer-events-none">
                       <TrendingUp className="w-full h-full" style={{ color: subject.color }} />
                     </div>
-                    <h3 className="text-sm font-bold text-white mb-1">Proficiência Técnica</h3>
+                    <h3 className="text-sm font-bold text-text-primary mb-1">Proficiência Técnica</h3>
                     <p className="text-xs text-text-secondary mb-3 max-w-[80%]">
                       Em breve, o algoritmo irá processar seu Índice de Prontidão baseado nas dificuldades das questões que você acerta.
                     </p>
-                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                    <div className="h-1.5 w-full bg-border-subtle rounded-full overflow-hidden">
                       <div className="h-full rounded-full w-[0%]" style={{ backgroundColor: subject.color }} />
                     </div>
                   </div>

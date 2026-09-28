@@ -7,8 +7,15 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { clearClientStoreKeys } from '@/hooks/useLocalStorage';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, BookOpen, Search } from 'lucide-react';
+import {
+  Plus,
+  RefreshCw,
+  AlertTriangle,
+  BookOpen,
+  Search,
+} from 'lucide-react';
 import { Button, Card } from '@/components/ui';
 import { SubjectCard, SubjectForm, PresetSelector } from '@/components/subjects';
 import { EmptySubjects } from '@/components/onboarding';
@@ -98,10 +105,16 @@ function SubjectsPageContent() {
   const { markFirstSubjectAdded, hasAddedFirstSubject } = useOnboarding();
   const [subjects, setSubjects] = useLocalStorage<Subject[]>('nexora_subjects', initialSubjects);
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get('search') ?? '');
+  // ?preset=1 vem da "Trocar predefinição" da Zona de Perigo (progresso já zerado).
+  const presetParam = searchParams.get('preset');
 
   useEffect(() => {
     setSearchQuery(searchParams.get('search') ?? '');
   }, [searchParams]);
+
+  useEffect(() => {
+    if (presetParam === '1') setShowPresetSelector(true);
+  }, [presetParam]);
   const [showForm, setShowForm] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | undefined>();
   const [showPresetSelector, setShowPresetSelector] = useState(false);
@@ -322,6 +335,32 @@ function SubjectsPageContent() {
   };
 
   // Handler para importar preset
+  const [presetSwitchConfirm, setPresetSwitchConfirm] = useState(false);
+
+  // Trocar de predefinição com matérias já cadastradas zera o progresso,
+  // então pede confirmação antes de abrir o seletor.
+  const handleImportPresetClick = () => {
+    if (subjects.length > 0) {
+      setPresetSwitchConfirm(true);
+      return;
+    }
+    setShowPresetSelector(true);
+  };
+
+  const confirmPresetSwitch = () => {
+    clearClientStoreKeys([
+      'nexora_subjects',
+      'nexora_planner_blocks',
+      'nexora_analytics',
+      'nexora_reported_sessions',
+      'nexora_study_prefs',
+    ]);
+    setSubjects([]);
+    setPlannerBlocks([]);
+    setPresetSwitchConfirm(false);
+    setShowPresetSelector(true);
+  };
+
   const handleImportPreset = async (
     presetId: string,
     options?: { source: 'api' | 'local'; wizardAnswers?: PresetWizardAnswers; weeklyLoad?: PresetWeeklyLoad; selectedModules?: string[] }
@@ -638,13 +677,11 @@ function SubjectsPageContent() {
           {!showPresetSelector && (
             <Button
               variant="secondary"
-              onClick={() => {
-                setShowPresetSelector(true);
-              }}
+              onClick={handleImportPresetClick}
               className="w-full sm:w-auto"
              
             >
-              {subjects.length === 0 ? 'Usar Predefinição' : 'Importar Predefinição'}
+              {subjects.length === 0 ? 'Usar Predefinição' : 'Trocar Predefinição'}
             </Button>
           )}
           {!showPresetSelector && (
@@ -664,6 +701,44 @@ function SubjectsPageContent() {
       {importPresetError && (
         <Card className="border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
           {importPresetError}
+        </Card>
+      )}
+
+      {/* Trocar predefinição: avisa que o progresso será zerado */}
+      {presetSwitchConfirm && (
+        <Card className="border border-amber-500/40 bg-amber-500/[0.07] p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-heading font-bold text-text-primary">
+                Trocar de predefinição zera todo o progresso
+              </h3>
+              <p className="mt-1 text-xs text-text-secondary">
+                Suas {subjects.length} disciplinas atuais, os blocos da agenda e todo o histórico de
+                estudo serão apagados para o novo plano ser gerado do zero. Essa ação não pode ser
+                desfeita.
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={confirmPresetSwitch}
+                  leftIcon={<RefreshCw className="w-4 h-4" />}
+                >
+                  Zerar e escolher nova predefinição
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={() => setPresetSwitchConfirm(false)}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          </div>
         </Card>
       )}
 

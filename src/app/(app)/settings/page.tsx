@@ -16,6 +16,7 @@ import {
   Brain,
   Bell,
   Shield,
+  LibraryBig,
   AlertTriangle,
   Save,
   RefreshCw,
@@ -257,6 +258,8 @@ export default function SettingsPage() {
   const [resetProgressStep, setResetProgressStep] = useState<'idle' | 'confirm'>('idle');
   const [isResettingTutorial, setIsResettingTutorial] = useState(false);
   const [isResettingProgress, setIsResettingProgress] = useState(false);
+  const [switchPresetStep, setSwitchPresetStep] = useState<'idle' | 'confirm'>('idle');
+  const [isSwitchingPreset, setIsSwitchingPreset] = useState(false);
   const [generalDangerFeedback, setGeneralDangerFeedback] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -910,6 +913,29 @@ export default function SettingsPage() {
     }
   };
 
+  // Trocar de predefinição é destrutivo por decisão de produto: o plano novo
+  // substitui o antigo, então matérias, blocos e histórico são zerados antes
+  // de reabrir a seleção.
+  const confirmSwitchPreset = async () => {
+    setIsSwitchingPreset(true);
+    setGeneralDangerFeedback(null);
+    setDeleteFeedback(null);
+
+    try {
+      await clearServerProgress('progress');
+      clearClientProgressStore();
+      setHasRemotePrefs(false);
+      setSwitchPresetStep('idle');
+      setGeneralDangerFeedback({ type: 'success', message: 'Progresso resetado. Abrindo predefinições...' });
+      router.push('/subjects?preset=1');
+    } catch (error) {
+      console.warn('Erro ao resetar progresso para trocar de predefinição:', error);
+      setGeneralDangerFeedback({ type: 'error', message: 'Falha ao resetar progresso. Tente novamente.' });
+    } finally {
+      setIsSwitchingPreset(false);
+    }
+  };
+
   const handleSignOut = async () => {
     setIsSigningOut(true);
     setResetTutorialStep('idle');
@@ -1053,7 +1079,7 @@ export default function SettingsPage() {
         {!activeSection ? (
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="text-2xl font-heading font-bold text-white">Configurações</h1>
+              <h1 className="text-2xl font-heading font-bold text-text-primary">Configurações</h1>
               <p className="text-sm text-text-secondary mt-1">Personalize sua experiência de estudos</p>
             </div>
             {showActionButtons && (
@@ -1089,7 +1115,7 @@ export default function SettingsPage() {
 
       <div className="hidden min-w-0 flex-col gap-3 md:flex sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-2xl font-heading font-bold text-white">Configurações</h1>
+          <h1 className="text-2xl font-heading font-bold text-text-primary">Configurações</h1>
           <p className="text-sm text-text-secondary mt-1">
             Personalize sua experiência de estudos
           </p>
@@ -1125,7 +1151,7 @@ export default function SettingsPage() {
               <Card className="border-neon-cyan/40 bg-neon-cyan/5">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>
-                    <p className="text-sm text-white font-medium">Ainda não configurado</p>
+                    <p className="text-sm text-text-primary font-medium">Ainda não configurado</p>
                     <p className="text-xs text-text-secondary">
                       Escolha um modelo na página de disciplinas para aplicar um plano automático.
                     </p>
@@ -1158,7 +1184,7 @@ export default function SettingsPage() {
                     <div className="flex min-w-0 items-center gap-3">
                       <SettingsSectionIcon section={section} />
                       <div className="min-w-0">
-                        <p className="truncate text-[16px] font-normal text-white">
+                        <p className="truncate text-[16px] font-normal text-text-primary">
                           {sectionMeta[section].title}
                         </p>
                         <p className="truncate text-xs text-text-secondary">
@@ -1166,7 +1192,7 @@ export default function SettingsPage() {
                         </p>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-[#c7c7cc] shrink-0" />
+                    <ChevronRight className="w-4 h-4 text-text-muted shrink-0" />
                   </button>
                 ))}
               </Card>
@@ -1209,7 +1235,7 @@ export default function SettingsPage() {
             <User className="w-5 h-5 text-neon-blue" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-heading font-bold text-white">Perfil</h2>
+            <h2 className="text-lg font-heading font-bold text-text-primary">Perfil</h2>
             <p className="text-sm text-text-secondary">Suas informações pessoais</p>
           </div>
         </div>
@@ -1243,11 +1269,11 @@ export default function SettingsPage() {
       {/* Preferências de Estudo */}
       <Card className={cn(activeSection === 'appearance' ? 'block' : 'hidden')}>
         <div className="mb-6 flex flex-wrap items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-slate-500/20 flex items-center justify-center">
-            <Palette className="w-5 h-5 text-slate-500" />
+          <div className="w-10 h-10 rounded-xl bg-card-bg border border-card-border flex items-center justify-center">
+            <Palette className="w-5 h-5 text-text-secondary" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-heading font-bold text-white">Aparência</h2>
+            <h2 className="text-lg font-heading font-bold text-text-primary">Aparência</h2>
             <p className="text-sm text-text-secondary">Escolha como o Nexora aparece para você</p>
           </div>
         </div>
@@ -1286,12 +1312,12 @@ export default function SettingsPage() {
                 <div
                   className={cn(
                     'mb-4 flex h-11 w-11 items-center justify-center rounded-full',
-                    option.value === 'light' ? 'bg-white text-[#ff9500]' : 'bg-[#1c1c1e] text-white'
+                    option.value === 'light' ? 'bg-text-primary text-background' : 'bg-background-light text-text-primary'
                   )}
                 >
                   <Icon className="h-5 w-5" />
                 </div>
-                <div className="font-semibold text-white">{option.label}</div>
+                <div className="font-semibold text-text-primary">{option.label}</div>
                 <div className="mt-1 text-sm text-text-secondary">{option.description}</div>
               </button>
             );
@@ -1305,7 +1331,7 @@ export default function SettingsPage() {
             <Clock className="w-5 h-5 text-neon-purple" />
           </div>
           <div>
-            <h2 className="text-lg font-heading font-bold text-white">
+            <h2 className="text-lg font-heading font-bold text-text-primary">
               Preferências de Estudo
             </h2>
             <p className="text-sm text-text-secondary">
@@ -1338,13 +1364,13 @@ export default function SettingsPage() {
           <div className="rounded-xl border border-card-border bg-card-bg/50 p-4 overflow-hidden">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-white">Horas por dia</p>
+                <p className="text-sm font-medium text-text-primary">Horas por dia</p>
                 <p className="text-xs text-text-muted">
                   Ajuste por dia quando sua rotina variar.
                 </p>
               </div>
               <div className="text-xs text-text-secondary">
-                Total semanal: <span className="text-white">{formatHours(weeklyTotalHours)}</span>
+                Total semanal: <span className="text-text-primary">{formatHours(weeklyTotalHours)}</span>
               </div>
             </div>
 
@@ -1357,7 +1383,7 @@ export default function SettingsPage() {
                 return (
                   <div
                     key={label}
-                    className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-3"
+                    className="rounded-xl border border-card-border bg-card-bg px-3 py-3"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <button
@@ -1366,8 +1392,8 @@ export default function SettingsPage() {
                           className={cn(
                             'h-11 min-w-[48px] rounded-lg border px-2 text-sm font-medium transition',
                             isActive
-                              ? 'border-neon-purple/60 text-white'
-                              : 'border-slate-800 text-text-muted'
+                              ? 'border-neon-purple/60 text-text-primary'
+                              : 'border-card-border text-text-muted'
                           )}
                         >
                         {label}
@@ -1401,10 +1427,10 @@ export default function SettingsPage() {
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted">
               <span>
-                Media diaria: <span className="text-white">{formatHours(averageDailyHours)}</span>
+                Media diaria: <span className="text-text-primary">{formatHours(averageDailyHours)}</span>
               </span>
               <span>
-                Dias ativos: <span className="text-white">{activeDayValues.length}</span>
+                Dias ativos: <span className="text-text-primary">{activeDayValues.length}</span>
               </span>
             </div>
           </div>
@@ -1515,7 +1541,7 @@ export default function SettingsPage() {
             className="w-full flex items-center justify-between gap-3 p-4 rounded-xl bg-card-bg border border-card-border text-left touch-manipulation active:scale-[0.995]"
           >
             <div className="min-w-0 pr-2">
-              <div className="font-medium text-white">Permitir pendências no domingo</div>
+              <div className="font-medium text-text-primary">Permitir pendências no domingo</div>
               <div className="text-sm text-text-secondary">
                 Usa domingo apenas para reagendamento/backlog, sem alterar a grade fixa.
               </div>
@@ -1545,7 +1571,7 @@ export default function SettingsPage() {
             <Brain className="w-5 h-5 text-neon-cyan" />
           </div>
           <div>
-            <h2 className="text-lg font-heading font-bold text-white">
+            <h2 className="text-lg font-heading font-bold text-text-primary">
               Configurações da IA
             </h2>
             <p className="text-sm text-text-secondary">
@@ -1574,7 +1600,7 @@ export default function SettingsPage() {
                       : 'bg-card-bg border border-card-border hover:border-neon-cyan/30'
                   )}
                 >
-                  <div className="font-medium text-white mb-1">{option.label}</div>
+                  <div className="font-medium text-text-primary mb-1">{option.label}</div>
                   <div className="text-xs text-text-muted">{option.description}</div>
                 </button>
               ))}
@@ -1608,7 +1634,7 @@ export default function SettingsPage() {
                 className="w-full flex items-center justify-between gap-3 p-4 rounded-xl bg-card-bg border border-card-border text-left touch-manipulation active:scale-[0.995]"
               >
                 <div className="min-w-0 pr-2">
-                  <div className="font-medium text-white">{item.label}</div>
+                  <div className="font-medium text-text-primary">{item.label}</div>
                   <div className="text-sm text-text-secondary">
                     {item.description}
                   </div>
@@ -1640,7 +1666,7 @@ export default function SettingsPage() {
             <Bell className="w-5 h-5 text-orange-500" />
           </div>
           <div>
-            <h2 className="text-lg font-heading font-bold text-white">
+            <h2 className="text-lg font-heading font-bold text-text-primary">
               Notificações
             </h2>
             <p className="text-sm text-text-secondary">
@@ -1653,7 +1679,7 @@ export default function SettingsPage() {
           <SystemNotificationsCard />
           <div className="p-4 rounded-xl bg-card-bg border border-card-border space-y-4">
             <div>
-              <div className="font-medium text-white">Notificações de estudo</div>
+              <div className="font-medium text-text-primary">Notificações de estudo</div>
               <div className="text-sm text-text-secondary">
                 Avisos dinâmicos baseados no horário real dos blocos da agenda.
               </div>
@@ -1666,7 +1692,7 @@ export default function SettingsPage() {
               className="w-full flex items-center justify-between gap-3 p-4 rounded-xl bg-background-light border border-card-border text-left touch-manipulation active:scale-[0.995]"
             >
               <div className="min-w-0 pr-2">
-                <div className="font-medium text-white">Ativar notificações por bloco</div>
+                <div className="font-medium text-text-primary">Ativar notificações por bloco</div>
                 <div className="text-sm text-text-secondary">
                   Agenda alerta antes de cada sessão não concluída do dia.
                 </div>
@@ -1701,7 +1727,7 @@ export default function SettingsPage() {
                       'rounded-lg border px-3 py-1.5 text-sm transition-colors',
                       notificationMinutesBefore === minutes
                         ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-                        : 'border-card-border text-text-secondary hover:border-neon-cyan/40 hover:text-white'
+                        : 'border-card-border text-text-secondary hover:border-neon-cyan/40 hover:text-text-primary'
                     )}
                   >
                     {minutes} min
@@ -1736,7 +1762,7 @@ export default function SettingsPage() {
               className="w-full flex items-center justify-between gap-3 p-4 rounded-xl bg-background-light border border-card-border text-left touch-manipulation active:scale-[0.995]"
             >
               <div className="min-w-0 pr-2">
-                <div className="font-medium text-white">Avisar backlog acumulado</div>
+                <div className="font-medium text-text-primary">Avisar backlog acumulado</div>
                 <div className="text-sm text-text-secondary">
                   Envia alerta quando houver pendências vencidas para replanejar.
                 </div>
@@ -1766,7 +1792,7 @@ export default function SettingsPage() {
               className="w-full flex items-center justify-between gap-3 p-4 rounded-xl bg-background-light border border-card-border text-left touch-manipulation active:scale-[0.995]"
             >
               <div className="min-w-0 pr-2">
-                <div className="font-medium text-white">Som nas notificações</div>
+                <div className="font-medium text-text-primary">Som nas notificações</div>
                 <div className="text-sm text-text-secondary">
                   Mantém áudio ativo nos alertas de estudo deste dispositivo.
                 </div>
@@ -1818,7 +1844,7 @@ export default function SettingsPage() {
                 className="w-full flex items-center justify-between gap-3 p-4 rounded-xl bg-card-bg border border-card-border text-left touch-manipulation active:scale-[0.995]"
               >
                 <div className="min-w-0 pr-2">
-                  <div className="font-medium text-white">{item.label}</div>
+                  <div className="font-medium text-text-primary">{item.label}</div>
                   <div className="text-sm text-text-secondary">
                     {item.description}
                   </div>
@@ -1841,7 +1867,7 @@ export default function SettingsPage() {
             ))}
           <div className="p-4 rounded-xl bg-card-bg border border-card-border space-y-4">
             <div>
-              <div className="font-medium text-white">Som do alarme</div>
+              <div className="font-medium text-text-primary">Som do alarme</div>
               <div className="text-sm text-text-secondary">
                 Escolha o som usado quando um bloco terminar
               </div>
@@ -1856,8 +1882,8 @@ export default function SettingsPage() {
                   className={cn(
                     'rounded-xl border px-4 py-3 text-left transition touch-manipulation active:scale-[0.99]',
                     (pendingAlarmSound || 'pulse') === option.value
-                      ? 'border-neon-cyan bg-neon-cyan/10 text-white'
-                      : 'border-slate-800 text-text-secondary hover:border-neon-cyan/60'
+                      ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                      : 'border-card-border text-text-secondary hover:border-neon-cyan/60'
                   )}
                 >
                   <div className="font-semibold">{option.label}</div>
@@ -1902,133 +1928,202 @@ export default function SettingsPage() {
       {/* Zona de Perigo */}
       <Card
         className={cn(
-          'border-red-500/35 bg-gradient-to-br from-red-950/20 via-background-light to-background-light',
-          activeSection === 'danger' ? 'block' : 'hidden',
-          ''
+          'border-red-500/30 bg-card-bg',
+          activeSection === 'danger' ? 'block' : 'hidden'
         )}
       >
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/25 flex items-center justify-center">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center shrink-0">
             <Shield className="w-5 h-5 text-red-400" />
           </div>
-          <div>
-            <h2 className="text-lg font-heading font-bold text-white">
+          <div className="min-w-0">
+            <h2 className="text-lg font-heading font-bold text-text-primary">
               Zona de Perigo
             </h2>
             <p className="text-sm text-text-secondary">
               Ações irreversíveis
             </p>
           </div>
-          <Badge variant="danger" size="sm">Irreversível</Badge>
+          <Badge variant="danger" size="sm" className="ml-auto shrink-0">Irreversível</Badge>
         </div>
 
-        <div className="rounded-xl border border-red-500/20 bg-red-500/[0.06] p-3 mb-4">
-          <p className="text-xs sm:text-sm text-red-200/85 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-300 shrink-0" />
-            Revise antes de confirmar. Algumas ações removem dados permanentemente.
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.07] p-3 mb-4">
+          <p className="text-xs sm:text-sm text-amber-200 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+            Revise antes de confirmar: estas ações apagam dados de verdade e não podem ser desfeitas.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Button
-            variant="ghost"
-            className="w-full border border-slate-700 text-slate-200 hover:bg-slate-800/70"
-            onClick={handleSignOut}
-            loading={isSigningOut}
-            leftIcon={<LogOut className="w-4 h-4" />}
-          >
-            Sair da Conta
-          </Button>
-
-          {resetTutorialStep === 'idle' ? (
-            <Button
-              variant="secondary"
-              className="w-full border-orange-500/35 text-orange-300 hover:bg-orange-500/10"
-              onClick={startResetTutorialFlow}
-              leftIcon={<RotateCcw className="w-4 h-4" />}
-            >
-              Reiniciar Tutorial
-            </Button>
-          ) : (
-            <div className="rounded-xl border border-orange-500/25 bg-orange-500/[0.06] p-3 space-y-2">
-              <p className="text-xs text-orange-200/80">Etapa 2 de 2: confirmar reinício do tutorial.</p>
-              <div className="grid grid-cols-1 gap-2">
-                <Button
-                  variant="ghost"
-                  className="w-full border border-slate-700 text-slate-200"
-                  onClick={cancelResetTutorialFlow}
-                  disabled={isResettingTutorial}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  variant="secondary"
-                  className="w-full border-orange-500/35 text-orange-300 hover:bg-orange-500/10"
-                  onClick={confirmResetTutorial}
-                  loading={isResettingTutorial}
-                  leftIcon={<RotateCcw className="w-4 h-4" />}
-                >
-                  Confirmar
-                </Button>
-              </div>
+        <div className="space-y-3">
+          {/* Sair da conta — não destrutivo */}
+          <div className="flex flex-col gap-3 rounded-xl border border-card-border bg-background-light/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-text-primary">Sair da conta</p>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Encerra a sessão neste dispositivo. Seus dados continuam salvos.
+              </p>
             </div>
-          )}
-
-          {resetProgressStep === 'idle' ? (
             <Button
-              variant="secondary"
-              className="w-full sm:col-span-2 border-red-500/35 text-red-300 hover:bg-red-500/10"
-              onClick={startResetProgressFlow}
-              leftIcon={<RefreshCw className="w-4 h-4" />}
+              variant="ghost"
+              className="w-full sm:w-auto shrink-0 border border-card-border text-text-secondary hover:text-text-primary hover:bg-card-bg"
+              onClick={handleSignOut}
+              loading={isSigningOut}
+              leftIcon={<LogOut className="w-4 h-4" />}
             >
-              Resetar Todo o Progresso
+              Sair da Conta
             </Button>
-          ) : (
-            <div className="sm:col-span-2 rounded-xl border border-red-500/25 bg-red-500/[0.06] p-3 space-y-2">
-              <p className="text-xs text-red-200/80">Etapa 2 de 2: confirmar reset do progresso.</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Button
-                  variant="ghost"
-                  className="w-full border border-slate-700 text-slate-200"
-                  onClick={cancelResetProgressFlow}
-                  disabled={isResettingProgress}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  variant="danger"
-                  className="w-full"
-                  onClick={confirmResetProgress}
-                  loading={isResettingProgress}
-                  leftIcon={<RefreshCw className="w-4 h-4" />}
-                >
-                  Confirmar reset
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {generalDangerFeedback && (
-          <p
-            className={cn(
-              'mt-3 text-xs',
-              generalDangerFeedback.type === 'error' ? 'text-red-300' : 'text-neon-cyan'
-            )}
-          >
-            {generalDangerFeedback.message}
-          </p>
-        )}
-
-        <div className="mt-4 rounded-xl border border-red-500/35 bg-red-950/20 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-red-200">
-            <Trash2 className="w-4 h-4" />
-            <p className="text-sm font-semibold">Excluir conta permanentemente</p>
           </div>
 
-          {deleteStep === 'idle' ? (
-            <>
-              <p className="text-xs text-red-200/80">Etapa 1 de 2: iniciar exclusão da conta.</p>
+          {/* Reiniciar tutorial — atenção */}
+          <div className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.05] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-amber-200">Reiniciar tutorial</p>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Mostra novamente o passo a passo inicial. Não apaga suas matérias nem seu progresso.
+              </p>
+            </div>
+            {resetTutorialStep === 'idle' ? (
+              <Button
+                variant="secondary"
+                className="w-full sm:w-auto shrink-0 border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+                onClick={startResetTutorialFlow}
+                leftIcon={<RotateCcw className="w-4 h-4" />}
+              >
+                Reiniciar Tutorial
+              </Button>
+            ) : (
+              <div className="w-full sm:w-auto sm:min-w-[260px] rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-3 space-y-2">
+                <p className="text-xs text-amber-200/90">Confirmar reinício do tutorial?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="ghost"
+                    className="border border-card-border text-text-secondary hover:bg-card-bg"
+                    onClick={cancelResetTutorialFlow}
+                    disabled={isResettingTutorial}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+                    onClick={confirmResetTutorial}
+                    loading={isResettingTutorial}
+                    leftIcon={<RotateCcw className="w-4 h-4" />}
+                  >
+                    Confirmar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Trocar predefinição — destrutivo (reseta progresso) */}
+          <div className="flex flex-col gap-3 rounded-xl border border-red-500/30 bg-red-500/[0.05] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-red-200">Trocar predefinição de matérias</p>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Zera <span className="text-red-200">todo o progresso</span> (matérias, blocos, histórico
+                e sessões) e abre a seleção de predefinição para você recomeçar do zero.
+              </p>
+            </div>
+            {switchPresetStep === 'idle' ? (
+              <Button
+                variant="secondary"
+                className="w-full sm:w-auto shrink-0 border-red-500/40 text-red-200 hover:bg-red-500/10"
+                onClick={() => setSwitchPresetStep('confirm')}
+                leftIcon={<LibraryBig className="w-4 h-4" />}
+              >
+                Trocar Predefinição
+              </Button>
+            ) : (
+              <div className="w-full sm:w-auto sm:min-w-[260px] rounded-xl border border-red-500/30 bg-red-500/[0.06] p-3 space-y-2">
+                <p className="text-xs text-red-200/90">
+                  Isso apaga todo o seu progresso e não pode ser desfeito. Continuar?
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="ghost"
+                    className="border border-card-border text-text-secondary hover:bg-card-bg"
+                    onClick={() => setSwitchPresetStep('idle')}
+                    disabled={isSwitchingPreset}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    className="w-full"
+                    onClick={confirmSwitchPreset}
+                    loading={isSwitchingPreset}
+                    leftIcon={<LibraryBig className="w-4 h-4" />}
+                  >
+                    Zerar e escolher
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Resetar progresso — destrutivo */}
+          <div className="flex flex-col gap-3 rounded-xl border border-red-500/30 bg-red-500/[0.05] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-red-200">Resetar todo o progresso</p>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Apaga horas estudadas, sessões, simulados e estatísticas. Mantém suas matérias cadastradas.
+              </p>
+            </div>
+            {resetProgressStep === 'idle' ? (
+              <Button
+                variant="secondary"
+                className="w-full sm:w-auto shrink-0 border-red-500/40 text-red-200 hover:bg-red-500/10"
+                onClick={startResetProgressFlow}
+                leftIcon={<RefreshCw className="w-4 h-4" />}
+              >
+                Resetar Progresso
+              </Button>
+            ) : (
+              <div className="w-full sm:w-auto sm:min-w-[260px] rounded-xl border border-red-500/30 bg-red-500/[0.06] p-3 space-y-2">
+                <p className="text-xs text-red-200/90">
+                  Todo o histórico de estudos será apagado. Continuar?
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="ghost"
+                    className="border border-card-border text-text-secondary hover:bg-card-bg"
+                    onClick={cancelResetProgressFlow}
+                    disabled={isResettingProgress}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    className="w-full"
+                    onClick={confirmResetProgress}
+                    loading={isResettingProgress}
+                    leftIcon={<RefreshCw className="w-4 h-4" />}
+                  >
+                    Confirmar reset
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Excluir conta — destrutivo com confirmação digitada */}
+          <div className="rounded-xl border border-red-500/40 bg-red-500/[0.08] p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-red-100 flex items-center gap-2">
+                  <Trash2 className="w-4 h-4 shrink-0" />
+                  Excluir conta permanentemente
+                </p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Remove sua conta, todas as matérias e todo o histórico. Não há volta.
+                </p>
+              </div>
+              <Badge variant="danger" size="sm" className="shrink-0">Etapa {deleteStep === 'idle' ? '1' : '2'} de 2</Badge>
+            </div>
+
+            {deleteStep === 'idle' ? (
               <Button
                 variant="danger"
                 className="w-full"
@@ -2037,57 +2132,69 @@ export default function SettingsPage() {
               >
                 Iniciar exclusão
               </Button>
-            </>
-          ) : (
-            <>
-              <p className="text-xs text-red-200/80">
-                Etapa 2 de 2: digite <span className="font-semibold text-red-100">EXCLUIR</span> para confirmar.
-              </p>
-              <input
-                ref={deleteInputRef}
-                autoFocus
-                type="text"
-                value={deleteConfirmText}
-                onChange={(e) => {
-                  setDeleteConfirmText(e.target.value);
-                  if (deleteFeedback) setDeleteFeedback(null);
-                }}
-                disabled={isDeletingAccount}
-                placeholder="Digite EXCLUIR"
-                className="input-field border-red-500/30 focus:border-red-400 focus:shadow-none"
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Button
-                  variant="ghost"
-                  className="w-full border border-slate-700 text-slate-200"
-                  onClick={cancelDeleteFlow}
+            ) : (
+              <>
+                <p className="text-xs text-red-200/90">
+                  Digite <span className="font-semibold text-red-100">EXCLUIR</span> para confirmar.
+                </p>
+                <input
+                  ref={deleteInputRef}
+                  autoFocus
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => {
+                    setDeleteConfirmText(e.target.value);
+                    if (deleteFeedback) setDeleteFeedback(null);
+                  }}
                   disabled={isDeletingAccount}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  variant="danger"
-                  className="w-full"
-                  onClick={handleDeleteAccount}
-                  loading={isDeletingAccount}
-                  leftIcon={<Trash2 className="w-4 h-4" />}
-                >
-                  Confirmar exclusão
-                </Button>
-              </div>
-            </>
-          )}
-          {deleteFeedback && (
-            <p
-              className={cn(
-                'text-xs',
-                deleteFeedback.type === 'error' ? 'text-red-300' : 'text-neon-cyan'
-              )}
-            >
-              {deleteFeedback.message}
-            </p>
-          )}
+                  placeholder="Digite EXCLUIR"
+                  className="input-field border-red-500/30 focus:border-red-400 focus:shadow-none"
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Button
+                    variant="ghost"
+                    className="w-full border border-card-border text-text-secondary hover:bg-card-bg"
+                    onClick={cancelDeleteFlow}
+                    disabled={isDeletingAccount}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    className="w-full"
+                    onClick={handleDeleteAccount}
+                    loading={isDeletingAccount}
+                    leftIcon={<Trash2 className="w-4 h-4" />}
+                  >
+                    Confirmar exclusão
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {deleteFeedback && (
+              <p
+                className={cn(
+                  'text-xs',
+                  deleteFeedback.type === 'error' ? 'text-red-300' : 'text-neon-cyan'
+                )}
+              >
+                {deleteFeedback.message}
+              </p>
+            )}
+          </div>
         </div>
+
+        {generalDangerFeedback && (
+          <p
+            className={cn(
+              'mt-4 text-xs',
+              generalDangerFeedback.type === 'error' ? 'text-red-300' : 'text-neon-cyan'
+            )}
+          >
+            {generalDangerFeedback.message}
+          </p>
+        )}
       </Card>
         </motion.div>
       </AnimatePresence>
