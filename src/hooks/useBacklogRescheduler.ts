@@ -50,12 +50,18 @@ interface UseBacklogReschedulerParams {
   enabled?: boolean;
 }
 
-/** Um bloco está atrasado quando é de dia passado e não foi concluído nem pulado. */
-function isOverdue(block: StudyBlock, todayKey: string): boolean {
+/**
+ * Um bloco está pendente quando não foi concluído. Isso inclui:
+ *  - dia passado ainda "scheduled" (esquecido de fato);
+ *  - bloco pulado, inclusive o de hoje — pular significa "não faço hoje", e o
+ *    motor o reagenda para um dia futuro (nunca para o mesmo dia).
+ * Só o que foi concluído sai da conta.
+ */
+function isPending(block: StudyBlock, todayKey: string): boolean {
   if (block.isBreak) return false;
-  if (block.status === 'completed' || block.status === 'skipped') return false;
+  if (block.status === 'completed') return false;
   const blockKey = toLocalDateKey(parseBlockDate(block.date) ?? new Date(block.date));
-  return blockKey < todayKey;
+  return blockKey < todayKey || (blockKey === todayKey && block.status === 'skipped');
 }
 
 export function useBacklogRescheduler({
@@ -73,7 +79,7 @@ export function useBacklogRescheduler({
   const alreadyRanRef = useRef(false);
 
   const todayKey = toLocalDateKey(new Date());
-  const overdueCount = blocks.filter((block) => isOverdue(block, todayKey)).length;
+  const pendingCount = blocks.filter((block) => isPending(block, todayKey)).length;
 
   const runEngine = useCallback((): BacklogRunResult => {
     const result = autoRescheduleBacklog({
@@ -82,8 +88,8 @@ export function useBacklogRescheduler({
       allowedDays,
       dailyLimitByDate,
       breakMinutes,
-      // Pulado é decisão do usuário: não ressuscita.
-      rescheduleSkipped: false,
+      // Pulado significa "não faço hoje": reagenda para um dia futuro.
+      rescheduleSkipped: true,
     });
 
     const runResult: BacklogRunResult = {
@@ -100,7 +106,7 @@ export function useBacklogRescheduler({
 
   /** Disparo manual (botão "Recalcular atrasados"): ignora o gate diário. */
   const runNow = useCallback((): BacklogRunResult => {
-    if (overdueCount === 0) {
+    if (pendingCount === 0) {
       const empty: BacklogRunResult = { movedCount: 0, pendingCount: 0, applied: false };
       setLastResult(empty);
       return empty;
@@ -109,13 +115,13 @@ export function useBacklogRescheduler({
     setLastRunDay(toLocalDateKey(new Date()));
     setLastResult(result);
     return result;
-  }, [overdueCount, runEngine, setLastRunDay]);
+  }, [pendingCount, runEngine, setLastRunDay]);
 
   // ---------------------------------------------------------------- auto-run
   useEffect(() => {
     if (!enabled || alreadyRanRef.current) return;
     if (lastRunDay === todayKey) return;
-    if (overdueCount === 0) return;
+    if (pendingCount === 0) return;
 
     alreadyRanRef.current = true;
     // Grava o gate antes de aplicar: se a store falhar, não tentamos de novo a
@@ -129,9 +135,9 @@ export function useBacklogRescheduler({
     }
     // `overdueCount` entra de propósito: a verificação de "existe atrasado"
     // precisa do estado atual, e o ref garante uma única execução por montagem.
-  }, [overdueCount, enabled, lastRunDay, todayKey, runEngine, setLastRunDay]);
+  }, [pendingCount, enabled, lastRunDay, todayKey, runEngine, setLastRunDay]);
 
-  return { overdueCount, lastResult, runNow };
+  return { pendingCount, lastResult, runNow };
 }
 
 /** Some com o gate de auto-run (usado pelos botões de reset). */

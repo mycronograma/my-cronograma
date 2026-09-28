@@ -11,11 +11,11 @@ export interface BacklogRescheduleConfig {
   lookaheadDays?: number;
   maxBacklogSubjectsPerDay?: number;
   /**
-   * Ressuscitar blocos que o usuário marcou como "pulado"?
-   * Padrão `false`: pular é uma decisão explícita, não um esquecimento, e
-   * trazer o bloco de volta contradiz a sugestão do coach (que recomenda
-   * reduzir a meta justamente quando a matéria está sendo pulada).
-   * Blocos pulados continuam no histórico e no relatório de backlog.
+   * Reagendar blocos que o usuário marcou como "pulado"?
+   * Padrão `true` (basta não informar): pular significa "não faço hoje", não
+   * "descarta esse conteúdo" — o bloco sai da agenda de hoje e reaparece num
+   * dia futuro, nunca no mesmo dia. Para tratar pulado como descarte, passe
+   * `false`.
    */
   rescheduleSkipped?: boolean;
 }
@@ -512,9 +512,11 @@ export function autoRescheduleBacklog(config: BacklogRescheduleConfig): BacklogR
   const changedIds = new Set<string>();
   const recoveryExpansion = expandRecoveryBacklogBlocks(blocksById);
   recoveryExpansion.changedIds.forEach((id) => changedIds.add(id));
+  // Padrão: pulado entra na fila (vê `rescheduleSkipped`).
+  const rescheduleSkipped = config.rescheduleSkipped !== false;
   const backlogQueue = getBacklogEntries(Array.from(blocksById.values()), today);
   const queue = backlogQueue
-    .filter((entry) => config.rescheduleSkipped || entry.block.status !== 'skipped')
+    .filter((entry) => rescheduleSkipped || entry.block.status !== 'skipped')
     .map((entry) => entry.block.id);
   const queuedSet = new Set(queue);
   let insertedTodayCount = 0;
@@ -654,6 +656,17 @@ export function autoRescheduleBacklog(config: BacklogRescheduleConfig): BacklogR
       todayKey
     );
     if (!bestDay) continue;
+    // Pulado não volta para o mesmo dia: escolhe um dia estritamente futuro.
+    if (block.status === 'skipped') {
+      const futureBest = dayKeys.find((candidate) => candidate > todayKey);
+      if (!futureBest) continue;
+      if (placeBlockOnDay(block, futureBest)) {
+        const index = queue.indexOf(simuladoId);
+        if (index >= 0) queue.splice(index, 1);
+        queuedSet.delete(simuladoId);
+      }
+      continue;
+    }
     if (placeBlockOnDay(block, bestDay)) {
       const index = queue.indexOf(simuladoId);
       if (index >= 0) queue.splice(index, 1);
@@ -668,11 +681,18 @@ export function autoRescheduleBacklog(config: BacklogRescheduleConfig): BacklogR
       const existingSubjects = getExistingBacklogSubjects(Array.from(blocksById.values()), dayKey);
       const nextBlock = popNextPrioritized(existingSubjects);
       if (!nextBlock) break;
-      const placed = placeBlockOnDay(nextBlock, dayKey);
+
+      // "Pular" tira o bloco de hoje. Ele só pode reaparecer num dia
+      // estritamente futuro — senão apertar Pular não aliviaria nada.
+      const targetDays =
+        nextBlock.status === 'skipped' ? dayKeys.filter((candidate) => candidate > todayKey) : dayKeys;
+      const canPlaceHere = targetDays.indexOf(dayKey) >= 0;
+
+      const placed = canPlaceHere && placeBlockOnDay(nextBlock, dayKey);
       if (!placed) {
         // tenta outro dia no mesmo ciclo
         let placedElsewhere = false;
-        for (const fallbackDay of dayKeys) {
+        for (const fallbackDay of targetDays) {
           if (fallbackDay <= dayKey) continue;
           if (placeBlockOnDay(nextBlock, fallbackDay)) {
             placedElsewhere = true;
@@ -695,9 +715,7 @@ export function autoRescheduleBacklog(config: BacklogRescheduleConfig): BacklogR
   // remarcação. Blocos pulados ficam de fora (a menos que se peça para
   // ressuscitá-los): contá-los aqui faria o app acusar pendência que ele
   // deliberadamente não vai resolver.
-  const pendingBacklogCount = backlogAfterEntries.filter(
-    (entry) => config.rescheduleSkipped || entry.block.status !== 'skipped'
-  ).length;
+  const pendingBacklogCount = backlogAfterEntries.length;
   const stuckItems = resultBlocks.filter(
     (block) => !block.isBreak && isBacklogStatus(block.status) && (block.rescheduleCount || 0) >= RECOVERY_RESCHEDULE_THRESHOLD
   );

@@ -184,3 +184,179 @@ const makeBlock = (params: {
 })();
 
 console.log('backlog rescheduler tests passed');
+
+// ============================================================================
+// Regras ditadas pelo usuário (Fase 4) — verificadas uma a uma
+// ============================================================================
+
+(() => {
+  // 1) "Pular" tira o bloco de hoje, mas o conteúdo reaparece num dia FUTURO.
+  //    Se voltasse para hoje, apertar Pular não aliviaria nada.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayKey = toDateKey(today);
+  const subj = makeSubject('pulo', 8, 6, 4);
+  const roomy: Record<string, number> = {};
+  for (let index = 0; index < 10; index += 1) {
+    const day = new Date(today);
+    day.setDate(today.getDate() + index);
+    roomy[toDateKey(day)] = 360;
+  }
+
+  const skippedToday = makeBlock({
+    id: 'pulado-hoje',
+    date: today,
+    startTime: '09:00',
+    durationMinutes: 60,
+    subject: subj,
+    status: 'skipped',
+  });
+
+  const result = autoRescheduleBacklog({
+    blocks: [skippedToday],
+    today,
+    dailyLimitByDate: roomy,
+    backlogQuotaRatio: 0.35,
+    lookaheadDays: 10,
+  });
+
+  assert.ok(result.movedCount > 0, 'bloco pulado deve ser reagendado');
+  const moved = result.blocks.find((block) => block.id === 'pulado-hoje');
+  assert.ok(moved, 'bloco pulado continua existindo');
+  assert.ok(toDateKey(new Date(moved!.date)) > todayKey,
+    'bloco pulado NAO pode voltar para o mesmo dia');
+  assert.notStrictEqual(moved!.status, 'skipped', 'bloco reagendado sai do estado pulado');
+})();
+
+(() => {
+  // 2) Nada se perde e nada duplica quando há atraso de verdade.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const subj = makeSubject('perda', 7, 5, 3);
+
+  const mk = (id: string, daysAgo: number, status: StudyBlock['status'], minutes = 60) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - daysAgo);
+    return makeBlock({ id, date, startTime: '09:00', durationMinutes: minutes, subject: subj, status });
+  };
+
+  const before = [
+    mk('atrasado-1', 2, 'scheduled'),
+    mk('atrasado-2', 1, 'scheduled', 90),
+    mk('concluido', 3, 'completed'),
+    mk('pulado', 4, 'skipped', 30),
+  ];
+  const totalMinutesBefore = before.reduce((sum, block) => sum + block.durationMinutes, 0);
+
+  const result = autoRescheduleBacklog({
+    blocks: before,
+    today,
+    dailyLimitByDate: Object.fromEntries(
+      Array.from({ length: 10 }, (_, index) => {
+        const day = new Date(today);
+        day.setDate(today.getDate() + index);
+        return [toDateKey(day), 360];
+      })
+    ),
+    lookaheadDays: 10,
+  });
+
+  const ids = new Set(result.blocks.map((block) => block.id));
+  assert.strictEqual(result.blocks.length, before.length, 'nenhum bloco pode desaparecer');
+  assert.strictEqual(ids.size, result.blocks.length, 'nenhum bloco pode duplicar');
+  const totalMinutesAfter = result.blocks
+    .filter((block) => !block.isBreak)
+    .reduce((sum, block) => sum + block.durationMinutes, 0);
+  assert.ok(totalMinutesAfter >= totalMinutesBefore,
+    `minutos preservados (${totalMinutesBefore} -> ${totalMinutesAfter})`);
+
+  // 3) Concluído é intocável: o histórico não se reescreve.
+  const done = result.blocks.find((block) => block.id === 'concluido')!;
+  const doneBefore = before.find((block) => block.id === 'concluido')!;
+  assert.strictEqual(toDateKey(new Date(done.date)), toDateKey(new Date(doneBefore.date)),
+    'bloco concluido nao muda de dia');
+  assert.strictEqual(done.status, 'completed', 'bloco concluido continua concluido');
+
+  // 4) Atrasado sai do passado (ou é relatado como pendente, nunca some em silencio).
+  const overdue = result.blocks.filter((block) => block.id.startsWith('atrasado'));
+  const stillPast = overdue.filter((block) => toDateKey(new Date(block.date)) < toDateKey(today));
+  assert.ok(overdue.length === 2 && stillPast.length === 0,
+    'com folga, todo atrasado sai do passado');
+
+  // 5) Idempotente: rodar de novo não muda mais nada.
+  const second = autoRescheduleBacklog({
+    blocks: result.blocks,
+    today,
+    dailyLimitByDate: Object.fromEntries(
+      Array.from({ length: 10 }, (_, index) => {
+        const day = new Date(today);
+        day.setDate(today.getDate() + index);
+        return [toDateKey(day), 360];
+      })
+    ),
+    lookaheadDays: 10,
+  });
+  assert.strictEqual(second.movedCount, 0, 'segunda passada nao move nada');
+  assert.strictEqual(second.blocks.length, result.blocks.length, 'segunda passada nao perde blocos');
+})();
+
+(() => {
+  // 6) Só remarca para os dias em que o usuário estuda.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const subj = makeSubject('fds', 6, 5, 3);
+  const date = new Date(today);
+  date.setDate(today.getDate() - 2);
+
+  const result = autoRescheduleBacklog({
+    blocks: [makeBlock({ id: 'atrasado-fds', date, startTime: '09:00', durationMinutes: 60, subject: subj })],
+    today,
+    allowedDays: [0, 6],
+    dailyLimitByDate: Object.fromEntries(
+      Array.from({ length: 10 }, (_, index) => {
+        const day = new Date(today);
+        day.setDate(today.getDate() + index);
+        return [toDateKey(day), 360];
+      })
+    ),
+    lookaheadDays: 10,
+  });
+
+  const moved = result.blocks.find((block) => block.id === 'atrasado-fds')!;
+  const weekday = new Date(moved.date).getDay();
+  assert.ok(result.movedCount > 0 && (weekday === 0 || weekday === 6),
+    `so remarca para dias permitidos (caiu no dia ${weekday})`);
+})();
+
+(() => {
+  // 7) Quem quiser tratar "pulado" como descarte pode pedir explicitamente.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const subj = makeSubject('descarte', 6, 5, 3);
+
+  const result = autoRescheduleBacklog({
+    blocks: [
+      makeBlock({
+        id: 'pulado-descartado',
+        date: today,
+        startTime: '09:00',
+        durationMinutes: 60,
+        subject: subj,
+        status: 'skipped',
+      }),
+    ],
+    today,
+    dailyLimitByDate: Object.fromEntries(
+      Array.from({ length: 6 }, (_, index) => {
+        const day = new Date(today);
+        day.setDate(today.getDate() + index);
+        return [toDateKey(day), 360];
+      })
+    ),
+    lookaheadDays: 6,
+    rescheduleSkipped: false,
+  });
+
+  assert.strictEqual(result.movedCount, 0, 'com rescheduleSkipped:false, pulado nao é reagendado');
+  assert.strictEqual(result.blocks.length, 1, 'e o bloco continua existindo no histórico');
+})();

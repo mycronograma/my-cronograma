@@ -189,7 +189,7 @@ export default function PlannerPage() {
   // #6d/#6c: blocos não cumpridos são empurrados para o próximo dia com horário
   // livre e a semana é recalculada. Roda 1x por dia sozinho; o botão abaixo
   // permite disparar na hora.
-  const { overdueCount, runNow: runBacklogNow } = useBacklogRescheduler({
+  const { pendingCount, runNow: runBacklogNow } = useBacklogRescheduler({
     blocks,
     setBlocks,
     allowedDays: allowedStudyDays,
@@ -202,7 +202,7 @@ export default function PlannerPage() {
     const result = runBacklogNow();
     if (result.movedCount === 0) {
       setBacklogFeedback(
-        overdueCount === 0 ? 'Nenhum bloco atrasado.' : 'Não havia espaço nos próximos dias.'
+        pendingCount === 0 ? 'Nenhum bloco atrasado.' : 'Não havia espaço nos próximos dias.'
       );
       return;
     }
@@ -1010,16 +1010,16 @@ export default function PlannerPage() {
                 <div className="flex items-center gap-2 flex-shrink-0 self-start lg:self-center">
                   <button
                     onClick={handleRecalculateBacklog}
-                    disabled={overdueCount === 0}
+                    disabled={pendingCount === 0}
                     title={
-                      overdueCount === 0
+                      pendingCount === 0
                         ? 'Nenhum bloco atrasado'
-                        : `${overdueCount} bloco(s) de dias anteriores sem concluir`
+                        : `${pendingCount} bloco(s) pendente(s) de reagendar`
                     }
                     className="h-9 px-4 rounded-xl bg-card-bg border border-card-border text-text-secondary hover:text-text-primary hover:border-neon-blue/40 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors flex items-center gap-1.5"
                   >
-                    <RefreshCw className={cn('w-3.5 h-3.5', overdueCount > 0 && 'text-amber-400')} />
-                    Recalcular atrasados{overdueCount > 0 ? ` (${overdueCount})` : ''}
+                    <RefreshCw className={cn('w-3.5 h-3.5', pendingCount > 0 && 'text-amber-400')} />
+                    Recalcular atrasados{pendingCount > 0 ? ` (${pendingCount})` : ''}
                   </button>
                   <button onClick={handleResetPlanner} className="h-9 px-4 rounded-xl bg-card-bg border border-card-border text-text-secondary hover:text-text-primary hover:border-card-border text-sm font-medium transition-colors">Limpar tudo</button>
                   <button onClick={handleGenerateSchedule} disabled={isGenerating} className="h-9 px-5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-50 flex items-center gap-2">{isGenerating ? 'Gerando...' : 'Gerar com IA'}</button>
