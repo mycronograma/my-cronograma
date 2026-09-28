@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus } from 'lucide-react';
+import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { cn, getWeekStart, timeToMinutes, minutesToTime, parseLocalDateKey, parseBlockDate, toLocalDateKey } from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { isEnemGoal, upgradeSubjectsToOfficialEnemStructure } from '@/lib/enemCatalog';
@@ -186,13 +186,30 @@ export default function PlannerPage() {
   const [analytics] = useLocalStorage<AnalyticsStore>('nexora_analytics', { daily: {} });
   const [isGenerating, setIsGenerating] = useState(false);
   const [plannerNotice, setPlannerNotice] = useState<string | null>(null);
-  useBacklogRescheduler({
+  // #6d/#6c: blocos não cumpridos são empurrados para o próximo dia com horário
+  // livre e a semana é recalculada. Roda 1x por dia sozinho; o botão abaixo
+  // permite disparar na hora.
+  const { overdueCount, runNow: runBacklogNow } = useBacklogRescheduler({
     blocks,
     setBlocks,
     allowedDays: allowedStudyDays,
     dailyLimitByDate: dailyLimits,
     breakMinutes: userSettings?.breakMinutes,
   });
+  const [backlogFeedback, setBacklogFeedback] = useState<string | null>(null);
+
+  const handleRecalculateBacklog = () => {
+    const result = runBacklogNow();
+    if (result.movedCount === 0) {
+      setBacklogFeedback(
+        overdueCount === 0 ? 'Nenhum bloco atrasado.' : 'Não havia espaço nos próximos dias.'
+      );
+      return;
+    }
+    setBacklogFeedback(
+      `${result.movedCount} ${result.movedCount === 1 ? 'bloco remarcado' : 'blocos remarcados'} para os próximos dias.`
+    );
+  };
 
   const [firstCycleAllSubjects, setFirstCycleAllSubjects] = useLocalStorage<boolean>(
     'nexora_first_cycle_all_subjects',
@@ -991,10 +1008,30 @@ export default function PlannerPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 self-start lg:self-center">
+                  <button
+                    onClick={handleRecalculateBacklog}
+                    disabled={overdueCount === 0}
+                    title={
+                      overdueCount === 0
+                        ? 'Nenhum bloco atrasado'
+                        : `${overdueCount} bloco(s) de dias anteriores sem concluir`
+                    }
+                    className="h-9 px-4 rounded-xl bg-card-bg border border-card-border text-text-secondary hover:text-text-primary hover:border-neon-blue/40 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors flex items-center gap-1.5"
+                  >
+                    <RefreshCw className={cn('w-3.5 h-3.5', overdueCount > 0 && 'text-amber-400')} />
+                    Recalcular atrasados{overdueCount > 0 ? ` (${overdueCount})` : ''}
+                  </button>
                   <button onClick={handleResetPlanner} className="h-9 px-4 rounded-xl bg-card-bg border border-card-border text-text-secondary hover:text-text-primary hover:border-card-border text-sm font-medium transition-colors">Limpar tudo</button>
                   <button onClick={handleGenerateSchedule} disabled={isGenerating} className="h-9 px-5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-50 flex items-center gap-2">{isGenerating ? 'Gerando...' : 'Gerar com IA'}</button>
                 </div>
               </div>
+
+              {backlogFeedback && (
+                <p className="text-xs text-text-secondary flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  {backlogFeedback}
+                </p>
+              )}
 
               {/* Linha 2: Controles de período - layout idêntico à referência */}
               <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-background-light border border-card-border px-3 py-2.5">

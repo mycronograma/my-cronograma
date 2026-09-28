@@ -5,28 +5,38 @@
  *
  * O motor (`autoRescheduleBacklog`) existia desde a auditoria mas **nunca era
  * chamado**: blocos não cumpridos ficavam perdidos no passado e ninguém os
- * empurrava para frente. Este hook roda o motor no máximo uma vez por dia
- * (gate em `nexora_backlog_last_auto_run_day`), o que entregva:
+ * empurrava para frente. Este hook entrega:
  *
  *  #6d — bloco não cumprido é empurrado para o próximo dia com horário livre;
  *  #6c — ao remarcar, a semana inteira é recalculada (o motor devolve a lista
  *        completa de blocos, não só o remarcado).
  *
+ * Duas formas de disparar:
+ *  - automática: no máximo uma vez por dia (gate em `nexora_backlog_last_auto_run_day`),
+ *    para não ficar empurrando blocos a cada F5;
+ *  - manual: `runNow()`, usado pelo botão "Recalcular atrasados" — permite testar
+ *    e resolver na hora, sem esperar o dia seguinte.
+ *
  * Regras de segurança:
- *  - só roda uma vez por dia (evita ficar empurrando blocos a cada F5);
- *  - nunca move bloco concluído ou pulado — só `scheduled`/`rescheduled`
- *    vencidos (o motor já filtra por `isLockedForDayStartShift`);
+ *  - nunca move bloco concluído ou pulado (pular é decisão, não esquecimento);
  *  - se nada mudou, não escreve no store (evita loop de sync com o servidor);
- *  - erros são silenciosos no console: falhar aqui não pode travar a tela.
+ *  - erros não derrubam a tela.
  */
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { toLocalDateKey, parseBlockDate } from '@/lib/utils';
 import { autoRescheduleBacklog } from '@/services/backlogRescheduler';
 import type { StudyBlock } from '@/types';
 
 const AUTO_RUN_KEY = 'nexora_backlog_last_auto_run_day';
+
+export interface BacklogRunResult {
+  movedCount: number;
+  pendingCount: number;
+  /** Rodei de verdade (houve atrasado e o motor achou lugar). */
+  applied: boolean;
+}
 
 interface UseBacklogReschedulerParams {
   blocks: StudyBlock[];
@@ -40,6 +50,14 @@ interface UseBacklogReschedulerParams {
   enabled?: boolean;
 }
 
+/** Um bloco está atrasado quando é de dia passado e não foi concluído nem pulado. */
+function isOverdue(block: StudyBlock, todayKey: string): boolean {
+  if (block.isBreak) return false;
+  if (block.status === 'completed' || block.status === 'skipped') return false;
+  const blockKey = toLocalDateKey(parseBlockDate(block.date) ?? new Date(block.date));
+  return blockKey < todayKey;
+}
+
 export function useBacklogRescheduler({
   blocks,
   setBlocks,
@@ -49,60 +67,71 @@ export function useBacklogRescheduler({
   enabled = true,
 }: UseBacklogReschedulerParams) {
   const [lastRunDay, setLastRunDay] = useLocalStorage<string>(AUTO_RUN_KEY, '');
-  // Só uma execução por montagem de hook: o efeito depende de `blocks`, que
+  const [lastResult, setLastResult] = useState<BacklogRunResult | null>(null);
+  // Só uma execução automática por montagem: o efeito depende de `blocks`, que
   // muda a cada conclusão de bloco, e sem essa trava o motor rodaria sempre.
   const alreadyRanRef = useRef(false);
 
+  const todayKey = toLocalDateKey(new Date());
+  const overdueCount = blocks.filter((block) => isOverdue(block, todayKey)).length;
+
+  const runEngine = useCallback((): BacklogRunResult => {
+    const result = autoRescheduleBacklog({
+      blocks,
+      today: new Date(),
+      allowedDays,
+      dailyLimitByDate,
+      breakMinutes,
+      // Pulado é decisão do usuário: não ressuscita.
+      rescheduleSkipped: false,
+    });
+
+    const runResult: BacklogRunResult = {
+      movedCount: result.movedCount,
+      pendingCount: result.pendingBacklogCount,
+      applied: result.movedCount > 0,
+    };
+
+    if (result.movedCount > 0) {
+      setBlocks(() => result.blocks);
+    }
+    return runResult;
+  }, [blocks, allowedDays, dailyLimitByDate, breakMinutes, setBlocks]);
+
+  /** Disparo manual (botão "Recalcular atrasados"): ignora o gate diário. */
+  const runNow = useCallback((): BacklogRunResult => {
+    if (overdueCount === 0) {
+      const empty: BacklogRunResult = { movedCount: 0, pendingCount: 0, applied: false };
+      setLastResult(empty);
+      return empty;
+    }
+    const result = runEngine();
+    setLastRunDay(toLocalDateKey(new Date()));
+    setLastResult(result);
+    return result;
+  }, [overdueCount, runEngine, setLastRunDay]);
+
+  // ---------------------------------------------------------------- auto-run
   useEffect(() => {
     if (!enabled || alreadyRanRef.current) return;
-
-    const todayKey = toLocalDateKey(new Date());
     if (lastRunDay === todayKey) return;
-
-    // Nada a fazer sem blocos: evita gravar o gate sem motivo.
-    if (blocks.length === 0) return;
-
-    // Existe bloco vencido? Sem isso o motor rodaria todo dia sem motivo.
-    const hasOverdue = blocks.some((block) => {
-      if (block.isBreak || block.status === 'completed' || block.status === 'skipped') return false;
-      const blockKey = toLocalDateKey(parseBlockDate(block.date) ?? new Date(block.date));
-      return blockKey < todayKey;
-    });
-    if (!hasOverdue) return;
+    if (overdueCount === 0) return;
 
     alreadyRanRef.current = true;
-    // Grava o gate antes de aplicar: se a store falhar, não tentamos de novo
-    // a cada render e não corruptemos a lista com escrita repetida.
+    // Grava o gate antes de aplicar: se a store falhar, não tentamos de novo a
+    // cada render e não escrevemos repetido na lista.
     setLastRunDay(todayKey);
 
     try {
-      const result = autoRescheduleBacklog({
-        blocks,
-        today: new Date(),
-        allowedDays,
-        dailyLimitByDate,
-        breakMinutes,
-        // Pulado é decisão do usuário: não ressuscita.
-        rescheduleSkipped: false,
-      });
-
-      if (result.movedCount > 0) {
-        setBlocks(() => result.blocks);
-      }
-
-      // O que não cabeu na quota continua pendente: em vez de silêncio, fica
-      // registrado no console para diagnóstico (a UI de aviso vem na Fase 5).
-      if (result.pendingBacklogCount > 0) {
-        console.info(
-          `[backlog] ${result.pendingBacklogCount} bloco(s) ainda pendente(s) após o recálculo.`
-        );
-      }
+      runEngine();
     } catch (error) {
       console.warn('[backlog] falha ao recalcular blocos atrasados:', error);
     }
-    // `blocks` entra de propósito: a verificação de "existe atrasado" precisa do
-  // estado atual, e o ref garante uma única execução por montagem.
-  }, [blocks, enabled, lastRunDay, allowedDays, dailyLimitByDate, breakMinutes, setBlocks, setLastRunDay]);
+    // `overdueCount` entra de propósito: a verificação de "existe atrasado"
+    // precisa do estado atual, e o ref garante uma única execução por montagem.
+  }, [overdueCount, enabled, lastRunDay, todayKey, runEngine, setLastRunDay]);
+
+  return { overdueCount, lastResult, runNow };
 }
 
 /** Some com o gate de auto-run (usado pelos botões de reset). */
