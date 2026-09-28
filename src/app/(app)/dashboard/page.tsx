@@ -24,6 +24,7 @@ import {
   BookOpen,
   Zap,
   Lightbulb,
+  Lock,
   Award,
 } from 'lucide-react';
 import { cn, formatDuration, formatHoursDuration, formatDate, toLocalDateKey, parseBlockDate, getWeekStart, timeToMinutes, minutesToTime, getHoursForDate, getWeeklyGoalHours } from '@/lib/utils';
@@ -31,6 +32,7 @@ import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { computeGamificationSnapshot } from '@/lib/progressSnapshot';
 import { applyBlockCompletionMetrics } from '@/services/adaptiveStudyIntelligence';
 import { buildCoachSuggestion, currentWeeklyGoal, type CoachSuggestion } from '@/services/adaptiveCoach';
+import { checkSequentialLock } from '@/services/sequentialLock';
 import { reportCompletedSession } from '@/lib/sessionSync';
 import { getStudyBlockDisplayTitle } from '@/lib/studyBlockLabels';
 import Card from '@/components/ui/Card';
@@ -68,6 +70,9 @@ export default function Dashboard() {
   const router = useRouter();
   const { data: session } = useSession();
   const [coachDismissed, setCoachDismissed] = useState<string | null>(null);
+  // Aviso da trava sequencial (#6e): aparece quando a pessoa tenta estudar
+  // matéria de dia futuro com o dia de hoje ainda pendente.
+  const [lockNotice, setLockNotice] = useState<string | null>(null);
   const [coachApplied, setCoachApplied] = useState<string | null>(null);
 
   const [showAllTips, setShowAllTips] = useState(false);
@@ -280,6 +285,14 @@ export default function Dashboard() {
     // Blocos concluídos/pulados não podem voltar a "em andamento": isso permitia
     // concluir duas vezes e contar horas/XP em duplicidade.
     if (block.status === 'completed' || block.status === 'skipped') return;
+
+    // #6e: sem furar a fila — dia futuro só depois que hoje estiver resolvido.
+    const lock = checkSequentialLock(block, plannerBlocks);
+    if (!lock.allowed) {
+      setLockNotice(lock.message);
+      return;
+    }
+    setLockNotice(null);
 
     // O horário planejado é preservado (antes era substituído pelo horário atual,
     // o que podia gerar endTime anterior ao startTime ao iniciar com atraso).
@@ -534,6 +547,28 @@ const handleCompleteBlock = (
                       </Button>
                     </div>
                   </div>
+                </motion.div>
+              )}
+
+              {lockNotice && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-4 flex flex-col gap-2 rounded-xl border border-warning bg-warning-soft p-4 sm:flex-row sm:items-center sm:justify-between"
+                  role="status"
+                >
+                  <p className="flex items-start gap-2 text-sm text-warning-strong">
+                    <Lock className="mt-0.5 w-4 h-4 shrink-0" />
+                    {lockNotice}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full shrink-0 text-text-muted hover:text-text-secondary sm:w-auto"
+                    onClick={() => setLockNotice(null)}
+                  >
+                    Entendi
+                  </Button>
                 </motion.div>
               )}
 

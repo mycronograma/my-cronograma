@@ -360,3 +360,53 @@ console.log('backlog rescheduler tests passed');
   assert.strictEqual(result.movedCount, 0, 'com rescheduleSkipped:false, pulado nao é reagendado');
   assert.strictEqual(result.blocks.length, 1, 'e o bloco continua existindo no histórico');
 })();
+
+// ============================================================================
+// Trava sequencial (#6e)
+// ============================================================================
+import { checkSequentialLock } from '../src/services/sequentialLock';
+
+(() => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const subj = makeSubject('trava', 7, 5, 3);
+  const day = (offset: number) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + offset);
+    return date;
+  };
+
+  const todayPending = makeBlock({
+    id: 'hoje-pendente', date: day(0), startTime: '09:00', durationMinutes: 60, subject: subj,
+  });
+  const futureBlock = makeBlock({
+    id: 'amanha', date: day(1), startTime: '09:00', durationMinutes: 60, subject: subj,
+  });
+
+  // 1) Com hoje pendente, bloco de amanhã está travado.
+  const locked = checkSequentialLock(futureBlock, [todayPending, futureBlock], today);
+  assert.strictEqual(locked.allowed, false, 'bloco de dia futuro deve travar com hoje pendente');
+  assert.ok(locked.pendingToday >= 1, 'deve informar quantos blocos de hoje estão pendentes');
+  assert.ok(locked.message.includes('hoje'), 'mensagem deve mencionar o dia de hoje');
+
+  // 2) Sem pendência hoje, libera.
+  const done = { ...todayPending, status: 'completed' as const };
+  const free = checkSequentialLock(futureBlock, [done, futureBlock], today);
+  assert.strictEqual(free.allowed, true, 'sem pendência hoje, o dia futuro libera');
+
+  // 3) Pulado não bloqueia (saiu da fila por decisão do usuário).
+  const skipped = { ...todayPending, status: 'skipped' as const };
+  const afterSkip = checkSequentialLock(futureBlock, [skipped, futureBlock], today);
+  assert.strictEqual(afterSkip.allowed, true, 'bloco pulado não deve travar o dia seguinte');
+
+  // 4) O próprio bloco de hoje nunca é travado pela regra.
+  const todayOk = checkSequentialLock(todayPending, [todayPending, futureBlock], today);
+  assert.strictEqual(todayOk.allowed, true, 'bloco de hoje pode ser iniciado');
+
+  // 5) Bloco atrasado (dia passado) também pode — é justamente o que precisa resolver.
+  const overdue = makeBlock({
+    id: 'atrasado', date: day(-2), startTime: '09:00', durationMinutes: 60, subject: subj,
+  });
+  const overdueOk = checkSequentialLock(overdue, [overdue, todayPending, futureBlock], today);
+  assert.strictEqual(overdueOk.allowed, true, 'bloco atrasado pode ser iniciado');
+})();
