@@ -45,7 +45,16 @@ const overlayVariants = { hidden: { opacity: 0 }, visible: { opacity: 1 } };
 const modalVariants = { hidden: { opacity: 0, scale: 0.95, y: 20 }, visible: { opacity: 1, scale: 1, y: 0 } };
 
 const toDateKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const clampHours = (v: number) => Math.min(12, Math.max(0, Math.round(v * 2) / 2));
+const clampHours = (v: number) => Math.min(12, Math.max(0, Math.round(v * 12) / 12));
+const hoursToHM = (v: number) => `${Math.floor(v + 0.0001)}:${String(Math.round((v - Math.floor(v + 0.0001)) * 60)).padStart(2, '0')}`;
+const parseHoursHM = (raw: string): number | null => {
+  const t = raw.trim().replace(',', ':').replace('h', ':');
+  const m = t.match(/^(\d{1,2})(?::([0-5]?\d))?$/);
+  if (!m) return null;
+  const total = Number(m[1]) + (m[2] ? Number(m[2]) / 60 : 0);
+  if (total > 12) return null;
+  return clampHours(total);
+};
 const timeToMinutesSafe = (t: string) => (t ? timeToMinutes(t) : 0);
 const isValidWindow = (start: string, end: string) => Boolean(start && end && timeToMinutesSafe(end) > timeToMinutesSafe(start));
 const windowHours = (start: string, end: string) => {
@@ -139,6 +148,7 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
   const [massDays, setMassDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [hasExamDate, setHasExamDate] = useState(false);
   const [showDayWindows, setShowDayWindows] = useState(false);
+  const [dayHourText, setDayHourText] = useState<Record<string, string>>({});
 
   const todayKey = useMemo(() => toDateKey(new Date()), []);
   const formattedSelectedPeriod = useMemo(() => {
@@ -562,16 +572,22 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                           </button>
                           <div className="flex-1 flex items-center gap-2">
                             <input
-                              type="number"
-                              min={0}
-                              max={12}
-                              step={0.5}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0:00"
+                              aria-label={`Horas de estudo em ${d.label}`}
                               disabled={!active}
-                              value={hours}
-                              onChange={(e) => updateDayHours(d.key, Number(e.target.value))}
+                              value={dayHourText[d.key] ? dayHourText[d.key] : hoursToHM(hours)}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                setDayHourText((prev) => ({ ...prev, [d.key]: raw }));
+                                const parsed = parseHoursHM(raw);
+                                if (parsed !== null) updateDayHours(d.key, parsed);
+                              }}
+                              onBlur={() => setDayHourText((prev) => ({ ...prev, [d.key]: '' }))}
                               className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 focus:border-violet-500 focus:outline-none disabled:opacity-40"
                             />
-                            <span className="text-xs text-slate-500 font-medium">h</span>
+                            <span className="text-xs text-slate-500 font-medium">h:min</span>
                           </div>
                           <button
                             type="button"

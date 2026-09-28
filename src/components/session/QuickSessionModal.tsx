@@ -21,6 +21,7 @@ import {
 import { cn, formatDuration, toLocalDateKey } from '@/lib/utils';
 import { Button, Card, ProgressBar } from '@/components/ui';
 import { useLocalStorage } from '@/hooks';
+import { setClientStoreEntries } from '@/hooks/useLocalStorage';
 import { reportCompletedSession, updateSessionSelfAssessment } from '@/lib/sessionSync';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import type { AnalyticsStore, Subject as FullSubject } from '@/types';
@@ -44,6 +45,35 @@ export default function QuickSessionModal({
   onClose,
   subjects,
 }: QuickSessionModalProps) {
+  const [fallbackSubjects, setFallbackSubjects] = useState<typeof subjects>([]);
+  const [loadingFallbackSubjects, setLoadingFallbackSubjects] = useState(false);
+  const effectiveSubjects = subjects.length > 0 ? subjects : fallbackSubjects;
+
+  // Sem matérias no store local (ex.: preview hidrata depois), tenta buscar o
+  // snapshot do servidor antes de declarar "vazio".
+  useEffect(() => {
+    if (!isOpen || subjects.length > 0 || fallbackSubjects.length > 0) return;
+    let alive = true;
+    setLoadingFallbackSubjects(true);
+    fetch('/api/progress')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!alive) return;
+        const remote = data?.data?.nexora_subjects;
+        if (Array.isArray(remote) && remote.length > 0) {
+          setClientStoreEntries({ nexora_subjects: remote });
+          setFallbackSubjects(remote as typeof subjects);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (alive) setLoadingFallbackSubjects(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [isOpen, subjects, fallbackSubjects.length]);
+
   const [sessionState, setSessionState] = useState<SessionState>('setup');
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
@@ -369,8 +399,27 @@ export default function QuickSessionModal({
                       <label className="block text-sm font-medium text-text-secondary mb-3">
                         Escolha a disciplina
                       </label>
+                      {effectiveSubjects.length === 0 && (
+                        <div className="rounded-xl border border-card-border bg-card-bg p-4 text-center">
+                          <p className="text-sm text-text-secondary">
+                            {loadingFallbackSubjects ? 'Carregando matérias…' : 'Nenhuma matéria cadastrada ainda.'}
+                          </p>
+                          {!loadingFallbackSubjects && (
+                            <Button
+                              variant="secondary"
+                              className="mt-3"
+                              onClick={() => {
+                                onClose();
+                                window.location.assign('/subjects');
+                              }}
+                            >
+                              Adicionar matérias
+                            </Button>
+                          )}
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {subjects.map((subject) => (
+                        {effectiveSubjects.map((subject) => (
                           <button
                             key={subject.id}
                             onClick={() => setSelectedSubject(subject)}

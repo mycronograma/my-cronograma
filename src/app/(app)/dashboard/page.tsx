@@ -24,7 +24,7 @@ import {
   Zap,
   Award,
 } from 'lucide-react';
-import { cn, formatDuration, formatDate, toLocalDateKey, parseBlockDate, getWeekStart, timeToMinutes, minutesToTime, getHoursForDate, getWeeklyGoalHours } from '@/lib/utils';
+import { cn, formatDuration, formatHoursDuration, formatDate, toLocalDateKey, parseBlockDate, getWeekStart, timeToMinutes, minutesToTime, getHoursForDate, getWeeklyGoalHours } from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { computeGamificationSnapshot } from '@/lib/progressSnapshot';
 import { applyBlockCompletionMetrics } from '@/services/adaptiveStudyIntelligence';
@@ -79,6 +79,9 @@ export default function Dashboard() {
   // Usa os mesmos defaults globais das demais telas: fallbacks divergentes
   // faziam o snapshot enviado ao servidor depender da página visitada primeiro.
   const [userSettings] = useLocalStorage<UserSettings>('nexora_user_settings', defaultSettings);
+  // Banner de "complete seu perfil" só faz sentido sem nenhum setup realizado:
+  // com matérias ou blocos já existentes, o perfil já foi configurado.
+  const setupConcluido = subjects.length > 0 || plannerBlocks.length > 0;
 
   // Mesma ordem usada no TopBar/MainLayout para o nome não divergir entre telas.
   const displayName =
@@ -392,7 +395,7 @@ const handleCompleteBlock = (
   return (
     <div className="space-y-6">
       <AnimatePresence>
-        {!hasCompletedWelcome && (
+        {!hasCompletedWelcome && !setupConcluido && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -441,7 +444,7 @@ const handleCompleteBlock = (
                     <div className="text-right">
                       <p className="text-xs text-text-muted">Meta Semanal</p>
                       <p className="text-sm font-bold text-neon-blue">
-                        {totalWeeklyHours}h / {weeklyGoalHours}h
+                        {formatHoursDuration(totalWeeklyHours)} / {formatHoursDuration(weeklyGoalHours)}
                       </p>
                     </div>
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-neon-blue to-neon-purple flex items-center justify-center">
@@ -547,9 +550,9 @@ const handleCompleteBlock = (
                     <p className="text-sm text-text-secondary">Horas de estudo esta semana</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-text-muted">Meta: {weeklyGoalHours}h</p>
+                    <p className="text-xs text-text-muted">Meta: {formatHoursDuration(weeklyGoalHours)}</p>
                     <p className="text-lg font-bold text-neon-blue">
-                      {totalWeeklyHours}h / {weeklyGoalHours}h
+                      {formatHoursDuration(totalWeeklyHours)} / {formatHoursDuration(weeklyGoalHours)}
                     </p>
                   </div>
                 </div>
@@ -557,7 +560,7 @@ const handleCompleteBlock = (
                 <div className="mt-3 flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-gradient-to-r from-neon-blue to-neon-purple" />
-                    <span className="text-text-secondary">Realizado</span>
+                    <span className="text-text-secondary">Percentual da meta</span>
                   </div>
                   <span className="font-medium text-text-primary">{weeklyProgressPercent}%</span>
                 </div>
@@ -647,7 +650,7 @@ const handleCompleteBlock = (
                   <div className="flex items-center justify-between text-sm mt-2">
                     <span className="text-text-secondary">Meta de hoje</span>
                     <span className="font-bold text-neon-purple">
-                      {dailyAnalytics.hours}h / {todayTargetHours}h
+                      {formatHoursDuration(dailyAnalytics.hours)} / {formatHoursDuration(todayTargetHours)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm mt-2">

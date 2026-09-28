@@ -242,6 +242,8 @@ export default function SettingsPage() {
   /** Mensagem do servidor quando gravou só localmente (banco indisponível). */
   const [persistWarning, setPersistWarning] = useState<string | null>(null);
   const [hasRemotePrefs, setHasRemotePrefs] = useState(false);
+  // weeklyHours só existe após o wizard/preset salvar preferências de verdade.
+  const hasLocalSetup = (studyPrefs?.weeklyHours ?? 0) > 0;
   const hasAttemptedRemotePrefs = useRef(false);
   const [pendingAlarmSound, setPendingAlarmSound] = useState<UserSettings['alarmSound']>(
     settings.alarmSound || 'pulse'
@@ -1119,7 +1121,7 @@ export default function SettingsPage() {
             transition={mobileStackTransition}
             className="relative z-0 mx-auto max-w-[560px] space-y-5"
           >
-            {!hasRemotePrefs && (
+            {!hasRemotePrefs && !hasLocalSetup && (
               <Card className="border-neon-cyan/40 bg-neon-cyan/5">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>

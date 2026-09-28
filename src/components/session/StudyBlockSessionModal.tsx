@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { X, Play, Pause, CheckCircle2, Coffee, SkipForward } from 'lucide-react';
 import { cn, formatDuration } from '@/lib/utils';
 import type { StudyBlock, UserSettings } from '@/types';
+import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { useLocalStorage } from '@/hooks';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { defaultSettings } from '@/lib/defaultSettings';
@@ -361,6 +362,17 @@ export default function StudyBlockSessionModal({
                 : <div className={cn('w-2 h-2 rounded-full', sessionState === 'running' && 'animate-pulse')} style={{ backgroundColor: accentColor }} />}
               {subjectName}
             </div>
+
+            {!block.isBreak && (
+              <div className="-mt-3 flex flex-col items-center gap-1">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-white/50">
+                  {getStudyBlockTypeLabel(block.type ?? 'AULA')}
+                </span>
+                {block.description ? (
+                  <span className="max-w-[260px] truncate text-xs text-white/40">{block.description}</span>
+                ) : null}
+              </div>
+            )}
 
             {/* Ring + timer */}
             <div className="relative flex items-center justify-center" style={{ width: RING_RADIUS * 2, height: RING_RADIUS * 2 }}>

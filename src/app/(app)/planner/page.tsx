@@ -206,7 +206,15 @@ export default function PlannerPage() {
   const [newBlockSubjectId, setNewBlockSubjectId] = useState('');
   const [newBlockType, setNewBlockType] = useState<StudyBlock['type']>('AULA');
   const [newBlockStart, setNewBlockStart] = useState('09:00');
-  const [newBlockDuration, setNewBlockDuration] = useState(60);
+  const configuredBlockMinutes = studyPrefs?.focusBlockMinutes ?? studyPrefs?.blockDurationMinutes ?? 50;
+  const [newBlockDuration, setNewBlockDuration] = useState(configuredBlockMinutes);
+  const durationOptions = useMemo(
+    () =>
+      Array.from(new Set([30, 45, configuredBlockMinutes, 60, 90, 120]))
+        .filter((v) => Number.isFinite(v) && v >= 15 && v <= 240)
+        .sort((a, b) => a - b),
+    [configuredBlockMinutes]
+  );
 
   // A11y dos três diálogos do planner: role/aria-modal, Escape e prisão de foco.
   const addBlockDialog = useDialogA11y({
@@ -426,9 +434,61 @@ export default function PlannerPage() {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    setBlocks((prev) => [...prev, newBlock]);
+    const breakLen = userSettings?.breakMinutes ?? 10;
+    setBlocks((prev) => {
+      const dayKey = toLocalDateKey(new Date(date));
+      const isSameDay = (b: StudyBlock) => toLocalDateKey(parseBlockDate(b.date) ?? b.date) === dayKey;
+      const dayStudy = prev
+        .filter((b) => isSameDay(b) && !b.isBreak)
+        .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+
+      // Anti-empilhamento: se o horário escolhido colide, encaixa após o último
+      // bloco conflitante + intervalo.
+      let start = startMins;
+      for (const b of dayStudy) {
+        const bStart = timeToMinutes(b.startTime);
+        if (start < bStart + b.durationMinutes && bStart < start + newBlockDuration) {
+          start = bStart + b.durationMinutes + breakLen;
+        }
+      }
+      const end = start + newBlockDuration;
+      const adjusted: StudyBlock = { ...newBlock, startTime: minutesToTime(start), endTime: minutesToTime(end) };
+
+      const abutting = dayStudy.find((b) => timeToMinutes(b.startTime) === end);
+      if (!abutting || breakLen <= 0) {
+        return [...prev, adjusted];
+      }
+
+      // Intervalo obrigatório entre o bloco novo e o seguinte encostado,
+      // empurrando a cadeia consecutiva do dia para abrir espaço.
+      const breakBlock: StudyBlock = {
+        ...adjusted,
+        id: `manual-break-${Date.now()}`,
+        isBreak: true,
+        durationMinutes: breakLen,
+        startTime: minutesToTime(end),
+        endTime: minutesToTime(end + breakLen),
+        description: 'Intervalo',
+        type: undefined,
+      };
+      let cursor = end + breakLen;
+      const shifted = prev.map((b) => {
+        if (!isSameDay(b) || b.isBreak) return b;
+        const bStart = timeToMinutes(b.startTime);
+        if (bStart < end) return b;
+        const delta = Math.max(0, cursor - bStart);
+        const moved = {
+          ...b,
+          startTime: minutesToTime(bStart + delta),
+          endTime: minutesToTime(bStart + delta + b.durationMinutes),
+        };
+        cursor = bStart + delta + b.durationMinutes + breakLen;
+        return moved;
+      });
+      return [...shifted, adjusted, breakBlock];
+    });
     setAddBlockModal({ open: false, date: null });
-    setPlannerNotice(`✅ Bloco de ${subject?.name || 'estudo'} adicionado!`);
+    setPlannerNotice(`✅ Bloco de ${subject?.name || 'estudo'} adicionado com intervalo automático!`);
   };
 
   const getBlockStatusInfo = (block: StudyBlock) => {
@@ -560,7 +620,7 @@ export default function PlannerPage() {
                     Duração
                   </label>
                   <div className="flex flex-wrap gap-1.5">
-                    {[30, 45, 60, 90, 120].map((d) => (
+                    {durationOptions.map((d) => (
                       <button
                         key={d}
                         onClick={() => setNewBlockDuration(d)}
