@@ -11,6 +11,7 @@ import { resolveScheduleConstraints } from '@/services/scheduleConstraints';
 import { buildSubjectPerformanceProfiles, inferUserLearningLevel } from '@/services/adaptiveStudyIntelligence';
 import { useLocalStorage } from '@/hooks';
 import { useBacklogRescheduler } from '@/hooks/useBacklogRescheduler';
+import { planBlockMove } from '@/services/blockMove';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import type {
   AnalyticsStore,
@@ -239,6 +240,10 @@ export default function PlannerPage() {
     date: null,
   });
   const [newBlockSubjectId, setNewBlockSubjectId] = useState('');
+  // #13: o modal passou a oferecer dois fluxos além de "novo bloco" — realocar
+  // (move o bloco que já existe) e adiantar (puxa o bloco de um dia futuro).
+  const [blockModalMode, setBlockModalMode] = useState<'novo' | 'realocar' | 'adiantar'>('novo');
+  const [blockMovePreview, setBlockMovePreview] = useState<string | null>(null);
   const [newBlockType, setNewBlockType] = useState<StudyBlock['type']>('AULA');
   const [newBlockStart, setNewBlockStart] = useState('09:00');
   const configuredBlockMinutes = studyPrefs?.focusBlockMinutes ?? studyPrefs?.blockDurationMinutes ?? 50;
@@ -446,6 +451,60 @@ export default function PlannerPage() {
     setNewBlockDuration(60);
   };
 
+  /**
+   * #13: prévia do impacto — qual bloco vai sair de onde e para onde, antes de
+   * a pessoa confirmar. Só existe nos modos de movimentação.
+   */
+  const movePreviewText = useMemo(() => {
+    if (blockModalMode === 'novo') return null;
+    if (!addBlockModal.date || !newBlockSubjectId) return null;
+
+    const plan = planBlockMove({
+      blocks,
+      subjects: activeSubjects,
+      subjectId: newBlockSubjectId,
+      targetDate: addBlockModal.date,
+      mode: blockModalMode === 'adiantar' ? 'adiantar' : 'realocar',
+      preferredStart: newBlockStart,
+      breakMinutes: userSettings?.breakMinutes ?? 10,
+    });
+
+    if (!plan.ok) return null;
+    const origem = new Date(`${plan.fromDateKey}T00:00:00`).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+    });
+    return `sai de ${origem} → ${plan.placedStart} · bloco movido, não duplicado`;
+  }, [blockModalMode, addBlockModal.date, newBlockSubjectId, blocks, activeSubjects, newBlockStart, userSettings?.breakMinutes]);
+
+  /** #13: realoca/adianta um bloco existente (nunca cria um novo). */
+  const handleSaveBlockMove = () => {
+    const date = addBlockModal.date;
+    if (!date || !newBlockSubjectId) return;
+
+    const plan = planBlockMove({
+      blocks,
+      subjects: activeSubjects,
+      subjectId: newBlockSubjectId,
+      targetDate: date,
+      mode: blockModalMode === 'adiantar' ? 'adiantar' : 'realocar',
+      preferredStart: newBlockStart,
+      breakMinutes: userSettings?.breakMinutes ?? 10,
+    });
+
+    if (!plan.ok || !plan.blocks) {
+      setPlannerNotice(`⚠️ ${plan.reason ?? 'Não foi possível mover o bloco.'}`);
+      return;
+    }
+
+    setBlocks(() => plan.blocks as StudyBlock[]);
+    setPlannerNotice(
+      `✅ ${plan.subjectName} ${blockModalMode === 'adiantar' ? 'adiantado' : 'realocado'} para ${plan.toDateKey} às ${plan.placedStart}.`
+    );
+    setBlockMovePreview(null);
+    setAddBlockModal({ open: false, date: null });
+  };
+
   const handleSaveNewBlock = () => {
     const date = addBlockModal.date;
     if (!date || !newBlockSubjectId) return;
@@ -558,7 +617,13 @@ export default function PlannerPage() {
                   <Plus className="h-5 w-5 text-neon-purple" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-text-primary">Novo Bloco de Estudo</h3>
+                  <h3 className="text-lg font-bold text-text-primary">
+                    {blockModalMode === 'novo'
+                      ? 'Novo Bloco de Estudo'
+                      : blockModalMode === 'adiantar'
+                        ? 'Adiantar matéria'
+                        : 'Realocar matéria'}
+                  </h3>
                   <p className="text-xs text-text-muted">
                     {addBlockModal.date?.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
                   </p>
@@ -571,6 +636,42 @@ export default function PlannerPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {/* #13: três formas de mexer no dia */}
+            <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl border border-card-border bg-row-soft p-1">
+              {(
+                [
+                  { id: 'novo', label: 'Novo' },
+                  { id: 'realocar', label: 'Realocar' },
+                  { id: 'adiantar', label: 'Adiantar' },
+                ] as const
+              ).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => {
+                    setBlockModalMode(option.id);
+                    setBlockMovePreview(null);
+                  }}
+                  className={cn(
+                    'h-9 rounded-lg text-sm font-medium transition-colors',
+                    blockModalMode === option.id
+                      ? 'bg-card-bg text-text-primary shadow-sm border border-card-border'
+                      : 'text-text-muted hover:text-text-secondary'
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            {blockModalMode !== 'novo' && (
+              <p className="mb-4 rounded-xl border border-warning bg-warning-soft p-3 text-xs text-warning-strong">
+                {blockModalMode === 'adiantar'
+                  ? 'Puxa para este dia um bloco que está em um dia seguinte. O bloco original muda de lugar — não é criada uma segunda matéria.'
+                  : 'Move para este dia um bloco que já existe em outro dia. Nada é duplicado.'}
+              </p>
+            )}
 
             <div className="space-y-4">
               {/* Subject */}
@@ -687,7 +788,15 @@ export default function PlannerPage() {
                   >
                     <p className="text-xs text-text-muted mb-1">Preview</p>
                     <p className="font-bold text-sm" style={{ color: s.color }}>{s.name}</p>
-                    <p className="text-xs text-text-secondary mt-0.5">{newBlockStart} – {endTime} · {newBlockDuration} min</p>
+                    {blockModalMode === 'novo' ? (
+                      <p className="text-xs text-text-secondary mt-0.5">
+                        {newBlockStart} – {endTime} · {newBlockDuration} min
+                      </p>
+                    ) : (
+                      <p className="text-xs text-text-secondary mt-0.5">
+                        {movePreviewText ?? 'Nenhum bloco disponível para mover.'}
+                      </p>
+                    )}
                   </div>
                 ) : null;
               })()}
@@ -701,12 +810,20 @@ export default function PlannerPage() {
                 Cancelar
               </button>
               <button
-                onClick={handleSaveNewBlock}
+                onClick={blockModalMode === 'novo' ? handleSaveNewBlock : handleSaveBlockMove}
                 disabled={!newBlockSubjectId}
                 className="flex-1 h-11 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
               >
-                <Plus className="h-4 w-4" />
-                Adicionar Bloco
+                {blockModalMode === 'novo' ? (
+                  <>
+                    <Plus className="h-4 w-4" />
+                    Adicionar Bloco
+                  </>
+                ) : blockModalMode === 'adiantar' ? (
+                  'Adiantar para este dia'
+                ) : (
+                  'Mover para este dia'
+                )}
               </button>
             </div>
           </motion.div>
