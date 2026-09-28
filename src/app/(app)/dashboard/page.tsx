@@ -16,6 +16,7 @@ import {
   Coffee,
   ChevronRight,
   Calendar,
+  CalendarDays,
   TrendingUp,
   Flame,
   Target,
@@ -65,6 +66,7 @@ export default function Dashboard() {
   const router = useRouter();
   const { data: session } = useSession();
   const [isSuggestionApplied, setIsSuggestionApplied] = useState(false);
+  const [isSuggestionDismissed, setIsSuggestionDismissed] = useState(false);
   const [showAllTips, setShowAllTips] = useState(false);
   const { hasCompletedWelcome } = useOnboarding();
   const [plannerBlocks, setPlannerBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
@@ -200,6 +202,9 @@ export default function Dashboard() {
     );
   }, [currentTime, todayBlocks]);
 
+  /** Quantas horas a sugestão adiciona na meta da matéria mais fraca. */
+  const SUGGESTION_EXTRA_HOURS = 2;
+
   const aiSuggestion = useMemo(() => {
     if (subjects.length === 0) return null;
     
@@ -220,11 +225,20 @@ export default function Dashboard() {
     const weakest = subjectPerformance[0];
     if (!weakest) return null;
     
+    // Números concretos: o usuário precisa saber o que muda antes de clicar.
+    const currentTarget = weakest.subject.targetHours || 0;
+    const suggestedTarget = Number((currentTarget + SUGGESTION_EXTRA_HOURS).toFixed(2));
+    const errorPercent = Math.round((1 - weakest.accuracyRate) * 100);
+
     return {
-      title: 'Reforço com base na IA',
+      title: `Reforçar ${weakest.subject.name}`,
       text: `${weakest.subject.name} - ${weakest.subject.area || 'Tópico principal'}`,
-      reason: `Baixo desempenho recente (${Math.round((1 - weakest.accuracyRate) * 100)}% de erros estimados)`,
-      action: '+2h/semana na meta',
+      reason: `${errorPercent}% de erros estimados${weakest.daysWithoutStudy > 3 ? ` e ${weakest.daysWithoutStudy} dias sem estudar` : ''}`,
+      action: `+${SUGGESTION_EXTRA_HOURS}h na meta de ${weakest.subject.name}`,
+      currentTarget,
+      suggestedTarget,
+      errorPercent,
+      daysWithoutStudy: weakest.daysWithoutStudy,
       priority: 'high',
       subjectId: weakest.subject.id,
       subjectName: weakest.subject.name,
@@ -254,7 +268,7 @@ export default function Dashboard() {
     setSubjects((prev) =>
       prev.map((subject) =>
         subject.id === aiSuggestion.subjectId
-          ? { ...subject, targetHours: Number((subject.targetHours + 2).toFixed(2)) }
+          ? { ...subject, targetHours: aiSuggestion.suggestedTarget }
           : subject
       )
     );
@@ -568,7 +582,7 @@ const handleCompleteBlock = (
               </Card>
             </motion.div>
 
-            {aiSuggestion && (
+            {aiSuggestion && !isSuggestionDismissed && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -587,31 +601,77 @@ const handleCompleteBlock = (
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-heading font-bold text-text-primary mb-0.5 text-base">
-                      {isSuggestionApplied ? "Sugestão Aplicada!" : "Sugestão Adaptativa"}
+                      {isSuggestionApplied ? `Meta de ${aiSuggestion.subjectName} aumentada` : `Reforçar ${aiSuggestion.subjectName}`}
                     </h3>
-                    
+
                     {isSuggestionApplied ? (
-                      <p className="text-sm text-emerald-400/90 mt-2 leading-relaxed">
-                        A meta semanal de {aiSuggestion.subjectName} foi aumentada em 2 horas. Gere um
-                        novo cronograma na Agenda Inteligente para redistribuir as sessões.
-                      </p>
-                    ) : (
                       <>
-                        <p className="text-sm text-text-secondary mb-3 leading-relaxed">
-                          <strong className="text-amber-400/90 font-medium">{aiSuggestion.title}</strong><br/>
-                          {aiSuggestion.text}
+                        <p className="mt-1.5 text-sm text-text-secondary leading-relaxed">
+                          Meta semanal de {aiSuggestion.subjectName}:{' '}
+                          <span className="text-text-muted line-through">
+                            {formatHoursDuration(aiSuggestion.currentTarget)}
+                          </span>{' '}
+                          →{' '}
+                          <strong className="text-emerald-400">
+                            {formatHoursDuration(aiSuggestion.suggestedTarget)}
+                          </strong>
+                          .
                         </p>
-                        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mt-4 pt-3 border-t border-amber-500/10">
-                          <span className="text-xs text-text-muted leading-tight max-w-[200px]">
-                            Motivo: {aiSuggestion.reason}
-                          </span>
+                        <p className="mt-2 text-xs text-text-muted leading-relaxed">
+                          As próximas sessões desta matéria já usam a nova meta. Para redistribuir
+                          toda a semana, gere o cronograma novamente.
+                        </p>
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                           <Button
                             variant="secondary"
                             size="sm"
-                            className="text-xs h-8 px-4 w-full xl:w-auto bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 border border-amber-500/20 transition-all flex-shrink-0 whitespace-nowrap"
-                            onClick={handleApplySuggestion}
+                            className="w-full sm:w-auto"
+                            onClick={() => router.push('/planner')}
+                            leftIcon={<CalendarDays className="w-3.5 h-3.5" />}
                           >
-                            {aiSuggestion.action}
+                            Gerar cronograma agora
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="mt-1.5 text-sm text-text-secondary leading-relaxed">
+                          Você erra cerca de{' '}
+                          <strong className="text-amber-300">{aiSuggestion.errorPercent}%</strong>{' '}
+                          em {aiSuggestion.subjectName}
+                          {aiSuggestion.daysWithoutStudy > 3
+                            ? ` e está há ${aiSuggestion.daysWithoutStudy} dias sem estudar essa matéria`
+                            : ''}
+                          .
+                        </p>
+                        <p className="mt-1.5 text-xs text-text-muted leading-relaxed">
+                          Sugestão: passar a meta semanal de{' '}
+                          <span className="text-text-secondary">
+                            {formatHoursDuration(aiSuggestion.currentTarget)}
+                          </span>{' '}
+                          para{' '}
+                          <span className="text-amber-300">
+                            {formatHoursDuration(aiSuggestion.suggestedTarget)}
+                          </span>
+                          .
+                        </p>
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="w-full sm:w-auto bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 border border-amber-500/30"
+                            onClick={handleApplySuggestion}
+                            leftIcon={<Zap className="w-3.5 h-3.5" />}
+                          >
+                            Aumentar {SUGGESTION_EXTRA_HOURS}h na meta
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full text-text-muted hover:text-text-secondary sm:w-auto"
+                            onClick={() => setIsSuggestionDismissed(true)}
+                          >
+                            Dispensar
                           </Button>
                         </div>
                       </>

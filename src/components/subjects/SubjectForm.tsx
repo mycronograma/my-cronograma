@@ -2,33 +2,85 @@
 
 /**
  * SubjectForm Component
- * Formulário para criar/editar disciplinas
+ * Formulário para criar/editar disciplinas.
+ *
+ * #15 — a meta semanal deixou de ser um número solto que o usuário precisa
+ * adivinhar: ela é calculada a partir da prioridade (60%) e da dificuldade
+ * (40%) em relação às outras matérias, sobre a carga semanal disponível.
+ * Mexeu nos sliders → a meta acompanha. Digitou um valor → vira manual e
+ * avisa, com botão para voltar ao automático.
+ *
+ * O campo de horas usa o formato h:min (8:30), nunca decimal (8.5).
  */
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Palette } from 'lucide-react';
-import { cn, subjectColors } from '@/lib/utils';
-import { Button, Card } from '@/components/ui';
+import { X, Palette, Info, RotateCcw } from 'lucide-react';
+import { cn, subjectColors, formatHoursDuration } from '@/lib/utils';
+import { Button, Card, Badge } from '@/components/ui';
 import type { Subject } from '@/types';
 
 interface SubjectFormProps {
   subject?: Subject;
   onSubmit: (data: Partial<Subject>) => void;
   onCancel: () => void;
+  /** Carga semanal disponível (horas). Sem ela, usa-se a soma das metas atuais. */
+  weeklyAvailableHours?: number;
+  /** Soma dos pesos das OUTRAS matérias (para dividir a carga proporcionalmente). */
+  peerWeightSum?: number;
 }
+
+/** Peso de uma matéria: prioridade pesa mais que dificuldade. */
+export function subjectWeight(priority: number, difficulty: number): number {
+  const p = Math.min(10, Math.max(1, priority));
+  const d = Math.min(10, Math.max(1, difficulty));
+  return (0.6 * p + 0.4 * d) / 10; // 0.1 (mínimo) .. 1 (máximo)
+}
+
+const clampHours = (v: number) => Math.min(40, Math.max(0.5, Math.round(v * 12) / 12));
+const hoursToHM = (v: number) => {
+  const h = Math.floor(v + 1e-6);
+  const m = Math.round((v - h) * 60);
+  return `${h}:${String(m).padStart(2, '0')}`;
+};
+const parseHoursHM = (raw: string): number | null => {
+  const t = raw.trim().replace(',', ':').replace('h', ':');
+  const m = t.match(/^(\d{1,2})(?::([0-5]?\d))?$/);
+  if (!m) return null;
+  const total = Number(m[1]) + (m[2] ? Number(m[2]) / 60 : 0);
+  if (total <= 0 || total > 40) return null;
+  return clampHours(total);
+};
 
 export default function SubjectForm({
   subject,
   onSubmit,
   onCancel,
+  weeklyAvailableHours,
+  peerWeightSum = 0,
 }: SubjectFormProps) {
   const [name, setName] = useState(subject?.name || '');
   const [color, setColor] = useState(subject?.color || subjectColors[0]);
   const [priority, setPriority] = useState(subject?.priority || 5);
   const [difficulty, setDifficulty] = useState(subject?.difficulty || 5);
   const [targetHours, setTargetHours] = useState(subject?.targetHours || 10);
+  const [manualTarget, setManualTarget] = useState(false);
+  const [targetText, setTargetText] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Meta automática: fatia da carga semanal proporcional ao peso da matéria.
+  const autoTarget = useMemo(() => {
+    const capacity = weeklyAvailableHours && weeklyAvailableHours > 0 ? weeklyAvailableHours : 20;
+    const weight = subjectWeight(priority, difficulty);
+    const totalWeight = weight + Math.max(0, peerWeightSum);
+    const share = totalWeight > 0 ? weight / totalWeight : 1;
+    return clampHours(capacity * share);
+  }, [priority, difficulty, weeklyAvailableHours, peerWeightSum]);
+
+  // Enquanto está no automático, a meta segue os sliders.
+  useEffect(() => {
+    if (!manualTarget) setTargetHours(autoTarget);
+  }, [autoTarget, manualTarget]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,14 +91,12 @@ export default function SubjectForm({
       setError('Informe um nome com pelo menos 2 caracteres.');
       return;
     }
-
     if (trimmedName.length > 80) {
       setError('Use um nome menor para a disciplina.');
       return;
     }
-
-    if (!Number.isFinite(safeTargetHours) || safeTargetHours < 1 || safeTargetHours > 40) {
-      setError('A meta semanal precisa estar entre 1 e 40 horas.');
+    if (!Number.isFinite(safeTargetHours) || safeTargetHours < 0.5 || safeTargetHours > 40) {
+      setError('A meta semanal precisa estar entre 0h30 e 40h.');
       return;
     }
 
@@ -58,6 +108,8 @@ export default function SubjectForm({
       targetHours: safeTargetHours,
     });
   };
+
+  const isAuto = !manualTarget;
 
   return (
     <motion.div
@@ -78,13 +130,13 @@ export default function SubjectForm({
           {/* Botão fechar */}
           <button
             onClick={onCancel}
-            className="absolute top-4 right-4 p-2 rounded-lg hover:bg-white/5 text-text-muted hover:text-white transition-colors"
+            className="absolute top-4 right-4 p-2 rounded-lg hover:bg-surface-soft text-text-muted hover:text-text-primary transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
 
           {/* Cabeçalho */}
-          <h2 className="text-xl font-heading font-bold text-white mb-6">
+          <h2 className="text-xl font-heading font-bold text-text-primary mb-6">
             {subject ? 'Editar Disciplina' : 'Nova Disciplina'}
           </h2>
 
@@ -146,6 +198,9 @@ export default function SubjectForm({
                 <span>Baixa</span>
                 <span>Alta</span>
               </div>
+              <p className="mt-1.5 text-[11px] text-text-muted">
+                O quanto essa matéria vale para o seu objetivo (peso na prova, urgência).
+              </p>
             </div>
 
             {/* Dificuldade */}
@@ -165,28 +220,74 @@ export default function SubjectForm({
                 <span>Fácil</span>
                 <span>Difícil</span>
               </div>
+              <p className="mt-1.5 text-[11px] text-text-muted">
+                O quanto você erra hoje. Não é a mesma coisa que prioridade: matéria fácil e muito
+                cobrada pode ser prioridade alta.
+              </p>
             </div>
 
-            {/* Meta de Horas */}
+            {/* Meta semanal */}
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                Meta Semanal (horas)
-              </label>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-text-secondary">
+                  Meta semanal (h:min)
+                </label>
+                {isAuto ? (
+                  <Badge variant="purple" size="sm">
+                    automática
+                  </Badge>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualTarget(false);
+                      setTargetText('');
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-neon-blue hover:underline"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Voltar ao automático
+                  </button>
+                )}
+              </div>
               <input
-                type="number"
-                min="1"
-                max="40"
-                value={targetHours}
+                type="text"
+                inputMode="numeric"
+                placeholder="0:00"
+                aria-label="Meta semanal em horas e minutos"
+                value={targetText ? targetText : hoursToHM(targetHours)}
                 onChange={(e) => {
-                  setTargetHours(Number(e.target.value));
+                  const raw = e.target.value;
+                  setTargetText(raw);
+                  const parsed = parseHoursHM(raw);
+                  if (parsed !== null) {
+                    setTargetHours(parsed);
+                    if (parsed !== autoTarget) setManualTarget(true);
+                  }
                   if (error) setError(null);
                 }}
+                onBlur={() => setTargetText('')}
                 className="input-field"
                 required
               />
+              <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-text-muted">
+                <Info className="mt-0.5 w-3 h-3 shrink-0" />
+                {isAuto ? (
+                  <span>
+                    Calculada: prioridade {priority} (60%) + dificuldade {difficulty} (40%) definem
+                    sua fatia das {formatHoursDuration(weeklyAvailableHours || 20)} semanais. Mexa
+                    nos sliders e a meta acompanha.
+                  </span>
+                ) : (
+                  <span>
+                    Valor fixado por você ({formatHoursDuration(targetHours)}). O automático sugeriria{' '}
+                    {formatHoursDuration(autoTarget)}.
+                  </span>
+                )}
+              </p>
             </div>
 
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <p className="text-sm text-danger">{error}</p>}
 
             {/* Ações */}
             <div className="flex flex-col gap-3 pt-4 sm:flex-row">

@@ -5,24 +5,26 @@
  * Análises abrangentes de produtividade e visualizações
  */
 
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useMemo, useEffect, useState } from 'react';
 import {
   Clock,
+  ClipboardList,
   Target,
   TrendingUp,
   Brain,
   Calendar,
   Award,
 } from 'lucide-react';
-import { StatsCard, Card } from '@/components/ui';
+import { StatsCard, Card, Button } from '@/components/ui';
 import { useLocalStorage } from '@/hooks';
 import {
   ProductivityChart,
   SubjectDistribution,
   ActivityHeatmap,
 } from '@/components/analytics';
-import { computeIntelligentAnalyticsSummary } from '@/services/adaptiveStudyIntelligence';
+import { applyQuestionBatch, computeIntelligentAnalyticsSummary } from '@/services/adaptiveStudyIntelligence';
+import QuestionLogModal from '@/components/analytics/QuestionLogModal';
 import {
   buildCompletedHoursByDate,
   buildCompletedSessionsByDate,
@@ -48,16 +50,39 @@ const itemVariants = {
 };
 
 export default function AnalyticsPage() {
-  const [analytics] = useLocalStorage<AnalyticsStore>('nexora_analytics', emptyAnalytics);
+  const [analytics, setAnalytics] = useLocalStorage<AnalyticsStore>('nexora_analytics', emptyAnalytics);
   const [subjects] = useLocalStorage<Subject[]>('nexora_subjects', []);
   const [plannerBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
   const [mounted, setMounted] = useState(false);
+  const [showQuestionLog, setShowQuestionLog] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const now = useMemo(() => (mounted ? new Date() : null), [mounted]);
+
+  const handleSaveQuestionLog = (payload: {
+    subjectId: string;
+    totalQuestions: number;
+    correctAnswers: number;
+    date: Date;
+    sessionType: 'EXERCICIOS' | 'SIMULADO';
+  }) => {
+    const subject = subjects.find((s) => s.id === payload.subjectId);
+    if (!subject) return;
+    setAnalytics((prev) =>
+      applyQuestionBatch({
+        analytics: prev,
+        subject,
+        totalQuestions: payload.totalQuestions,
+        correctAnswers: payload.correctAnswers,
+        date: payload.date,
+        sessionType: payload.sessionType,
+      })
+    );
+    setShowQuestionLog(false);
+  };
 
   const completedStats = useMemo(() => {
     const hoursByDate = buildCompletedHoursByDate(plannerBlocks);
@@ -202,6 +227,10 @@ export default function AnalyticsPage() {
         )
       : 0);
   const avgAccuracy = Math.round((intelligentSummary.avgAccuracyRate || 0) * 100);
+  const totalLoggedQuestions = Object.values(analytics.performance?.subjects ?? {}).reduce(
+    (sum, profile) => sum + (profile.questionsTotal ?? 0),
+    0
+  );
 
   if (!mounted) {
     return (
@@ -287,12 +316,23 @@ export default function AnalyticsPage() {
 
       <motion.div variants={itemVariants} className="min-w-0">
         <Card className="border-neon-blue/20 bg-neon-blue/5">
-          <p className="text-sm text-text-secondary">
-            <span className="font-medium text-white">Sobre o acerto:</span>{' '}
-            por enquanto é uma estimativa do app para exercícios, revisões e simulados concluídos.
-            Quando a sessão tiver registro de questões certas e totais, esse indicador passa a representar
-            o acerto real.
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-text-secondary">
+              <span className="font-medium text-text-primary">Sobre o acerto:</span>{' '}
+              {totalLoggedQuestions > 0
+                ? `calculado com ${totalLoggedQuestions} questões que você registrou.`
+                : 'ainda é uma estimativa: registre as questões que você resolve para o número ser real.'}
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full shrink-0 sm:w-auto"
+              onClick={() => setShowQuestionLog(true)}
+              leftIcon={<ClipboardList className="w-4 h-4" />}
+            >
+              Registrar questões
+            </Button>
+          </div>
         </Card>
       </motion.div>
 
@@ -396,6 +436,16 @@ export default function AnalyticsPage() {
           </div>
         </Card>
       </motion.div>
+
+      <AnimatePresence>
+        {showQuestionLog && subjects.length > 0 && (
+          <QuestionLogModal
+            subjects={subjects}
+            onClose={() => setShowQuestionLog(false)}
+            onSave={handleSaveQuestionLog}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

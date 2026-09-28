@@ -292,6 +292,11 @@ export interface SubjectPerformanceProfile {
   weightedNeedScore?: number;
   trend7d?: number;
   topicProgress?: Record<string, TopicProgress>;
+  /** Contadores acumulados de questões (alimentam os cards de acerto). */
+  questionsTotal?: number;
+  questionsCorrect?: number;
+  /** Último registro avulso de questões (sem sessão de estudo). */
+  lastQuestionLogAt?: string;
 }
 
 export interface PerformanceMetricsSnapshot {
@@ -316,6 +321,8 @@ export interface PerformanceMetricsSnapshot {
 export interface DailyAnalyticsRecord {
   hours: number;
   sessions: number;
+  /** Questões respondidas no dia (registro avulso ou pela sessão). */
+  questions?: number;
   focusScoreAvg?: number;
   productivityScoreAvg?: number;
   accuracyRateAvg?: number;

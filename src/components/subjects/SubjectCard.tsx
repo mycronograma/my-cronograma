@@ -7,6 +7,7 @@
 
 import {
   BookOpen,
+  ClipboardList,
   Clock,
   Target,
   Edit,
@@ -30,6 +31,8 @@ interface SubjectCardProps {
   subject: Subject;
   onEdit: (subject: Subject) => void;
   onDelete: (subjectId: string) => void;
+  /** Abre o registro avulso de questões para esta matéria (#10). */
+  onLogQuestions?: (subject: Subject) => void;
 }
 
 const difficultyLabels = ['Muito Fácil', 'Fácil', 'Médio', 'Difícil', 'Muito Difícil'];
@@ -38,6 +41,7 @@ export default function SubjectCard({
   subject,
   onEdit,
   onDelete,
+  onLogQuestions,
 }: SubjectCardProps) {
   const completionPercent = percentage(subject.completedHours, subject.targetHours);
   const difficultyLabel = difficultyLabels[Math.floor((subject.difficulty - 1) / 2)] || 'Médio';
@@ -301,6 +305,20 @@ export default function SubjectCard({
                           {subject.averageScore > 0 ? `${subject.averageScore}%` : '--'}
                         </span>
                       </div>
+                      {onLogQuestions && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsDetailsOpen(false);
+                            onLogQuestions(subject);
+                          }}
+                          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-card-border px-2 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:border-neon-blue/40 hover:text-neon-blue"
+                        >
+                          <ClipboardList className="w-3 h-3" />
+                          Registrar questões
+                        </button>
+                      )}
                     </div>
                   </div>
 

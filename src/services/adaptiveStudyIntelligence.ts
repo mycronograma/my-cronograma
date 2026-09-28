@@ -623,3 +623,98 @@ export function buildScheduleComputationFingerprint(input: unknown): string {
 
   return JSON.stringify(stable(input));
 }
+
+/**
+ * Registra um lote de questões respondidas (fora de uma sessão de blocos).
+ *
+ * #10 — os cards "Acerto" e "Mapa de Atividades" não tinham de onde vir: a
+ * acurácia só existia quando o usuário respondia dentro do cronômetro. Este
+ * registro avulso alimenta o perfil da matéria com contadores reais, para a
+ * taxa de acerto ser recalculada de verdade (e não estimada).
+ */
+export function applyQuestionBatch(params: {
+  analytics: AnalyticsStore;
+  subject: Subject;
+  totalQuestions: number;
+  correctAnswers: number;
+  date?: Date;
+  sessionType?: PerformanceMetricsSnapshot['sessionType'];
+}): AnalyticsStore {
+  const { analytics, subject } = params;
+  const now = params.date ?? new Date();
+  const totalQuestions = Math.max(0, Math.round(params.totalQuestions));
+  if (totalQuestions <= 0) return analytics;
+
+  const correctAnswers = Math.min(totalQuestions, Math.max(0, Math.round(params.correctAnswers)));
+  const accuracyRate = correctAnswers / totalQuestions;
+  const dateKey = toLocalDateKey(now);
+  const sessionType = params.sessionType ?? 'EXERCICIOS';
+
+  const performance = analytics.performance ?? { subjects: {}, sessionHistory: [], topicProgress: {} };
+  const existing = performance.subjects[subject.id];
+
+  const prevTotal = existing?.questionsTotal ?? 0;
+  const prevCorrect = existing?.questionsCorrect ?? 0;
+  const nextTotal = prevTotal + totalQuestions;
+  const nextCorrect = prevCorrect + correctAnswers;
+
+  const snapshot: PerformanceMetricsSnapshot = {
+    date: now.toISOString(),
+    subjectId: subject.id,
+    sessionType,
+    minutes: 0,
+    correctAnswers,
+    totalQuestions,
+    accuracyRate,
+    errorRate: 1 - accuracyRate,
+    accuracyEstimated: false,
+    focusScore: existing?.averageFocusScore ?? 0,
+    productivityScore: existing?.averageProductivityScore ?? 0,
+    difficultyScore: clamp(subject.difficulty || 5, 1, 10),
+  };
+
+  const profile: SubjectPerformanceProfile = {
+    ...(existing ?? {
+      subjectId: subject.id,
+      subjectName: subject.name,
+      area: subject.area,
+      accuracyRate,
+      errorRate: 1 - accuracyRate,
+      averageFocusScore: 0,
+      averageProductivityScore: 0,
+      averageDifficultyScore: clamp(subject.difficulty || 5, 1, 10),
+      totalSessions: 0,
+      lessonSessions: 0,
+      exerciseSessions: 0,
+      reviewSessions: 0,
+      simulatedSessions: 0,
+    }),
+    accuracyRate,
+    errorRate: 1 - accuracyRate,
+    questionsTotal: nextTotal,
+    questionsCorrect: nextCorrect,
+    lastQuestionLogAt: now.toISOString(),
+    lastStudiedAt: now.toISOString(),
+    exerciseSessions:
+      (existing?.exerciseSessions ?? 0) + (sessionType === 'EXERCICIOS' ? 1 : 0),
+    simulatedSessions:
+      (existing?.simulatedSessions ?? 0) + (sessionType === 'SIMULADO' ? 1 : 0),
+  };
+
+  return {
+    ...analytics,
+    performance: {
+      ...performance,
+      subjects: { ...performance.subjects, [subject.id]: profile },
+      sessionHistory: [...(performance.sessionHistory ?? []), snapshot].slice(-500),
+      lastUpdatedAt: now.toISOString(),
+    },
+    daily: {
+      ...analytics.daily,
+      [dateKey]: {
+        ...(analytics.daily[dateKey] ?? { hours: 0, sessions: 0 }),
+        questions: (analytics.daily[dateKey]?.questions ?? 0) + totalQuestions,
+      },
+    },
+  };
+}

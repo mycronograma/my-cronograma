@@ -5,10 +5,12 @@
  * Gerenciar disciplinas com prioridade e dificuldade
  */
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clearClientStoreKeys } from '@/hooks/useLocalStorage';
 import { motion, AnimatePresence } from 'framer-motion';
+import QuestionLogModal from '@/components/analytics/QuestionLogModal';
+import { applyQuestionBatch } from '@/services/adaptiveStudyIntelligence';
 import {
   Plus,
   RefreshCw,
@@ -27,7 +29,14 @@ import {
   upgradeSubjectsToOfficialEnemStructure,
 } from '@/lib/enemCatalog';
 import { getCanonicalSubjectName, getCuratedPresetById } from '@/lib/presetCatalog';
-import type { PresetWizardAnswers, StudyBlock, Subject, StudyPreferences, UserSettings } from '@/types';
+import type {
+  PresetWizardAnswers,
+  StudyBlock,
+  Subject,
+  StudyPreferences,
+  UserSettings,
+  AnalyticsStore,
+} from '@/types';
 import { defaultSettings } from '@/lib/defaultSettings';
 import { computeStudyPreferences } from '@/services/presetConfigurator';
 
@@ -128,6 +137,8 @@ function SubjectsPageContent() {
   });
   const [userSettings, setUserSettings] = useLocalStorage<UserSettings>('nexora_user_settings', defaultSettings);
   const [, setPlannerBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
+  // Gravável: o registro avulso de questões (#10) escreve no perfil de acerto.
+  const [, setAnalytics] = useLocalStorage<AnalyticsStore>('nexora_analytics', { daily: {} });
   const [, setScheduleRange] = useLocalStorage<{ startDate: string; endDate: string } | null>(
     'nexora_schedule_range',
     null
@@ -336,6 +347,8 @@ function SubjectsPageContent() {
 
   // Handler para importar preset
   const [presetSwitchConfirm, setPresetSwitchConfirm] = useState(false);
+  const [showQuestionLog, setShowQuestionLog] = useState(false);
+  const [questionLogSubject, setQuestionLogSubject] = useState<Subject | null>(null);
 
   // Trocar de predefinição com matérias já cadastradas zera o progresso,
   // então pede confirmação antes de abrir o seletor.
@@ -359,6 +372,29 @@ function SubjectsPageContent() {
     setPlannerBlocks([]);
     setPresetSwitchConfirm(false);
     setShowPresetSelector(true);
+  };
+
+  const handleSaveQuestionLog = (payload: {
+    subjectId: string;
+    totalQuestions: number;
+    correctAnswers: number;
+    date: Date;
+    sessionType: 'EXERCICIOS' | 'SIMULADO';
+  }) => {
+    const subject = subjects.find((s) => s.id === payload.subjectId);
+    if (!subject) return;
+    setAnalytics((prev) =>
+      applyQuestionBatch({
+        analytics: prev,
+        subject,
+        totalQuestions: payload.totalQuestions,
+        correctAnswers: payload.correctAnswers,
+        date: payload.date,
+        sessionType: payload.sessionType,
+      })
+    );
+    setShowQuestionLog(false);
+    setQuestionLogSubject(null);
   };
 
   const handleImportPreset = async (
@@ -644,6 +680,19 @@ function SubjectsPageContent() {
     setShowForm(false);
   };
 
+  // Peso das outras matérias: permite ao formulário dizer qual fatia da carga
+  // semanal esta disciplina deve receber (prioridade 60% + dificuldade 40%).
+  const peerWeightSum = useMemo(
+    () =>
+      subjects.reduce((sum, s) => {
+        if (editingSubject && s.id === editingSubject.id) return sum;
+        const p = Math.min(10, Math.max(1, s.priority || 5));
+        const d = Math.min(10, Math.max(1, s.difficulty || 5));
+        return sum + (0.6 * p + 0.4 * d) / 10;
+      }, 0),
+    [subjects, editingSubject]
+  );
+
   // Calcular totais
   const weeklyGoalFromPrefs = userSettings.dailyHoursByWeekday
     ? Object.values(userSettings.dailyHoursByWeekday).reduce((sum, value) => sum + value, 0)
@@ -829,12 +878,31 @@ function SubjectsPageContent() {
               <SubjectCard
                 subject={subject}
                 onEdit={handleEditSubject}
-                onDelete={handleDeleteSubject}
+                onLogQuestions={(sub) => {
+                setQuestionLogSubject(sub);
+                setShowQuestionLog(true);
+              }}
+              onDelete={handleDeleteSubject}
               />
             </motion.div>
           ))}
         </motion.div>
       )}
+
+      {/* Registro avulso de questões (#10) */}
+      <AnimatePresence>
+        {showQuestionLog && (
+          <QuestionLogModal
+            subjects={subjects}
+            initialSubjectId={questionLogSubject?.id}
+            onClose={() => {
+              setShowQuestionLog(false);
+              setQuestionLogSubject(null);
+            }}
+            onSave={handleSaveQuestionLog}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Modal do Formulário de Disciplina */}
       <AnimatePresence>
@@ -843,6 +911,8 @@ function SubjectsPageContent() {
             subject={editingSubject}
             onSubmit={handleFormSubmit}
             onCancel={() => setShowForm(false)}
+            weeklyAvailableHours={weeklyGoalFromPrefs}
+            peerWeightSum={peerWeightSum}
           />
         )}
       </AnimatePresence>
