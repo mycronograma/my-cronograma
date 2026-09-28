@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import { isDemoRequest } from '@/lib/demoMode';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
@@ -156,9 +157,10 @@ export async function GET() {
     // No preview (modo demo local, iframe sem cookies), permite ler o snapshot
     // da persona de simulação sem login, para o app exibir o histórico do ano.
     if (!userId) {
-      const isLocalDemoMode =
-        process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_LOCAL_DEMO_MODE === 'true';
-      if (isLocalDemoMode) {
+      // Só cai no modo demo quando a requisição não traz cookie de sessão.
+      // Cookie presente mas inválido (conta excluída) segue para 401.
+      const demoRequest = await isDemoRequest();
+      if (demoRequest) {
         const persona = await prisma.user.findUnique({
           where: { email: 'maya.souza@nexora.dev' },
           select: { id: true },

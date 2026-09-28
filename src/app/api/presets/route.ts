@@ -4,6 +4,9 @@
  */
 
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { isDemoRequest } from '@/lib/demoMode';
 import { prisma } from '@/lib/prisma';
 import { getEnemPresetSubjects } from '@/lib/enemCatalog';
 import { getCanonicalSubjectName, getCuratedPresetByName, getCuratedPresets } from '@/lib/presetCatalog';
@@ -66,8 +69,8 @@ function buildLocalPresets() {
 
 export async function GET() {
   try {
-    const isLocalDemoMode =
-      process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_LOCAL_DEMO_MODE === 'true';
+    const isLocalDemoMode = await isDemoRequest();
+    const session = isLocalDemoMode ? null : await getServerSession(authOptions).catch(() => null);
 
     if (isLocalDemoMode || !process.env.DATABASE_URL) {
       return NextResponse.json({

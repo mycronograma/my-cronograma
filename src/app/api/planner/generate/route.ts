@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import { hasSessionCookie } from '@/lib/demoMode';
 import { generateChronologicalSchedule } from '@/services/roadmapEngine';
 import {
   parseLocalDateKey,
@@ -40,9 +41,13 @@ function serializeBlock(block: StudyBlock) {
 
 export async function POST(request: Request) {
   try {
+    // Demo só quando não há cookie de sessão: login real persiste no banco.
     const isLocalDemoMode =
-      process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_LOCAL_DEMO_MODE === 'true';
-    const session = isLocalDemoMode ? null : await getServerSession(authOptions);
+      process.env.NODE_ENV !== 'production' &&
+      process.env.NEXT_PUBLIC_LOCAL_DEMO_MODE === 'true' &&
+      !hasSessionCookie(request.headers);
+    const realSession = await getServerSession(authOptions).catch(() => null);
+    const session = isLocalDemoMode ? null : realSession;
 
     if (!isLocalDemoMode && !session?.user?.id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
