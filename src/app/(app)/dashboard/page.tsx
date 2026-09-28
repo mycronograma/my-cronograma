@@ -23,12 +23,14 @@ import {
   Sparkles,
   BookOpen,
   Zap,
+  Lightbulb,
   Award,
 } from 'lucide-react';
 import { cn, formatDuration, formatHoursDuration, formatDate, toLocalDateKey, parseBlockDate, getWeekStart, timeToMinutes, minutesToTime, getHoursForDate, getWeeklyGoalHours } from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { computeGamificationSnapshot } from '@/lib/progressSnapshot';
 import { applyBlockCompletionMetrics } from '@/services/adaptiveStudyIntelligence';
+import { buildCoachSuggestion, currentWeeklyGoal, type CoachSuggestion } from '@/services/adaptiveCoach';
 import { reportCompletedSession } from '@/lib/sessionSync';
 import { getStudyBlockDisplayTitle } from '@/lib/studyBlockLabels';
 import Card from '@/components/ui/Card';
@@ -39,7 +41,7 @@ import { StatsCard, ProgressBar } from '@/components/ui';
 import { LevelProgress } from '@/components/dashboard';
 import { TodayPlan } from '@/components/dashboard';
 import { WeeklyChart } from '@/components/dashboard';
-import type { StudyBlock, Subject, AnalyticsStore, StudyPreferences, UserSettings } from '@/types';
+import type { StudyBlock, Subject, AnalyticsStore, StudyPreferences, UserSettings, DailyHoursByWeekday, WeekdayKey } from '@/types';
 import { useSession } from 'next-auth/react';
 import { useOnboarding, useLocalStorage, useClientNow } from '@/hooks';
 import { defaultTrainerTips } from '@/services/studyTrainer';
@@ -65,14 +67,15 @@ const NEUTRAL_WEEKDAY_DATE = new Date(2024, 0, 1); // segunda-feira em qualquer 
 export default function Dashboard() {
   const router = useRouter();
   const { data: session } = useSession();
-  const [isSuggestionApplied, setIsSuggestionApplied] = useState(false);
-  const [isSuggestionDismissed, setIsSuggestionDismissed] = useState(false);
+  const [coachDismissed, setCoachDismissed] = useState<string | null>(null);
+  const [coachApplied, setCoachApplied] = useState<string | null>(null);
+
   const [showAllTips, setShowAllTips] = useState(false);
   const { hasCompletedWelcome } = useOnboarding();
   const [plannerBlocks, setPlannerBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
   const [subjects, setSubjects] = useLocalStorage<Subject[]>('nexora_subjects', []);
   const [analytics, setAnalytics] = useLocalStorage<AnalyticsStore>('nexora_analytics', { daily: {} });
-  const [studyPrefs] = useLocalStorage<StudyPreferences>('nexora_study_prefs', {
+  const [studyPrefs, setStudyPrefs] = useLocalStorage<StudyPreferences>('nexora_study_prefs', {
     hoursPerDay: 2,
     daysOfWeek: [1, 2, 3, 4, 5],
     mode: 'random',
@@ -80,7 +83,24 @@ export default function Dashboard() {
   });
   // Usa os mesmos defaults globais das demais telas: fallbacks divergentes
   // faziam o snapshot enviado ao servidor depender da página visitada primeiro.
-  const [userSettings] = useLocalStorage<UserSettings>('nexora_user_settings', defaultSettings);
+  const [userSettings, setUserSettings] = useLocalStorage<UserSettings>('nexora_user_settings', defaultSettings);
+  // Sugestão só existe quando há evidência real de algo a ajustar (ritmo
+  // caindo, matéria pulada ou foco abaixo do planejado).
+  const coachSuggestion = useMemo(
+    () =>
+      buildCoachSuggestion({
+        subjects,
+        plannerBlocks,
+        analytics,
+        studyPrefs,
+        userSettings,
+      }),
+    [subjects, plannerBlocks, analytics, studyPrefs, userSettings]
+  );
+
+  const coachVisible: CoachSuggestion | null =
+    coachSuggestion && coachSuggestion.id !== coachDismissed ? coachSuggestion : null;
+
   // Banner de "complete seu perfil" só faz sentido sem nenhum setup realizado:
   // com matérias ou blocos já existentes, o perfil já foi configurado.
   const setupConcluido = subjects.length > 0 || plannerBlocks.length > 0;
@@ -202,49 +222,6 @@ export default function Dashboard() {
     );
   }, [currentTime, todayBlocks]);
 
-  /** Quantas horas a sugestão adiciona na meta da matéria mais fraca. */
-  const SUGGESTION_EXTRA_HOURS = 2;
-
-  const aiSuggestion = useMemo(() => {
-    if (subjects.length === 0) return null;
-    
-    // Find subject with lowest accuracy rate or least studied
-    const subjectPerformance = subjects.map((s) => {
-      const profile = analytics.performance?.subjects?.[s.id];
-      const accuracyRate = profile?.accuracyRate ?? 0.5;
-      const daysWithoutStudy = profile?.daysWithoutStudy ?? 30;
-      return { subject: s, accuracyRate, daysWithoutStudy };
-    });
-    
-    // Sort by lowest accuracy first, then by days without study
-    subjectPerformance.sort((a, b) => {
-      if (a.accuracyRate !== b.accuracyRate) return a.accuracyRate - b.accuracyRate;
-      return b.daysWithoutStudy - a.daysWithoutStudy;
-    });
-    
-    const weakest = subjectPerformance[0];
-    if (!weakest) return null;
-    
-    // Números concretos: o usuário precisa saber o que muda antes de clicar.
-    const currentTarget = weakest.subject.targetHours || 0;
-    const suggestedTarget = Number((currentTarget + SUGGESTION_EXTRA_HOURS).toFixed(2));
-    const errorPercent = Math.round((1 - weakest.accuracyRate) * 100);
-
-    return {
-      title: `Reforçar ${weakest.subject.name}`,
-      text: `${weakest.subject.name} - ${weakest.subject.area || 'Tópico principal'}`,
-      reason: `${errorPercent}% de erros estimados${weakest.daysWithoutStudy > 3 ? ` e ${weakest.daysWithoutStudy} dias sem estudar` : ''}`,
-      action: `+${SUGGESTION_EXTRA_HOURS}h na meta de ${weakest.subject.name}`,
-      currentTarget,
-      suggestedTarget,
-      errorPercent,
-      daysWithoutStudy: weakest.daysWithoutStudy,
-      priority: 'high',
-      subjectId: weakest.subject.id,
-      subjectName: weakest.subject.name,
-    };
-  }, [subjects, analytics]);
-
   const gamificationData = useMemo(() => {
     const todayXP = Math.max(0, Math.round((dailyAnalytics.hours || 0) * 60));
 
@@ -259,20 +236,44 @@ export default function Dashboard() {
     };
   }, [gamificationSnapshot, dailyAnalytics]);
 
-  const handleApplySuggestion = () => {
-    if (!aiSuggestion || isSuggestionApplied) return;
+  /** Aplica a sugestão do coach: muda a configuração de verdade. */
+  const handleApplyCoach = (suggestion: CoachSuggestion) => {
+    if (coachApplied === suggestion.id) return;
 
-    // Antes o botão só marcava um estado local e a tela afirmava que o
-    // cronograma tinha sido ajustado. Agora a sugestão altera de fato a meta
-    // semanal da matéria sugerida.
-    setSubjects((prev) =>
-      prev.map((subject) =>
-        subject.id === aiSuggestion.subjectId
-          ? { ...subject, targetHours: aiSuggestion.suggestedTarget }
-          : subject
-      )
-    );
-    setIsSuggestionApplied(true);
+    if (suggestion.actionKind === 'reduce-subject' && suggestion.subjectId) {
+      setSubjects((prev) =>
+        prev.map((subject) =>
+          subject.id === suggestion.subjectId
+            ? { ...subject, targetHours: suggestion.suggestedTargetHours ?? subject.targetHours }
+            : subject
+        )
+      );
+    }
+
+    if (suggestion.actionKind === 'reduce-goal' && suggestion.suggestedWeeklyHours) {
+      // Reduz a meta semanal proporcionalmente em todos os dias com hora > 0,
+      // para o plano deixar de ser impossível de cumprir.
+      const target = suggestion.suggestedWeeklyHours;
+      const current = currentWeeklyGoal(userSettings, studyPrefs) || target;
+      const factor = target / current;
+      setUserSettings((prev) => {
+        const base = prev.dailyHoursByWeekday || defaultSettings.dailyHoursByWeekday;
+        const byWeekday = { ...base } as DailyHoursByWeekday;
+        for (const day of Object.keys(byWeekday) as WeekdayKey[]) {
+          byWeekday[day] = Math.round((Number(byWeekday[day]) || 0) * factor * 2) / 2;
+        }
+        return { ...prev, dailyHoursByWeekday: byWeekday };
+      });
+    }
+
+    if (suggestion.actionKind === 'shorten-blocks' && suggestion.suggestedBlockMinutes) {
+      setStudyPrefs((prev) => ({
+        ...prev,
+        focusBlockMinutes: suggestion.suggestedBlockMinutes,
+      }));
+    }
+
+    setCoachApplied(suggestion.id);
   };
 
   const handleStartBlock = (block: StudyBlock) => {
@@ -582,7 +583,7 @@ const handleCompleteBlock = (
               </Card>
             </motion.div>
 
-            {aiSuggestion && !isSuggestionDismissed && (
+            {coachVisible && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -592,34 +593,37 @@ const handleCompleteBlock = (
                 <div className="absolute top-0 right-0 rounded-bl-xl bg-amber-500/10 px-2.5 py-1 border-b border-l border-amber-500/20">
                   <span className="text-[10px] font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
                     <div className="w-1 h-1 rounded-full bg-amber-400 animate-pulse-slow" />
-                    IA Ativa
+                    Ajuste sugerido
                   </span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <div className={cn("w-10 h-10 rounded-full border flex items-center justify-center flex-shrink-0 mt-1 transition-colors", isSuggestionApplied ? "bg-emerald-500/10 border-emerald-500/20" : "bg-amber-500/10 border-amber-500/20")}>
-                    {isSuggestionApplied ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Zap className="w-4 h-4 text-amber-400" />}
+                  <div
+                    className={cn(
+                      'w-10 h-10 rounded-full border flex items-center justify-center flex-shrink-0 mt-1 transition-colors',
+                      coachApplied === coachVisible.id
+                        ? 'bg-emerald-500/10 border-emerald-500/20'
+                        : 'bg-amber-500/10 border-amber-500/20'
+                    )}
+                  >
+                    {coachApplied === coachVisible.id ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <Lightbulb className="w-4 h-4 text-amber-400" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-heading font-bold text-text-primary mb-0.5 text-base">
-                      {isSuggestionApplied ? `Meta de ${aiSuggestion.subjectName} aumentada` : `Reforçar ${aiSuggestion.subjectName}`}
+                      {coachApplied === coachVisible.id ? 'Ajuste aplicado' : coachVisible.title}
                     </h3>
 
-                    {isSuggestionApplied ? (
+                    {coachApplied === coachVisible.id ? (
                       <>
                         <p className="mt-1.5 text-sm text-text-secondary leading-relaxed">
-                          Meta semanal de {aiSuggestion.subjectName}:{' '}
-                          <span className="text-text-muted line-through">
-                            {formatHoursDuration(aiSuggestion.currentTarget)}
-                          </span>{' '}
-                          →{' '}
-                          <strong className="text-emerald-400">
-                            {formatHoursDuration(aiSuggestion.suggestedTarget)}
-                          </strong>
-                          .
+                          {coachVisible.actionLabel} — feito.
                         </p>
                         <p className="mt-2 text-xs text-text-muted leading-relaxed">
-                          As próximas sessões desta matéria já usam a nova meta. Para redistribuir
-                          toda a semana, gere o cronograma novamente.
+                          Gere o cronograma novamente na Agenda Inteligente para redistribuir os
+                          blocos com a nova configuração.
                         </p>
                         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                           <Button
@@ -636,42 +640,25 @@ const handleCompleteBlock = (
                     ) : (
                       <>
                         <p className="mt-1.5 text-sm text-text-secondary leading-relaxed">
-                          Você erra cerca de{' '}
-                          <strong className="text-amber-300">{aiSuggestion.errorPercent}%</strong>{' '}
-                          em {aiSuggestion.subjectName}
-                          {aiSuggestion.daysWithoutStudy > 3
-                            ? ` e está há ${aiSuggestion.daysWithoutStudy} dias sem estudar essa matéria`
-                            : ''}
-                          .
-                        </p>
-                        <p className="mt-1.5 text-xs text-text-muted leading-relaxed">
-                          Sugestão: passar a meta semanal de{' '}
-                          <span className="text-text-secondary">
-                            {formatHoursDuration(aiSuggestion.currentTarget)}
-                          </span>{' '}
-                          para{' '}
-                          <span className="text-amber-300">
-                            {formatHoursDuration(aiSuggestion.suggestedTarget)}
-                          </span>
-                          .
+                          {coachVisible.evidence}
                         </p>
                         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                           <Button
                             variant="secondary"
                             size="sm"
                             className="w-full sm:w-auto bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 border border-amber-500/30"
-                            onClick={handleApplySuggestion}
-                            leftIcon={<Zap className="w-3.5 h-3.5" />}
+                            onClick={() => handleApplyCoach(coachVisible)}
+                            leftIcon={<Lightbulb className="w-3.5 h-3.5" />}
                           >
-                            Aumentar {SUGGESTION_EXTRA_HOURS}h na meta
+                            {coachVisible.actionLabel}
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
                             className="w-full text-text-muted hover:text-text-secondary sm:w-auto"
-                            onClick={() => setIsSuggestionDismissed(true)}
+                            onClick={() => setCoachDismissed(coachVisible.id)}
                           >
-                            Dispensar
+                            {coachVisible.dismissLabel}
                           </Button>
                         </div>
                       </>
