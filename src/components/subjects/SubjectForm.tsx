@@ -15,7 +15,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Palette, Info, RotateCcw } from 'lucide-react';
+import { X, Palette, Info, RotateCcw, Combine, Split } from 'lucide-react';
 import { cn, subjectColors, formatHoursDuration } from '@/lib/utils';
 import { Button, Card, Badge } from '@/components/ui';
 import type { Subject } from '@/types';
@@ -61,8 +61,15 @@ export default function SubjectForm({
 }: SubjectFormProps) {
   const [name, setName] = useState(subject?.name || '');
   const [color, setColor] = useState(subject?.color || subjectColors[0]);
+  // Fusão prioridade/dificuldade: um único controle "peso no plano" move as
+  // duas juntas. Quem quiser diferenciar (ex.: matéria fácil mas decisiva na
+  // prova) abre o modo separado — os dados continuam gravando os dois campos.
   const [priority, setPriority] = useState(subject?.priority || 5);
   const [difficulty, setDifficulty] = useState(subject?.difficulty || 5);
+  const [splitMode, setSplitMode] = useState(
+    () => !!subject && subject.priority !== subject.difficulty
+  );
+  const [weight, setWeight] = useState(subject?.priority || 5);
   const [targetHours, setTargetHours] = useState(subject?.targetHours || 10);
   const [manualTarget, setManualTarget] = useState(false);
   const [targetText, setTargetText] = useState('');
@@ -81,6 +88,22 @@ export default function SubjectForm({
   useEffect(() => {
     if (!manualTarget) setTargetHours(autoTarget);
   }, [autoTarget, manualTarget]);
+
+  /** Controle único: move prioridade e dificuldade juntas. */
+  const handleWeightChange = (value: number) => {
+    setWeight(value);
+    setPriority(value);
+    setDifficulty(value);
+  };
+
+  /** Volta ao controle único usando a média dos dois valores atuais. */
+  const handleMergeWeights = () => {
+    const merged = Math.round((priority + difficulty) / 2);
+    setWeight(merged);
+    setPriority(merged);
+    setDifficulty(merged);
+    setSplitMode(false);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,49 +204,105 @@ export default function SubjectForm({
               </div>
             </div>
 
-            {/* Prioridade */}
+            {/* Peso no plano — controle único (prioridade + dificuldade fundidos) */}
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                Prioridade: {priority}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={priority}
-                onChange={(e) => setPriority(Number(e.target.value))}
-                className="w-full accent-neon-blue"
-              />
-              <div className="flex justify-between text-xs text-text-muted mt-1">
-                <span>Baixa</span>
-                <span>Alta</span>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-text-secondary">
+                  {splitMode ? (
+                    <>
+                      Peso no plano{' '}
+                      <span className="text-text-muted">(separado abaixo)</span>
+                    </>
+                  ) : (
+                    <>
+                      Peso no plano: <span className="font-bold text-text-primary">{weight}</span>
+                    </>
+                  )}
+                </label>
+                {splitMode ? (
+                  <button
+                    type="button"
+                    onClick={handleMergeWeights}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-neon-blue hover:underline"
+                  >
+                    <Combine className="w-3 h-3" />
+                    Fundir em um só
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSplitMode(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-text-secondary hover:text-neon-blue hover:underline"
+                  >
+                    <Split className="w-3 h-3" />
+                    Separar prioridade e dificuldade
+                  </button>
+                )}
               </div>
-              <p className="mt-1.5 text-[11px] text-text-muted">
-                O quanto essa matéria vale para o seu objetivo (peso na prova, urgência).
-              </p>
-            </div>
 
-            {/* Dificuldade */}
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                Dificuldade: {difficulty}
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={difficulty}
-                onChange={(e) => setDifficulty(Number(e.target.value))}
-                className="w-full accent-neon-purple"
-              />
-              <div className="flex justify-between text-xs text-text-muted mt-1">
-                <span>Fácil</span>
-                <span>Difícil</span>
-              </div>
-              <p className="mt-1.5 text-[11px] text-text-muted">
-                O quanto você erra hoje. Não é a mesma coisa que prioridade: matéria fácil e muito
-                cobrada pode ser prioridade alta.
-              </p>
+              {splitMode ? (
+                <div className="space-y-4 rounded-xl border border-card-border bg-row-soft p-3">
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1.5">
+                      Prioridade: {priority}
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={priority}
+                      onChange={(e) => setPriority(Number(e.target.value))}
+                      className="w-full accent-neon-blue"
+                    />
+                    <div className="flex justify-between text-[10px] text-text-muted mt-1">
+                      <span>Baixa</span>
+                      <span>Alta</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-text-muted">
+                      O quanto essa matéria vale para o seu objetivo (peso na prova, urgência).
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1.5">
+                      Dificuldade: {difficulty}
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={difficulty}
+                      onChange={(e) => setDifficulty(Number(e.target.value))}
+                      className="w-full accent-neon-purple"
+                    />
+                    <div className="flex justify-between text-[10px] text-text-muted mt-1">
+                      <span>Fácil</span>
+                      <span>Difícil</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-text-muted">
+                      O quanto você erra hoje nela.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={weight}
+                    onChange={(e) => handleWeightChange(Number(e.target.value))}
+                    className="w-full accent-neon-blue"
+                  />
+                  <div className="flex justify-between text-xs text-text-muted mt-1">
+                    <span>Leve</span>
+                    <span>Máximo</span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-text-muted">
+                    Junta os dois numa nota só: o quanto a matéria vale <em>e</em> o quanto ela te
+                    trava. Quanto maior, mais horas por semana ela recebe.
+                  </p>
+                </>
+              )}
             </div>
 
             {/* Meta semanal */}
@@ -274,9 +353,12 @@ export default function SubjectForm({
                 <Info className="mt-0.5 w-3 h-3 shrink-0" />
                 {isAuto ? (
                   <span>
-                    Calculada: prioridade {priority} (60%) + dificuldade {difficulty} (40%) definem
-                    sua fatia das {formatHoursDuration(weeklyAvailableHours || 20)} semanais. Mexa
-                    nos sliders e a meta acompanha.
+                    Calculada:{' '}
+                    {splitMode
+                      ? `prioridade ${priority} (60%) + dificuldade ${difficulty} (40%)`
+                      : `peso ${weight}`}{' '}
+                    definem sua fatia das {formatHoursDuration(weeklyAvailableHours || 20)} semanais.
+                    Mexa no controle acima e a meta acompanha.
                   </span>
                 ) : (
                   <span>
