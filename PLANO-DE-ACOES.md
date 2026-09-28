@@ -32,13 +32,15 @@
 | 16 | Modal detalhes da disciplina com tema quebrado | `SubjectCard.tsx` (classes dark hardcoded) | Converter p/ CSS variables de tema; título legível nos 2 temas; auditoria de contraste em todos os overlays | P |
 | 17 | "Importar Predefinição" permanente | `subjects/page.tsx` | Some após 1ª importação; "Trocar predefinição" vai p/ Zona de Perigo com aviso de reset total + confirmação em 2 etapas | M |
 
-## Fase 3 — Dados que alimentam a "IA" (métricas reais e sugestões acionáveis)
+## Fase 3 — Dados que alimentam a "IA" (métricas reais e sugestões acionáveis) — ✅ ENTREGUE (`294f3b3`)
 
 | # | Registro | Diagnóstico | Ação | Tam |
 |---|----------|-------------|------|-----|
 | 10 | Acerto/Mapa sem entrada de dados | fluxo de concluir sessão não pergunta questões/acertos | Ao concluir sessão: diálogo rápido "fez quantas questões? acertou quantas?" (opcional) → grava `correctAnswers/totalQuestions`; Mapa de Atividades lê sessões concluídas; cards se escondem com CTA quando não há dados | M |
 | 14 | Sugestão Adaptativa vaga | `dashboard/page.tsx` + `adaptiveStudyIntelligence.ts` | Card "coach": evidência real (acertos das últimas sessões), recomendação específica com botão **Adicionar ao plano de hoje**, sugestão de meta com Aplicar/Agora não, estado vazio honesto | M |
 | 15 | Editar Disciplina: prioridade×dificuldade + meta automática | `SubjectForm.tsx` | Dificuldade deriva prioridade (ou peso único) com explicação; meta semanal calculada ao vivo `f(prioridade, dificuldade, disponibilidade)` redistribuindo as demais; override explícito | M |
+
+**Definition of done da Fase 3 (entregue em `294f3b3`):** meta semanal calculada a partir de prioridade (60%) + dificuldade (40%) sobre a carga disponível, editável em `h:min` e com botão "voltar ao automático"; card de sugestão mostrando evidência real (% de erros, dias sem estudar), valor antes → depois, CTA que altera a meta de fato e "Dispensar"; modal "Registrar questões" (matéria, tipo, data, total, acertos) acessível pela Análise e pelo detalhe da disciplina, gravando `correctAnswers/totalQuestions` e recalculando a taxa de acerto.
 
 ## Fase 4 — Motor de cronograma (realocar, adiantar, recalcular, travar)
 
@@ -58,6 +60,8 @@
 
 ## Ordem de execução sugerida
 
-Fase 1 (8 itens P/M, maior ganho imediato) → Fase 2 (5 itens visuais) → Fase 3 (3 itens de dados) → Fase 4 (2 features G) → Fase 5 (blindagem) → nuvem.
+Fase 1 (`7714510`) ✅ → Fase 2 (`488c0f5`) ✅ → Fase 3 (`294f3b3`) ✅ → Fase 4 (2 features G) → Fase 5 (blindagem) → nuvem.
+
+Também entregue fora das fases: `3e5567e` (cores de perigo/atenção e superfícies neutras seguindo o tema, corrigindo as faixas ilegíveis no tema claro).
 
 Commits pequenos por item, sempre no branch `arena/01a0d9e7-my-cronograma`, com o preview/local validado a cada fase.
