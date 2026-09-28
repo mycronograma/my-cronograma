@@ -10,6 +10,7 @@ import { generateChronologicalSchedule, getPhaseForDate } from '@/services/roadm
 import { resolveScheduleConstraints } from '@/services/scheduleConstraints';
 import { buildSubjectPerformanceProfiles, inferUserLearningLevel } from '@/services/adaptiveStudyIntelligence';
 import { useLocalStorage } from '@/hooks';
+import { useBacklogRescheduler } from '@/hooks/useBacklogRescheduler';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import type {
   AnalyticsStore,
@@ -173,9 +174,26 @@ export default function PlannerPage() {
   const [userSettings] = useLocalStorage<UserSettings>('nexora_user_settings', defaultSettings);
   const [showRoadmap, setShowRoadmap] = useState(false);
   const [dailyLimits] = useLocalStorage<Record<string, number>>('nexora_daily_limits', {});
+  // #6d/#6c: blocos não cumpridos são empurrados para o próximo dia com horário
+  // livre e a semana é recalculada. Roda no máximo 1x por dia (gate interno).
+  const allowedStudyDays = useMemo(() => {
+    const hours = userSettings?.dailyHoursByWeekday;
+    if (!hours) return undefined;
+    const WEEKDAY_KEYS_LOCAL = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+    return WEEKDAY_KEYS_LOCAL.map((key, index) => ((hours as Record<string, number>)[key] > 0 ? index : -1))
+      .filter((index) => index >= 0);
+  }, [userSettings?.dailyHoursByWeekday]);
   const [analytics] = useLocalStorage<AnalyticsStore>('nexora_analytics', { daily: {} });
   const [isGenerating, setIsGenerating] = useState(false);
   const [plannerNotice, setPlannerNotice] = useState<string | null>(null);
+  useBacklogRescheduler({
+    blocks,
+    setBlocks,
+    allowedDays: allowedStudyDays,
+    dailyLimitByDate: dailyLimits,
+    breakMinutes: userSettings?.breakMinutes,
+  });
+
   const [firstCycleAllSubjects, setFirstCycleAllSubjects] = useLocalStorage<boolean>(
     'nexora_first_cycle_all_subjects',
     true
