@@ -809,6 +809,18 @@ export default function SettingsPage() {
     clearClientStoreKeys(SERVER_PROGRESS_STORE_KEYS);
   };
 
+  /**
+   * Limpa o progresso que vive no navegador e volta o tutorial ao início.
+   * No modo demo local não existe sessão no servidor (a API responde 401),
+   * então esta é a única limpeza possível — e é exatamente a que o usuário
+   * espera ver acontecer.
+   */
+  const wipeProgressLocally = () => {
+    clearClientProgressStore();
+    resetOnboarding();
+    setHasRemotePrefs(false);
+  };
+
   const clearServerProgress = async (mode: 'onboarding' | 'progress') => {
     const response = await fetch('/api/progress', {
       method: 'DELETE',
@@ -864,9 +876,14 @@ export default function SettingsPage() {
     setDeleteFeedback(null);
 
     try {
-      await clearServerProgress('onboarding');
-      resetOnboarding();
-      setHasRemotePrefs(false);
+      // Modo demo: dados só existem no navegador, não há o que limpar no servidor.
+      if (isLocalDemoAuthEnabled) {
+        wipeProgressLocally();
+      } else {
+        await clearServerProgress('onboarding');
+        resetOnboarding();
+        setHasRemotePrefs(false);
+      }
       setGeneralDangerFeedback({ type: 'success', message: 'Tutorial reiniciado. Recarregando...' });
       setTimeout(() => window.location.reload(), 350);
     } catch (error) {
@@ -898,10 +915,12 @@ export default function SettingsPage() {
     setDeleteFeedback(null);
 
     try {
-      await clearServerProgress('progress');
-      clearClientProgressStore();
-      resetOnboarding();
-      setHasRemotePrefs(false);
+      if (isLocalDemoAuthEnabled) {
+        wipeProgressLocally();
+      } else {
+        await clearServerProgress('progress');
+        wipeProgressLocally();
+      }
       setGeneralDangerFeedback({ type: 'success', message: 'Progresso resetado. Recarregando...' });
       setTimeout(() => window.location.reload(), 350);
     } catch (error) {
@@ -922,9 +941,12 @@ export default function SettingsPage() {
     setDeleteFeedback(null);
 
     try {
-      await clearServerProgress('progress');
-      clearClientProgressStore();
-      setHasRemotePrefs(false);
+      if (isLocalDemoAuthEnabled) {
+        wipeProgressLocally();
+      } else {
+        await clearServerProgress('progress');
+        wipeProgressLocally();
+      }
       setSwitchPresetStep('idle');
       setGeneralDangerFeedback({ type: 'success', message: 'Progresso resetado. Abrindo predefinições...' });
       router.push('/subjects?preset=1');
