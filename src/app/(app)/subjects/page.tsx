@@ -699,16 +699,16 @@ function SubjectsPageContent() {
       </div>
 
       {importPresetError && (
-        <Card className="border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
+        <Card className="border border-red-400/30 bg-red-500/10 p-3 text-sm text-danger">
           {importPresetError}
         </Card>
       )}
 
       {/* Trocar predefinição: avisa que o progresso será zerado */}
       {presetSwitchConfirm && (
-        <Card className="border border-amber-500/40 bg-amber-500/[0.07] p-4">
+        <Card className="border border-warning bg-warning-soft p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
+            <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-heading font-bold text-text-primary">
                 Trocar de predefinição zera todo o progresso

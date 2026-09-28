@@ -1036,7 +1036,7 @@ export default function SettingsPage() {
     if (persistWarning && saveState !== 'saving' && saveState !== 'error') {
       return {
         text: persistWarning,
-        className: 'text-amber-300',
+        className: 'text-warning',
       };
     }
     if (saveState === 'saving') {
@@ -1054,7 +1054,7 @@ export default function SettingsPage() {
     if (saveState === 'error') {
       return {
         text: 'Falha ao salvar. Tente novamente.',
-        className: 'text-red-300',
+        className: 'text-danger',
       };
     }
     if (hasChanges) {
@@ -1177,7 +1177,7 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => openSection(section)}
                     className={cn(
-                      'flex w-full min-h-[56px] min-w-0 items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-white/5 touch-manipulation active:scale-[0.995]',
+                      'flex w-full min-h-[56px] min-w-0 items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface-soft touch-manipulation active:scale-[0.995]',
                       index !== group.sections.length - 1 && 'border-b border-card-border/70'
                     )}
                   >
@@ -1217,7 +1217,7 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={closeSection}
-            className="inline-flex min-h-[36px] items-center gap-1 rounded-lg pr-3 text-sm font-medium text-[#007aff] transition hover:bg-black/5"
+            className="inline-flex min-h-[36px] items-center gap-1 rounded-lg pr-3 text-sm font-medium text-[#007aff] transition hover:bg-surface-soft"
           >
             <ChevronLeft className="w-4 h-4" />
             Ajustes
@@ -1312,7 +1312,7 @@ export default function SettingsPage() {
                 <div
                   className={cn(
                     'mb-4 flex h-11 w-11 items-center justify-center rounded-full',
-                    option.value === 'light' ? 'bg-text-primary text-background' : 'bg-background-light text-text-primary'
+                    option.value === 'light' ? 'bg-white text-slate-900 ring-1 ring-black/10' : 'bg-[#05080F] text-white ring-1 ring-white/10'
                   )}
                 >
                   <Icon className="h-5 w-5" />
@@ -1928,12 +1928,12 @@ export default function SettingsPage() {
       {/* Zona de Perigo */}
       <Card
         className={cn(
-          'border-red-500/30 bg-card-bg',
+          'border-danger bg-card-bg',
           activeSection === 'danger' ? 'block' : 'hidden'
         )}
       >
         <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-danger flex items-center justify-center shrink-0">
             <Shield className="w-5 h-5 text-red-400" />
           </div>
           <div className="min-w-0">
@@ -1947,16 +1947,16 @@ export default function SettingsPage() {
           <Badge variant="danger" size="sm" className="ml-auto shrink-0">Irreversível</Badge>
         </div>
 
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.07] p-3 mb-4">
-          <p className="text-xs sm:text-sm text-amber-200 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+        <div className="rounded-xl border border-warning bg-warning-soft p-3 mb-4">
+          <p className="text-xs sm:text-sm text-warning flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
             Revise antes de confirmar: estas ações apagam dados de verdade e não podem ser desfeitas.
           </p>
         </div>
 
         <div className="space-y-3">
           {/* Sair da conta — não destrutivo */}
-          <div className="flex flex-col gap-3 rounded-xl border border-card-border bg-background-light/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-xl border border-card-border bg-row-soft p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-text-primary">Sair da conta</p>
               <p className="text-xs text-text-secondary mt-0.5">
@@ -1975,9 +1975,9 @@ export default function SettingsPage() {
           </div>
 
           {/* Reiniciar tutorial — atenção */}
-          <div className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.05] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-xl border border-warning bg-warning-soft p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-amber-200">Reiniciar tutorial</p>
+              <p className="text-sm font-semibold text-warning">Reiniciar tutorial</p>
               <p className="text-xs text-text-secondary mt-0.5">
                 Mostra novamente o passo a passo inicial. Não apaga suas matérias nem seu progresso.
               </p>
@@ -1985,15 +1985,15 @@ export default function SettingsPage() {
             {resetTutorialStep === 'idle' ? (
               <Button
                 variant="secondary"
-                className="w-full sm:w-auto shrink-0 border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+                className="w-full sm:w-auto shrink-0 border-warning text-warning hover:bg-warning-soft-strong"
                 onClick={startResetTutorialFlow}
                 leftIcon={<RotateCcw className="w-4 h-4" />}
               >
                 Reiniciar Tutorial
               </Button>
             ) : (
-              <div className="w-full sm:w-auto sm:min-w-[260px] rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-3 space-y-2">
-                <p className="text-xs text-amber-200/90">Confirmar reinício do tutorial?</p>
+              <div className="w-full sm:w-auto sm:min-w-[260px] rounded-xl border border-warning bg-warning-soft p-3 space-y-2">
+                <p className="text-xs text-warning">Confirmar reinício do tutorial?</p>
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     variant="ghost"
@@ -2005,7 +2005,7 @@ export default function SettingsPage() {
                   </Button>
                   <Button
                     variant="secondary"
-                    className="border-amber-500/40 text-amber-200 hover:bg-amber-500/10"
+                    className="border-warning text-warning hover:bg-warning-soft-strong"
                     onClick={confirmResetTutorial}
                     loading={isResettingTutorial}
                     leftIcon={<RotateCcw className="w-4 h-4" />}
@@ -2018,26 +2018,26 @@ export default function SettingsPage() {
           </div>
 
           {/* Trocar predefinição — destrutivo (reseta progresso) */}
-          <div className="flex flex-col gap-3 rounded-xl border border-red-500/30 bg-red-500/[0.05] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-xl border border-danger bg-danger-soft p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-red-200">Trocar predefinição de matérias</p>
+              <p className="text-sm font-semibold text-danger">Trocar predefinição de matérias</p>
               <p className="text-xs text-text-secondary mt-0.5">
-                Zera <span className="text-red-200">todo o progresso</span> (matérias, blocos, histórico
+                Zera <span className="text-danger">todo o progresso</span> (matérias, blocos, histórico
                 e sessões) e abre a seleção de predefinição para você recomeçar do zero.
               </p>
             </div>
             {switchPresetStep === 'idle' ? (
               <Button
                 variant="secondary"
-                className="w-full sm:w-auto shrink-0 border-red-500/40 text-red-200 hover:bg-red-500/10"
+                className="w-full sm:w-auto shrink-0 border-danger text-danger hover:bg-danger-soft-strong"
                 onClick={() => setSwitchPresetStep('confirm')}
                 leftIcon={<LibraryBig className="w-4 h-4" />}
               >
                 Trocar Predefinição
               </Button>
             ) : (
-              <div className="w-full sm:w-auto sm:min-w-[260px] rounded-xl border border-red-500/30 bg-red-500/[0.06] p-3 space-y-2">
-                <p className="text-xs text-red-200/90">
+              <div className="w-full sm:w-auto sm:min-w-[260px] rounded-xl border border-danger bg-danger-soft p-3 space-y-2">
+                <p className="text-xs text-danger">
                   Isso apaga todo o seu progresso e não pode ser desfeito. Continuar?
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -2064,9 +2064,9 @@ export default function SettingsPage() {
           </div>
 
           {/* Resetar progresso — destrutivo */}
-          <div className="flex flex-col gap-3 rounded-xl border border-red-500/30 bg-red-500/[0.05] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-xl border border-danger bg-danger-soft p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-red-200">Resetar todo o progresso</p>
+              <p className="text-sm font-semibold text-danger">Resetar todo o progresso</p>
               <p className="text-xs text-text-secondary mt-0.5">
                 Apaga horas estudadas, sessões, simulados e estatísticas. Mantém suas matérias cadastradas.
               </p>
@@ -2074,15 +2074,15 @@ export default function SettingsPage() {
             {resetProgressStep === 'idle' ? (
               <Button
                 variant="secondary"
-                className="w-full sm:w-auto shrink-0 border-red-500/40 text-red-200 hover:bg-red-500/10"
+                className="w-full sm:w-auto shrink-0 border-danger text-danger hover:bg-danger-soft-strong"
                 onClick={startResetProgressFlow}
                 leftIcon={<RefreshCw className="w-4 h-4" />}
               >
                 Resetar Progresso
               </Button>
             ) : (
-              <div className="w-full sm:w-auto sm:min-w-[260px] rounded-xl border border-red-500/30 bg-red-500/[0.06] p-3 space-y-2">
-                <p className="text-xs text-red-200/90">
+              <div className="w-full sm:w-auto sm:min-w-[260px] rounded-xl border border-danger bg-danger-soft p-3 space-y-2">
+                <p className="text-xs text-danger">
                   Todo o histórico de estudos será apagado. Continuar?
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -2109,10 +2109,10 @@ export default function SettingsPage() {
           </div>
 
           {/* Excluir conta — destrutivo com confirmação digitada */}
-          <div className="rounded-xl border border-red-500/40 bg-red-500/[0.08] p-4 space-y-3">
+          <div className="rounded-xl border border-danger bg-danger-soft-strong p-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-red-100 flex items-center gap-2">
+                <p className="text-sm font-semibold text-danger-strong flex items-center gap-2">
                   <Trash2 className="w-4 h-4 shrink-0" />
                   Excluir conta permanentemente
                 </p>
@@ -2134,8 +2134,8 @@ export default function SettingsPage() {
               </Button>
             ) : (
               <>
-                <p className="text-xs text-red-200/90">
-                  Digite <span className="font-semibold text-red-100">EXCLUIR</span> para confirmar.
+                <p className="text-xs text-danger">
+                  Digite <span className="font-semibold text-danger-strong">EXCLUIR</span> para confirmar.
                 </p>
                 <input
                   ref={deleteInputRef}
@@ -2148,7 +2148,7 @@ export default function SettingsPage() {
                   }}
                   disabled={isDeletingAccount}
                   placeholder="Digite EXCLUIR"
-                  className="input-field border-red-500/30 focus:border-red-400 focus:shadow-none"
+                  className="input-field border-danger focus:border-red-400 focus:shadow-none"
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Button
@@ -2176,7 +2176,7 @@ export default function SettingsPage() {
               <p
                 className={cn(
                   'text-xs',
-                  deleteFeedback.type === 'error' ? 'text-red-300' : 'text-neon-cyan'
+                  deleteFeedback.type === 'error' ? 'text-danger' : 'text-neon-cyan'
                 )}
               >
                 {deleteFeedback.message}
@@ -2189,7 +2189,7 @@ export default function SettingsPage() {
           <p
             className={cn(
               'mt-4 text-xs',
-              generalDangerFeedback.type === 'error' ? 'text-red-300' : 'text-neon-cyan'
+              generalDangerFeedback.type === 'error' ? 'text-danger' : 'text-neon-cyan'
             )}
           >
             {generalDangerFeedback.message}

@@ -47,6 +47,21 @@
   --text-primary: #FFFFFF;
   --text-secondary: #8892A6;
   --text-muted: #4A5568;
+
+  /* Status semânticos (perigo/atenção)
+     Antes o app usava tons claros fixos (red-200/amber-200) que só funcionam
+     sobre fundo escuro: no tema claro ficavam ilegíveis. Agora cada tema
+     define o próprio par texto/fundo/borda. */
+  --danger-text: #FCA5A5;
+  --danger-text-strong: #FECACA;
+  --danger-bg: rgba(239, 68, 68, 0.08);
+  --danger-bg-strong: rgba(239, 68, 68, 0.14);
+  --danger-border: rgba(248, 113, 113, 0.35);
+  --warning-text: #FCD34D;
+  --warning-text-strong: #FDE68A;
+  --warning-bg: rgba(245, 158, 11, 0.08);
+  --warning-bg-strong: rgba(245, 158, 11, 0.16);
+  --warning-border: rgba(251, 191, 36, 0.35);
   
   /* Glassmorphism */
   --glass-blur: 12px;
@@ -589,6 +604,18 @@ h1, h2, h3, h4, h5, h6 {
   --text-primary: #1c1c1e;
   --text-secondary: #636366;
   --text-muted: #8e8e93;
+
+  /* Status semânticos no tema claro: texto escuro sobre fundo claro */
+  --danger-text: #B91C1C;
+  --danger-text-strong: #991B1B;
+  --danger-bg: rgba(239, 68, 68, 0.07);
+  --danger-bg-strong: rgba(239, 68, 68, 0.12);
+  --danger-border: rgba(220, 38, 38, 0.35);
+  --warning-text: #92400E;
+  --warning-text-strong: #78350F;
+  --warning-bg: rgba(245, 158, 11, 0.10);
+  --warning-bg-strong: rgba(245, 158, 11, 0.18);
+  --warning-border: rgba(217, 119, 6, 0.40);
   color-scheme: light;
 }
 
@@ -868,3 +895,27 @@ h1, h2, h3, h4, h5, h6 {
     padding: 4px 0 18px;
   }
 }
+
+/* ============================================
+   Utilitários de status (funcionam nos dois temas)
+   ============================================ */
+.text-danger { color: var(--danger-text); }
+.text-danger-strong { color: var(--danger-text-strong); }
+.bg-danger-soft { background-color: var(--danger-bg); }
+.bg-danger-soft-strong { background-color: var(--danger-bg-strong); }
+.border-danger { border-color: var(--danger-border); }
+.hover\:bg-danger-soft-strong:hover { background-color: var(--danger-bg-strong); }
+
+.text-warning { color: var(--warning-text); }
+.text-warning-strong { color: var(--warning-text-strong); }
+.bg-warning-soft { background-color: var(--warning-bg); }
+.bg-warning-soft-strong { background-color: var(--warning-bg-strong); }
+.border-warning { border-color: var(--warning-border); }
+.hover\:bg-warning-soft-strong:hover { background-color: var(--warning-bg-strong); }
+
+/* Superfícies neutras que funcionam nos dois temas
+   (bg-background-light/40 e hover:bg-white/5 quebravam no tema claro:
+   ficavam escuros/invisíveis porque o Tailwind usa hex fixo). */
+.bg-row-soft { background-color: var(--surface-soft); }
+.bg-surface-soft { background-color: var(--surface-soft); }
+.hover\:bg-surface-soft:hover { background-color: var(--surface-soft); }
