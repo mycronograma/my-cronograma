@@ -62,6 +62,6 @@
 
 Fase 1 (`7714510`) ✅ → Fase 2 (`488c0f5`) ✅ → Fase 3 (`294f3b3`) ✅ → Fase 4 (2 features G) → Fase 5 (blindagem) → nuvem.
 
-Também entregue fora das fases: `3e5567e` (cores de perigo/atenção e superfícies neutras seguindo o tema, corrigindo as faixas ilegíveis no tema claro).
+Também entregue fora das fases: `3e5567e` (cores de perigo/atenção e superfícies neutras seguindo o tema, corrigindo as faixas ilegíveis no tema claro) · `12a297d` (fusão de prioridade e dificuldade em um único controle de peso) · `532a609` (coach: sugestão só com evidência real) · `8a2b24d` (formulário preserva meta já salva) · `09579b4` (botões da Zona de Perigo só funcionavam com sessão de servidor; no modo demo local davam 401 e não faziam nada).
 
 Commits pequenos por item, sempre no branch `arena/01a0d9e7-my-cronograma`, com o preview/local validado a cada fase.
