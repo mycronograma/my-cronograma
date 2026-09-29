@@ -109,6 +109,8 @@ export default function QuestionLogModal({
         <Card className="relative" padding="md">
           <button
             onClick={onClose}
+            aria-label="Fechar"
+            title="Fechar"
             className="absolute top-4 right-4 p-2 rounded-lg hover:bg-surface-soft text-text-muted hover:text-text-primary transition-colors"
           >
             <X className="w-5 h-5" />

@@ -615,32 +615,32 @@ function SubjectsPageContent() {
     setPendingDeleteSubject(null);
   };
 
-  const handleFormSubmit = (data: Partial<Subject>) => {
-    // Validação dos campos obrigatórios
+  // Validação que depende da lista de disciplinas. Devolve a mensagem para o
+  // formulário mostrar no próprio modal — antes eram `alert()` do navegador.
+  const validateSubjectData = (data: Partial<Subject>): string | null => {
     if (!data.name || data.name.trim().length === 0) {
-      alert('Nome da disciplina é obrigatório');
-      return;
+      return 'Nome da disciplina é obrigatório';
     }
     const normalizedNewName = getCanonicalSubjectName(data.name.trim());
     const duplicate = subjects.some(
       (s) => getCanonicalSubjectName(s.name) === normalizedNewName && s.id !== editingSubject?.id
     );
     if (duplicate) {
-      alert('Já existe uma disciplina com esse nome');
-      return;
+      return 'Já existe uma disciplina com esse nome';
     }
     if (data.priority !== undefined && (data.priority < 1 || data.priority > 10)) {
-      alert('Prioridade deve estar entre 1 e 10');
-      return;
+      return 'Prioridade deve estar entre 1 e 10';
     }
     if (data.difficulty !== undefined && (data.difficulty < 1 || data.difficulty > 10)) {
-      alert('Dificuldade deve estar entre 1 e 10');
-      return;
+      return 'Dificuldade deve estar entre 1 e 10';
     }
     if (data.targetHours !== undefined && data.targetHours < 0) {
-      alert('Meta de horas não pode ser negativa');
-      return;
+      return 'Meta de horas não pode ser negativa';
     }
+    return null;
+  };
+
+  const handleFormSubmit = (data: Partial<Subject>) => {
 
     if (editingSubject) {
       // Atualizar existente
@@ -656,7 +656,7 @@ function SubjectsPageContent() {
       const newSubject: Subject = {
         id: generateId(),
         userId: 'user1',
-        name: data.name.trim(),
+        name: (data.name || '').trim(),
         color: data.color || '#00B4FF',
         icon: 'book',
         priority: data.priority ?? 5,
@@ -929,6 +929,7 @@ function SubjectsPageContent() {
             onCancel={() => setShowForm(false)}
             weeklyAvailableHours={weeklyGoalFromPrefs}
             peerWeightSum={peerWeightSum}
+            validate={validateSubjectData}
             peers={subjects.map((s) => ({
               id: s.id,
               priority: s.priority,

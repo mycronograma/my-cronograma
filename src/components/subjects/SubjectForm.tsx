@@ -30,6 +30,12 @@ interface SubjectFormProps {
   /** Soma dos pesos das OUTRAS matérias (usada só quando `peers` não vem). */
   peerWeightSum?: number;
   /**
+   * Validação extra (ex.: nome repetido) feita por quem conhece a lista.
+   * Devolve a mensagem de erro ou `null`. Assim a tela não precisa de `alert()`
+   * do navegador, que some com a estética do app e é bloqueado em vários mobile.
+   */
+  validate?: (data: Partial<Subject>) => string | null;
+  /**
    * As outras matérias, com a meta já fixada quando houver. É o que permite
    * reservar as horas já comprometidas antes de dividir o resto.
    */
@@ -67,6 +73,7 @@ export default function SubjectForm({
   weeklyAvailableHours,
   peerWeightSum = 0,
   peers = [],
+  validate,
 }: SubjectFormProps) {
   const [name, setName] = useState(subject?.name || '');
   const [color, setColor] = useState(subject?.color || subjectColors[0]);
@@ -179,6 +186,23 @@ export default function SubjectForm({
     if (!Number.isFinite(safeTargetHours) || safeTargetHours < 0.5 || safeTargetHours > 40) {
       setError('A meta semanal precisa estar entre 0h30 e 40h.');
       return;
+    }
+
+    // Validação de quem chamou (nome repetido, faixas de valor): mostra no
+    // próprio formulário, sem alert() do navegador.
+    if (validate) {
+      const message = validate({
+        name: trimmedName,
+        color,
+        priority,
+        difficulty,
+        targetHours: safeTargetHours,
+        targetHoursIsManual: manualTarget,
+      });
+      if (message) {
+        setError(message);
+        return;
+      }
     }
 
     onSubmit({

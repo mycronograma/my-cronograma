@@ -371,6 +371,8 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
             <button
               type="button"
               onClick={onClose}
+            aria-label="Fechar"
+            title="Fechar"
               className="h-9 w-9 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
             >
               <X className="h-4 w-4" />

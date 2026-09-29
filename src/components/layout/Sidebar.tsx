@@ -118,6 +118,8 @@ export default function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
       <div className="p-4 border-t border-card-border">
         <button
           onClick={onToggle}
+          aria-label={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
+          title={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
           className={cn(
             'w-full flex items-center justify-center gap-2',
             'p-3 rounded-xl',

@@ -9,6 +9,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { X, Play, Pause, CheckCircle2, Coffee, SkipForward } from 'lucide-react';
+import { createAudioContext } from '@/lib/audio';
 import { cn, formatDuration } from '@/lib/utils';
 import type { StudyBlock, UserSettings } from '@/types';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
@@ -137,9 +138,9 @@ export default function StudyBlockSessionModal({
   const ensureAudioContext = useCallback(() => {
     try {
       if (!audioRef.current) {
-        audioRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioRef.current = createAudioContext();
       }
-      if (audioRef.current.state === 'suspended') {
+      if (audioRef.current?.state === 'suspended') {
         audioRef.current.resume();
       }
     } catch (error) {
@@ -349,6 +350,8 @@ export default function StudyBlockSessionModal({
 
           {/* Close */}
           <button onClick={onClose}
+            aria-label="Fechar"
+            title="Fechar"
             className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all">
             <X className="h-4 w-4" />
           </button>

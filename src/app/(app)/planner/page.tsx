@@ -701,6 +701,8 @@ export default function PlannerPage() {
               </div>
               <button
                 onClick={() => setAddBlockModal({ open: false, date: null })}
+                aria-label="Fechar"
+                title="Fechar"
                 className="h-9 w-9 rounded-full bg-surface-panel hover:bg-card-border text-text-muted hover:text-text-primary transition-colors flex items-center justify-center"
               >
                 <X className="h-4 w-4" />
@@ -887,6 +889,8 @@ export default function PlannerPage() {
               </h3>
               <button
                 onClick={() => setShowMapFilter(false)}
+                aria-label="Fechar"
+                title="Fechar"
                 className="h-9 w-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors flex items-center justify-center"
               >
                 <X className="h-4 w-4" />

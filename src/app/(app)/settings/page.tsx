@@ -37,6 +37,7 @@ import SystemNotificationsCard from '@/components/settings/SystemNotificationsCa
 import { useIsMobile, useOnboarding, useLocalStorage } from '@/hooks';
 import { clearClientStoreKeys } from '@/hooks/useLocalStorage';
 import { SERVER_PROGRESS_STORE_KEYS } from '@/hooks/useServerProgressSync';
+import { createAudioContext } from '@/lib/audio';
 import { cn, formatHoursDuration } from '@/lib/utils';
 import type { DailyHoursByWeekday, StudyPreferences, UserSettings, WeekdayKey } from '@/types';
 import { defaultSettings } from '@/lib/defaultSettings';
@@ -640,9 +641,9 @@ export default function SettingsPage() {
   const ensureAudioContext = () => {
     try {
       if (!audioRef.current) {
-        audioRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioRef.current = createAudioContext();
       }
-      if (audioRef.current.state === 'suspended') {
+      if (audioRef.current?.state === 'suspended') {
         audioRef.current.resume();
       }
     } catch (error) {

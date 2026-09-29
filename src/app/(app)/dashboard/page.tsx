@@ -27,7 +27,7 @@ import {
   Lock,
   Award,
 } from 'lucide-react';
-import { cn, formatDuration, formatHoursDuration, formatDate, toLocalDateKey, parseBlockDate, getWeekStart, timeToMinutes, minutesToTime, getHoursForDate, getWeeklyGoalHours } from '@/lib/utils';
+import { cn, formatDuration, formatHoursDuration, formatDate, toLocalDateKey, parseBlockDate, getWeekStart, timeToMinutes, minutesToTime, getHoursForDate, getWeeklyGoalHours, parseLocalDateKey } from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { computeGamificationSnapshot } from '@/lib/progressSnapshot';
 import { applyBlockCompletionMetrics } from '@/services/adaptiveStudyIntelligence';
@@ -146,9 +146,17 @@ export default function Dashboard() {
 
   const getSubjectById = (id: string) => subjects.find((s) => s.id === id) || null;
 
+  // Chave do início da semana: dependência estável do useMemo abaixo. O relógio
+  // (`clientNow`) muda a cada minuto, mas a semana só virou à meia-noite — sem
+  // isso o lint acusava dependência faltando e corrigir com `clientNow` faria o
+  // gráfico ser recalculado (e re-renderizado) a cada minuto sem motivo.
+  const weekStartKey = clientNow
+    ? toLocalDateKey(getWeekStart(clientNow))
+    : toLocalDateKey(NEUTRAL_WEEKDAY_DATE);
+
   const weeklyData = useMemo(() => {
     const dayLabels = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
-    const weekStart = getWeekStart(clientNow ?? NEUTRAL_WEEKDAY_DATE);
+    const weekStart = parseLocalDateKey(weekStartKey) ?? getWeekStart(NEUTRAL_WEEKDAY_DATE);
 
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date(weekStart);
@@ -164,7 +172,9 @@ export default function Dashboard() {
         target: getHoursForDate(date, userSettings.dailyHoursByWeekday, studyPrefs.hoursPerDay),
       };
     });
-  }, [analytics, studyPrefs, userSettings.dailyHoursByWeekday]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- weekStartKey é a
+    // data (estável); `getSubjectById`/helpers puros não entram na lista.
+  }, [analytics, studyPrefs, userSettings.dailyHoursByWeekday, weekStartKey]);
 
   const totalWeeklyHours = weeklyData.reduce((sum, day) => sum + day.hours, 0);
   const completedWeeklySessions = weeklyData.reduce((sum, day) => sum + day.sessions, 0);

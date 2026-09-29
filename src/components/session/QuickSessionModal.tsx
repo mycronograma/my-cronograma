@@ -370,6 +370,8 @@ export default function QuickSessionModal({
               {/* Close button */}
               <button
                 onClick={handleClose}
+            aria-label="Fechar"
+            title="Fechar"
                 className="absolute top-4 right-4 p-2 rounded-lg hover:bg-white/10 text-text-muted hover:text-white transition-colors z-10"
               >
                 <X className="w-5 h-5" />
