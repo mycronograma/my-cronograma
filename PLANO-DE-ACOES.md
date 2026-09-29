@@ -46,8 +46,11 @@
 
 | # | Registro | Diagnóstico | Ação | Tam |
 |---|----------|-------------|------|-----|
-| 6 | Plano de Hoje + recálculo + trava sequencial | hoje: `backlogRescheduler.ts` só trata atrasados | Motor de recálculo: (c) puxar conteúdo do próx. dia ao adicionar estudo extra hoje; (d) não cumprido → empurra p/ próx. dia e recalcula tudo; (e) trava: não iniciar blocos de dia futuro com hoje pendente; botão **Ver plano de hoje** com edição paritária ao cronograma | G |
-| 13 | Novo Bloco simples: realocar ou adiantar | `planner/page.tsx` (modal atual) | Substituir modal por 2 fluxos: **Realocar matéria** (move o bloco original p/ o dia/hora escolhidos) e **Adiantar próximo dia** (pull + recálculo); preview do impacto na grade antes de confirmar | G |
+| 6 | Plano de Hoje + recálculo + trava sequencial | hoje: `backlogRescheduler.ts` só trata atrasados | Motor de recálculo: (c) puxar conteúdo do próx. dia ao adicionar estudo extra hoje; (d) não cumprido → empurra p/ próx. dia e recalcula tudo; (e) trava: não iniciar blocos de dia futuro com hoje pendente; botão **Ver plano de hoje** com edição paritária ao cronograma | G | ✅ `bb2f0da`, `2a682a4`, `d1fea5c` |
+| 13 | Novo Bloco simples: realocar ou adiantar | `planner/page.tsx` (modal atual) | Substituir modal por 2 fluxos: **Realocar matéria** (move o bloco original p/ o dia/hora escolhidos) e **Adiantar próximo dia** (pull + recálculo); preview do impacto na grade antes de confirmar | G | ✅ `153270d` |
+| 19 | Modal "Novo Bloco" não deve perguntar duração e horário | `planner/page.tsx` | Como tempo de estudo e intervalo já vêm da predefinição, o modal só pergunta **matéria** e **tipo de sessão**; o horário é o primeiro espaço livre do dia (janela + intervalo + limite), mostrado como informação, e a duração é a configurada | P | ✅ `fdc77c6` (`freeSlot.ts` + `test:freeslot`) |
+
+**Definition of done da Fase 4:** (a) atrasados e pulados são empurrados para o próximo dia com horário livre e a semana é recalculada (`autoRescheduleBacklog`, `rescheduleSkipped: true`, relata o que não caber); (b) trava sequencial — hoje/passado nunca travam, pulado e concluído não bloqueiam, aviso com "Entendi"; (c) realocar/adiantar **movem** o bloco original (nada duplicado, contagem e ids inalterados), adiantar exige bloco de dia posterior e a prévia do impacto aparece antes de confirmar; (d) modal "Novo Bloco" sem campos de duração/horário. Entregue em `d1fea5c`/`153270d`/`fdc77c6`.
 
 ## Fase 5 — Blindagem e preparação para a nuvem
 
@@ -60,7 +63,7 @@
 
 ## Ordem de execução sugerida
 
-Fase 1 (`7714510`) ✅ → Fase 2 (`488c0f5`) ✅ → Fase 3 (`294f3b3`) ✅ → Fase 4 (2 features G) → Fase 5 (blindagem) → nuvem.
+Fase 1 (`7714510`) ✅ → Fase 2 (`488c0f5`) ✅ → Fase 3 (`294f3b3`) ✅ → Fase 4 (`d1fea5c` + `153270d` + `fdc77c6`) ✅ → Fase 5 (blindagem) → nuvem.
 
 Também entregue fora das fases: `3e5567e` (cores de perigo/atenção e superfícies neutras seguindo o tema, corrigindo as faixas ilegíveis no tema claro) · `12a297d` (fusão de prioridade e dificuldade em um único controle de peso) · `532a609` (coach: sugestão só com evidência real) · `8a2b24d` (formulário preserva meta já salva) · `09579b4` (botões da Zona de Perigo só funcionavam com sessão de servidor; no modo demo local davam 401 e não faziam nada).
 
