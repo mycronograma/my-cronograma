@@ -4,6 +4,7 @@
  */
 import {
   allocateWeeklyTargets,
+  buildPeerItems,
   computeAutoTargetHours,
   describeAutoTarget,
   effectiveWeight,
@@ -127,6 +128,44 @@ check('describe: horas coerentes com o allocate',
       { id: 'z', priority: 5, difficulty: 5 }],
     { capacityHours: 20 }
   ).byId.self) < 1e-9, String(d10.hours));
+
+// 11. Só é "fixa" a meta marcada como manual. Sem o flag, uma meta diferente
+//     da automática NÃO pode reservar a semana — foi isso que deixou Português
+//     (peso 10) com 0h30 no print: todas as outras pareciam fixas.
+const semFlag = buildPeerItems([
+  { id: 'a', priority: 8, difficulty: 7, targetHours: 6 },
+  { id: 'b', priority: 5, difficulty: 5, targetHours: 3 },
+]);
+check('sem flag: nenhuma meta é reservada', semFlag.every((p) => p.fixedHours === null), JSON.stringify(semFlag));
+
+const comFlag = buildPeerItems([
+  { id: 'a', priority: 8, difficulty: 7, targetHours: 6, targetHoursIsManual: true },
+  { id: 'b', priority: 5, difficulty: 5, targetHours: 3 },
+]);
+check('com flag: só a marcada reserva horas',
+  comFlag[0].fixedHours === 6 && comFlag[1].fixedHours === null, JSON.stringify(comFlag));
+
+check('buildPeerItems ignora a matéria sendo editada',
+  buildPeerItems([{ id: 'eu', priority: 10, difficulty: 10 }, { id: 'outra', priority: 5, difficulty: 5 }], 'eu').length === 1);
+
+// 12. Sem reserva, a divisão é proporcional ao peso (nada de piso por engano).
+const r12 = allocateWeeklyTargets(
+  [
+    { id: 'pt', priority: 10, difficulty: 10 },
+    ...buildPeerItems([
+      { id: 'm1', priority: 8, difficulty: 7, targetHours: 6 },
+      { id: 'm2', priority: 8, difficulty: 7, targetHours: 6 },
+      { id: 'm3', priority: 8, difficulty: 7, targetHours: 6 },
+      { id: 'm4', priority: 8, difficulty: 7, targetHours: 6 },
+      { id: 'm5', priority: 8, difficulty: 7, targetHours: 6 },
+      { id: 'm6', priority: 8, difficulty: 7, targetHours: 6 },
+    ]),
+  ],
+  { capacityHours: 20 }
+);
+check('peso 10 sem reserva: longe do piso', r12.byId.pt > 3, String(r12.byId.pt));
+check('peso 10 sem reserva: acima da média', r12.byId.pt > 20 / 7, String(r12.byId.pt));
+check('peso 10 sem reserva: soma fecha em 20h', Math.abs(r12.totalHours - 20) < 0.09, String(r12.totalHours));
 
 // 11. Cenário completo: 7 matérias, 20h/semana. Se as outras 6 já têm meta
 //     fixa somando 13h30, a Biologia automática recebe as 6h30 que sobraram —

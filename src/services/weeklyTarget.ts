@@ -222,6 +222,37 @@ export function computeAutoTargetHours(params: {
 }
 
 /**
+ * Converte as outras matérias no formato do serviço.
+ *
+ * Só é considerada "fixa" (e por isso reserva horas da semana) a meta que a
+ * pessoa escolheu de propósito, marcada em `targetHoursIsManual`. Antes a regra
+ * era "difere do automático", o que fazia quase toda meta parecer fixa: a
+ * semana inteira ficava reservada e as matérias automáticas não recebiam nada.
+ */
+export function buildPeerItems(
+  peers: Array<{
+    id: string;
+    priority: number;
+    difficulty: number;
+    targetHours?: number | null;
+    targetHoursIsManual?: boolean;
+  }>,
+  excludeId?: string
+): WeeklyTargetItem[] {
+  return peers
+    .filter((peer) => peer.id !== excludeId)
+    .map((peer) => ({
+      id: peer.id,
+      priority: peer.priority,
+      difficulty: peer.difficulty,
+      fixedHours:
+        peer.targetHoursIsManual && typeof peer.targetHours === 'number' && peer.targetHours > 0
+          ? peer.targetHours
+          : null,
+    }));
+}
+
+/**
  * Números para a tela explicar *por que* a meta automática é o que é, em vez
  * de mostrar um número que parece ter caído do nada.
  */

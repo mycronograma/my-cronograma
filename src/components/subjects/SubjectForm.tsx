@@ -15,14 +15,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Palette, Info, RotateCcw, Combine, Split } from 'lucide-react';
+import { X, Palette, Info, RotateCcw, Pin, Combine, Split } from 'lucide-react';
 import { cn, subjectColors, formatHoursDuration } from '@/lib/utils';
 import { Button, Card, Badge } from '@/components/ui';
-import {
-  allocateWeeklyTargets,
-  computeAutoTargetHours,
-  describeAutoTarget,
-} from '@/services/weeklyTarget';
+import { buildPeerItems, computeAutoTargetHours, describeAutoTarget } from '@/services/weeklyTarget';
 import type { Subject } from '@/types';
 
 interface SubjectFormProps {
@@ -37,11 +33,17 @@ interface SubjectFormProps {
    * As outras matérias, com a meta já fixada quando houver. É o que permite
    * reservar as horas já comprometidas antes de dividir o resto.
    */
-  peers?: Array<{ id: string; priority: number; difficulty: number; targetHours?: number | null }>;
+  peers?: Array<{
+    id: string;
+    priority: number;
+    difficulty: number;
+    targetHours?: number | null;
+    /** A meta foi escolhida pela pessoa? S aí ela reserva horas da semana. */
+    targetHoursIsManual?: boolean;
+  }>;
 }
 
 const clampHours = (v: number) => Math.min(40, Math.max(0.5, Math.round(v * 12) / 12));
-const SELF_ID = '__esta__';
 
 export { computeAutoTargetHours };
 const hoursToHM = (v: number) => {
@@ -91,6 +93,9 @@ export default function SubjectForm({
       })
   );
   const [manualTarget, setManualTarget] = useState(() => {
+    if (typeof subject?.targetHoursIsManual === 'boolean') return subject.targetHoursIsManual;
+    // Matéria antiga, sem o flag: considera manual só se a meta difere bastante
+    // da calculada — assim uma meta já ajustada na mão não é sobrescrita.
     if (!subject?.targetHours) return false;
     const suggested = computeAutoTargetHours({
       priority: subject.priority || 5,
@@ -103,41 +108,13 @@ export default function SubjectForm({
   const [targetText, setTargetText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // Carga semanal em jogo (horas).
-  const capacityHours =
-    weeklyAvailableHours && weeklyAvailableHours > 0 ? weeklyAvailableHours : 20;
-
-  // Metas "puras": a divisão automática de todas as matérias, sem reservar
-  // nada. Serve para saber quais metas a pessoa escolheu na mão — essas são as
-  // que precisam ser reservadas antes de dividir o resto.
-  const pureTargets = useMemo(() => {
-    const itens = [
-      { id: SELF_ID, priority, difficulty },
-      ...peers.filter((p) => p.id !== subject?.id).map((p) => ({
-        id: p.id,
-        priority: p.priority,
-        difficulty: p.difficulty,
-      })),
-    ];
-    return allocateWeeklyTargets(itens, { capacityHours }).byId;
-  }, [peers, subject?.id, priority, difficulty, capacityHours]);
-
+  // Outras matérias no formato do serviço. Só conta como "fixa" (e reserva
+  // horas da semana) a meta que a pessoa escolheu de propósito — o flag
+  // `targetHoursIsManual`. Sem ele, qualquer valor diferente do automático
+  // parecia fixo e a semana inteira ficava reservada.
   const peerItems = useMemo(
-    () =>
-      peers
-        .filter((p) => p.id !== subject?.id)
-        .map((p) => {
-          const auto = pureTargets[p.id] ?? 0;
-          const fixed =
-            typeof p.targetHours === 'number' && p.targetHours > 0 && Math.abs(p.targetHours - auto) > 0.05;
-          return {
-            id: p.id,
-            priority: p.priority,
-            difficulty: p.difficulty,
-            fixedHours: fixed ? (p.targetHours as number) : null,
-          };
-        }),
-    [peers, subject?.id, pureTargets]
+    () => buildPeerItems(peers, subject?.id),
+    [peers, subject?.id]
   );
 
   // Meta automática: fatia do que sobrou da semana, proporcional ao peso.
@@ -210,6 +187,7 @@ export default function SubjectForm({
       priority,
       difficulty,
       targetHours: safeTargetHours,
+      targetHoursIsManual: manualTarget,
     });
   };
 
@@ -389,13 +367,29 @@ export default function SubjectForm({
             {/* Meta semanal */}
             <div>
               <div className="mb-2 flex items-center justify-between gap-2">
-                <label className="block text-sm font-medium text-text-secondary">
+                <label className="flex items-center gap-2 text-sm font-medium text-text-secondary">
                   Meta semanal (h:min)
+                  {isAuto && (
+                    <Badge variant="purple" size="sm">
+                      automática
+                    </Badge>
+                  )}
                 </label>
                 {isAuto ? (
-                  <Badge variant="purple" size="sm">
-                    automática
-                  </Badge>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Fixa o valor que está na tela: a partir daqui a meta é
+                      // sua e o peso deixa de alterá-la sozinho.
+                      setManualTarget(true);
+                      setTargetText('');
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-neon-blue hover:underline"
+                    title="Usar este valor como meta fixa, mesmo que você mude o peso"
+                  >
+                    <Pin className="w-3 h-3" />
+                    Fixar este valor
+                  </button>
                 ) : (
                   <button
                     type="button"
@@ -404,6 +398,7 @@ export default function SubjectForm({
                       setTargetText('');
                     }}
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-neon-blue hover:underline"
+                    title="Deixar o peso decidir a meta de novo"
                   >
                     <RotateCcw className="w-3 h-3" />
                     Voltar ao automático ({formatHoursDuration(autoTarget)})
@@ -433,16 +428,26 @@ export default function SubjectForm({
               <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-text-muted">
                 <Info className="mt-0.5 w-3 h-3 shrink-0" />
                 {isAuto ? (
-                  <span>
-                    {splitMode
-                      ? `Prioridade ${priority} (60%) + dificuldade ${difficulty} (40%)`
-                      : `Peso ${weight}`}{' '}
-                    definem sua fatia:{' '}
-                    {autoInfo.reservedHours > 0
-                      ? `${formatHoursDuration(autoInfo.reservedHours)} da semana já estão com metas fixas, e dos ${formatHoursDuration(autoInfo.poolHours)} que sobraram você leva ${formatHoursDuration(autoTarget)}`
-                      : `${formatHoursDuration(autoTarget)} das ${formatHoursDuration(autoInfo.capacityHours)} semanais, divididas com ${autoInfo.autoCount - 1 === 0 ? 'nenhuma outra matéria' : `outras ${autoInfo.autoCount - 1} matérias`}`}
-                    . Mexa no controle acima e a meta acompanha.
-                  </span>
+                  autoInfo.poolHours <= 0 ? (
+                    <span className="text-warning-strong">
+                      A semana já está toda comprometida com metas fixas (
+                      {formatHoursDuration(autoInfo.reservedHours)} de{' '}
+                      {formatHoursDuration(autoInfo.capacityHours)}), então não sobra hora para
+                      distribuir. Libere horas em outra disciplina ou aumente a carga semanal em
+                      Ajustes.
+                    </span>
+                  ) : (
+                    <span>
+                      {splitMode
+                        ? `Prioridade ${priority} (60%) + dificuldade ${difficulty} (40%)`
+                        : `Peso ${weight}`}{' '}
+                      define sua fatia:{' '}
+                      {autoInfo.reservedHours > 0
+                        ? `${formatHoursDuration(autoInfo.reservedHours)} da semana já estão com metas fixas e, das ${formatHoursDuration(autoInfo.poolHours)} que sobraram, você leva ${formatHoursDuration(autoTarget)}`
+                        : `${formatHoursDuration(autoTarget)} das ${formatHoursDuration(autoInfo.capacityHours)} semanais, divididas com ${autoInfo.autoCount - 1 === 0 ? 'nenhuma outra matéria' : `outras ${autoInfo.autoCount - 1} matérias`}`}
+                      . Mexa no controle acima e a meta acompanha.
+                    </span>
+                  )
                 ) : (
                   <span>
                     Fixado por você ({formatHoursDuration(targetHours)}). O automático daria{' '}

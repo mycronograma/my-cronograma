@@ -67,6 +67,13 @@ export interface Subject {
   priority: number;          // 1-10 (alias de examWeight visual)
   difficulty: number;        // 1-10
   targetHours: number;       // Weekly target
+  /**
+   * A meta semanal foi escolhida pela pessoa (e não calculada pelo peso)?
+   * Sem este flag não dá para saber quais metas reservar antes de dividir o
+   * resto da semana: qualquer valor diferente do automático parecia "fixo" e
+   * travava a carga inteira, deixando as outras matérias sem horas.
+   */
+  targetHoursIsManual?: boolean;
   completedHours: number;
   
   // Proficiência (Motor de Aprovação)

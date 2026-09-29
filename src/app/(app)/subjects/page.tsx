@@ -662,6 +662,7 @@ function SubjectsPageContent() {
         priority: data.priority ?? 5,
         difficulty: data.difficulty ?? 5,
         targetHours: data.targetHours ?? 10,
+        targetHoursIsManual: data.targetHoursIsManual ?? false,
         completedHours: 0,
         totalHours: 0,
         sessionsCount: 0,
@@ -933,6 +934,7 @@ function SubjectsPageContent() {
               priority: s.priority,
               difficulty: s.difficulty,
               targetHours: s.targetHours,
+              targetHoursIsManual: s.targetHoursIsManual,
             }))}
           />
         )}
