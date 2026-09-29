@@ -192,12 +192,12 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-slate-950 text-white flex flex-col items-center px-4 py-10">
+    <div className="app-page flex min-h-[100dvh] flex-col items-center px-4 py-10">
       <div className="max-w-3xl w-full">
         <div className="mb-8 flex items-center gap-3">
           <Sparkles className="text-cyan-400" />
           <div>
-            <p className="text-sm text-slate-400">Onboarding inteligente</p>
+            <p className="text-sm text-text-muted">Onboarding inteligente</p>
             <h1 className="text-2xl font-semibold">Vamos configurar seu plano ideal</h1>
           </div>
         </div>
@@ -214,7 +214,7 @@ export default function OnboardingPage() {
               exit="exit"
               transition={{ duration: 0.2 }}
             >
-              <Card className="bg-slate-900/70 border-slate-800 shadow-xl p-6">
+              <Card className="shadow-xl p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <Clock className="text-cyan-400" />
                   <h2 className="text-xl font-semibold">{current.title}</h2>
@@ -231,8 +231,8 @@ export default function OnboardingPage() {
                         key={value}
                         className={`rounded-xl border px-4 py-3 text-left transition ${
                           selected
-                            ? 'border-cyan-500 bg-cyan-500/10 text-white'
-                            : 'border-slate-800 hover:border-cyan-600 text-slate-200'
+                            ? 'border-cyan-500 bg-cyan-500/10 text-text-primary'
+                            : 'border-card-border hover:border-cyan-600 text-text-secondary'
                         }`}
                         onClick={() => updateAnswer(current.key, value)}
                       >
@@ -244,7 +244,7 @@ export default function OnboardingPage() {
 
                 {currentExtra ? (
                   <div className="mt-6">
-                    <p className="text-sm text-slate-400 mb-2">{currentExtra.title}</p>
+                    <p className="text-sm text-text-muted mb-2">{currentExtra.title}</p>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {currentExtra.options.map((opt) => {
                         const selected = answers[currentExtra.key] === opt.value;
@@ -253,8 +253,8 @@ export default function OnboardingPage() {
                             key={opt.value}
                             className={`rounded-xl border px-3 py-2 text-left transition ${
                               selected
-                                ? 'border-cyan-500 bg-cyan-500/10 text-white'
-                                : 'border-slate-800 hover:border-cyan-600 text-slate-200'
+                                ? 'border-cyan-500 bg-cyan-500/10 text-text-primary'
+                                : 'border-card-border hover:border-cyan-600 text-text-secondary'
                             }`}
                             onClick={() => updateAnswer(currentExtra.key, opt.value)}
                           >
@@ -266,10 +266,10 @@ export default function OnboardingPage() {
                   </div>
                 ) : null}
 
-                {error ? <p className="text-red-400 mt-4">{error}</p> : null}
+                {error ? <p className="text-danger mt-4">{error}</p> : null}
 
                 <div className="mt-6 flex justify-between items-center">
-                  <div className="text-sm text-slate-400">
+                  <div className="text-sm text-text-muted">
                     Etapa {step + 1} de {steps.length}
                   </div>
                   <Button onClick={handleNext} disabled={loading || !canAdvance}>
@@ -289,12 +289,12 @@ export default function OnboardingPage() {
           </AnimatePresence>
         </div>
 
-        <div className="mt-6 text-sm text-slate-400 flex items-center gap-2">
+        <div className="mt-6 text-sm text-text-muted flex items-center gap-2">
           <Zap className="w-4 h-4 text-yellow-400" />
           Respostas adaptam automaticamente o horário, duração dos blocos e foco das matérias.
         </div>
 
-        <div className="mt-2 text-xs text-slate-500 flex items-center gap-2">
+        <div className="mt-2 text-xs text-text-muted flex items-center gap-2">
           <BookOpen className="w-4 h-4" />
           Mobile-first, animações suaves e linguagem motivacional para um começo rápido.
         </div>

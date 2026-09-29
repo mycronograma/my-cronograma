@@ -138,7 +138,7 @@ const Tooltip = ({ children, content, position = 'top' }: {
       </div>
       <div
         className={cn(
-          'absolute z-50 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs font-medium whitespace-nowrap pointer-events-none transition-opacity duration-200',
+          'absolute z-50 px-2.5 py-1.5 rounded-lg bg-inverse border border-card-border text-inverse text-xs font-medium whitespace-nowrap pointer-events-none transition-opacity duration-200',
           position === 'top' && 'bottom-full mb-2 left-1/2 -translate-x-1/2',
           position === 'bottom' && 'top-full mt-2 left-1/2 -translate-x-1/2',
           position === 'left' && 'right-full top-1/2 -translate-y-1/2 ml-2',
@@ -149,7 +149,7 @@ const Tooltip = ({ children, content, position = 'top' }: {
         {content}
         <div
           className={cn(
-            'absolute w-2 h-2 bg-slate-900 border-slate-700 transform rotate-45',
+            'absolute w-2 h-2 bg-inverse border-card-border transform rotate-45',
             position === 'top' && 'top-full left-1/2 -translate-x-1/2 -mt-1',
             position === 'bottom' && 'bottom-full left-1/2 -translate-x-1/2 -mb-1',
             position === 'left' && 'left-full top-1/2 -translate-y-1/2 -ml-1',
@@ -891,7 +891,7 @@ export default function PlannerPage() {
                 onClick={() => setShowMapFilter(false)}
                 aria-label="Fechar"
                 title="Fechar"
-                className="h-9 w-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors flex items-center justify-center"
+                className="h-9 w-9 rounded-full bg-surface-panel hover:bg-card-border text-text-muted hover:text-text-primary transition-colors flex items-center justify-center"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1003,7 +1003,7 @@ export default function PlannerPage() {
                     setMapFilterPhase(null);
                     setMapFilterStatus(null);
                   }}
-                  className="px-5 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium transition-colors"
+                  className="px-5 py-2.5 rounded-xl bg-surface-panel hover:bg-card-border text-text-secondary text-sm font-medium transition-colors"
                 >
                   Limpar filtros
                 </button>
@@ -1052,7 +1052,7 @@ export default function PlannerPage() {
               </div>
               <button
                 onClick={() => setShowRoadmap(false)}
-                className="h-9 w-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors flex items-center justify-center"
+                className="h-9 w-9 rounded-full bg-surface-panel hover:bg-card-border text-text-muted hover:text-text-primary transition-colors flex items-center justify-center"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1117,7 +1117,7 @@ export default function PlannerPage() {
               )}
               <button
                 onClick={() => setShowMapFilter(true)}
-                className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition-all text-xs sm:text-sm font-medium"
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-surface-panel hover:bg-card-border border border-card-border text-text-secondary hover:text-text-primary transition-all text-xs sm:text-sm font-medium"
               >
                 <Filter className="h-4 w-4" />
                 <span className="hidden sm:inline">Filtrar</span>

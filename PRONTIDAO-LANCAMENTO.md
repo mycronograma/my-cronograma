@@ -49,31 +49,39 @@ lançamento oficial, e o que já está resolvido.
 
 ### Importante (não bloqueia, mas aparece na primeira semana)
 
-| # | Item | O que é |
-|---|---|---|
-| I1 | **Tema claro incompleto** | `PresetConfigWizard.tsx` (96 cores fixas), `planner/page.tsx` (40) e `StudyBlockSessionModal.tsx` (36) ainda têm cores travadas no escuro — quem usa tema claro vê faixa ilegível |
-| I2 | **Testes de UI além do smoke** | o smoke confere que as telas carregam (51 checagens), mas não simula cliques: criar disciplina, gerar cronograma, concluir bloco. Um erro de fluxo passa por ele |
-| I3 | **Aviso de perda de dados** | hoje nada avisa que os dados são locais. Uma faixa discreta em Ajustes ("seus dados ficam neste navegador") evita surpresa e reclamação |
-| I4 | **Onboarding pós-cadastro** | o wizard de predefinição existe, mas ninguém garante que um usuário novo chegue nele sem se perder |
+| # | Item | O que é | Estado |
+|---|---|---|---|
+| I1 | **Tema claro incompleto** | `PresetConfigWizard.tsx` (86 cores fixas), `planner/page.tsx` (25) e `onboarding/page.tsx` (15) tinham cor travada — no tema claro ficava faixa ilegível | ✅ convertidos para as classes semânticas (`bg-card-bg`, `text-text-primary`, `border-card-border`…). `StudyBlockSessionModal.tsx` ficou de fora **de propósito**: é um painel escuro por design (fundo em gradiente fixo) e funciona nos dois temas. Criadas as classes `.bg-inverse`/`.text-inverse` para estados selecionados |
+| I2 | **Testes de UI além do smoke** | o smoke confere que as telas carregam (51 checagens), mas não simula cliques: criar disciplina, gerar cronograma, concluir bloco. Um erro de fluxo passa por ele | ⏳ **pendente** |
+| I3 | **Aviso de perda de dados** | nada avisa que os dados são locais | ✅ faixa em Ajustes (só no modo sem conta): "Seus dados estão salvos apenas neste navegador…" |
+| I4 | **Onboarding pós-cadastro** | o wizard de predefinição existe, mas ninguém garante que um usuário novo chegue nele sem se perder | ⏳ pendente |
 
 ### Desejável
 
-| # | Item |
-|---|---|
-| D1 | Aviso quando a soma das metas das matérias passa da carga semanal (a conta já existe na lista de Disciplinas; falta o mesmo aviso no planejador) |
-| D2 | `SubjectCard` ainda mostra "P10" + dificuldade em campos separados, embora o controle agora seja um só ("peso no plano") |
-| D3 | Pesquisa rápida de matéria/disciplina quando a lista passar de ~10 itens |
+| # | Item | Estado |
+|---|---|---|
+| D1 | Aviso quando a soma das metas das matérias passa da carga semanal (a conta já existe na lista de Disciplinas; falta o mesmo aviso no planejador) | ⏳ pendente |
+| D2 | `SubjectCard` mostrava "P10" + dificuldade em campos separados, embora o controle agora seja um só ("peso no plano") | ✅ unificado em "Peso 10" no card e no detalhe |
+| D3 | Pesquisa rápida de matéria/disciplina quando a lista passar de ~10 itens | ⏳ pendente |
 
 ---
 
 ## 4. Ordem sugerida daqui para o lançamento
 
-1. **I1 (tema claro)** — é o defeito visível mais frequente hoje e depende só de front.
-2. **I3 + D2** — aviso de dados locais e card alinhado ao controle único: pouca código, evitam confusão.
-3. **I2 (testes de fluxo)** — antes de colocar gente de fora usando.
-4. **B2 (login em produção)** — quando houver servidor de verdade.
-5. **B1 (banco em nuvem)** — por último, com sua aprovação, quando o app estiver redondo.
-6. **B3 (domínio)** — junto do deploy.
+Você escolheu **site na web**, então o caminho é: banco → deploy → domínio.
+Passo a passo completo em `DEPLOY-WEB.md`.
+
+1. **Escolher o banco** (Neon, Supabase ou CockroachDB) e me dizer qual — ajusto
+   o `provider` do Prisma e testo.
+2. **I2 (testes de fluxo)** — antes de colocar gente de fora usando.
+3. **Deploy na Vercel** com as variáveis de ambiente (a tabela está no
+   `DEPLOY-WEB.md`).
+4. **Domínio + HTTPS** e acertar a `NEXTAUTH_URL`.
+5. **Checklist pós-deploy** (criar conta, entrar em outro aparelho, recuperar
+   senha) — está no fim do `DEPLOY-WEB.md`.
+6. **Configurar e-mail** (`EMAIL_SERVER`) para a recuperação de senha funcionar.
+
+Já resolvido: tema claro (I1), aviso de dados locais (I3), card unificado (D2).
 
 ---
 

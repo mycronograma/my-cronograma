@@ -344,7 +344,7 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
       <motion.div
         ref={dialogRef}
         {...dialogProps}
-        className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-md overflow-y-auto"
+        className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto"
         variants={overlayVariants}
         initial="hidden"
         animate="visible"
@@ -355,17 +355,17 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
           initial="hidden"
           animate="visible"
           exit="hidden"
-          className="w-full max-w-xl bg-white rounded-[28px] shadow-2xl border border-slate-100 flex flex-col my-auto max-h-[85vh] overflow-hidden"
+          className="w-full max-w-xl bg-card-bg rounded-[28px] shadow-2xl border border-card-border flex flex-col my-auto max-h-[85vh] overflow-hidden"
         >
           {/* HEADER FIXO */}
-          <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100 bg-white">
+          <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-card-border bg-card-bg">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 flex items-center justify-center rounded-2xl bg-violet-50 text-violet-600 font-bold">
                 <Sparkles className="h-5 w-5" />
               </div>
               <div>
                 <span className="text-[11px] font-bold tracking-wider text-violet-600 uppercase">Configuração IA • {STEP_TITLES[step]}</span>
-                <h2 className="text-lg font-bold text-slate-900">{presetName}</h2>
+                <h2 className="text-lg font-bold text-text-primary">{presetName}</h2>
               </div>
             </div>
             <button
@@ -373,27 +373,27 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
               onClick={onClose}
             aria-label="Fechar"
             title="Fechar"
-              className="h-9 w-9 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+              className="h-9 w-9 flex items-center justify-center rounded-full bg-surface-soft text-text-secondary hover:bg-card-border transition-colors"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
           {/* BARRA DE PROGRESSO */}
-          <div className="px-6 py-3 bg-slate-50/70 border-b border-slate-100 flex items-center gap-3">
+          <div className="px-6 py-3 bg-row-soft border-b border-card-border flex items-center gap-3">
             <div className="flex-1">
-              <div className="flex justify-between text-xs font-semibold text-slate-500 mb-1">
+              <div className="flex justify-between text-xs font-semibold text-text-secondary mb-1">
                 <span>Passo {step + 1} de {STEP_TITLES.length}</span>
                 <span>{progress}%</span>
               </div>
-              <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+              <div className="h-1.5 w-full bg-card-border rounded-full overflow-hidden">
                 <div className="h-full bg-violet-600 transition-all duration-300 rounded-full" style={{ width: `${progress}%` }} />
               </div>
             </div>
           </div>
 
           {/* CONTEÚDO COM ROLAGEM SUAVE */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-white">
+          <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-card-bg">
             {error && (
               <div className="rounded-2xl bg-red-50 border border-red-100 p-4 text-sm text-red-600 font-medium">
                 {error}
@@ -491,11 +491,11 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                     ))}
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 mb-1">Disponibilidade de estudo</h3>
-                  <p className="text-sm text-slate-500 mb-4">Defina quantas horas por dia você pode estudar.</p>
+                  <h3 className="text-base font-bold text-text-primary mb-1">Disponibilidade de estudo</h3>
+                  <p className="text-sm text-text-secondary mb-4">Defina quantas horas por dia você pode estudar.</p>
 
-                  <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/60 space-y-3 mb-5">
-                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Preenchimento rápido em massa</span>
+                  <div className="bg-row-soft rounded-2xl p-4 border border-card-border space-y-3 mb-5">
+                    <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Preenchimento rápido em massa</span>
                     <div className="flex flex-wrap gap-2">
                       {QUICK_HOURS.map((h) => (
                         <button
@@ -506,7 +506,7 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                             'px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all',
                             massHours === h
                               ? 'bg-violet-600 text-white shadow-sm'
-                              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                              : 'bg-card-bg text-text-secondary border border-card-border hover:bg-surface-soft'
                           )}
                         >
                           {formatDuration(h * 60)}
@@ -523,8 +523,8 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                           className={cn(
                             'px-3 py-1 rounded-lg text-xs font-medium transition-all',
                             massDays.includes(d.value)
-                              ? 'bg-slate-900 text-white'
-                              : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                              ? 'bg-inverse text-inverse'
+                              : 'bg-card-bg text-text-secondary border border-card-border hover:bg-surface-soft'
                           )}
                         >
                           {d.label}
@@ -545,7 +545,7 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
 
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Horas por dia da semana</span>
+                    <span className="text-xs font-bold text-text-secondary uppercase tracking-wider">Horas por dia da semana</span>
                     <button
                       type="button"
                       onClick={() => setShowDayWindows((v) => !v)}
@@ -560,14 +560,14 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                     const active = hours > 0;
                     const w = answers.dailyAvailabilityByWeekday[d.key];
                     return (
-                      <div key={d.key} className="p-3 bg-slate-50/50 rounded-2xl border border-slate-200/70 space-y-2">
+                      <div key={d.key} className="p-3 bg-row-soft rounded-2xl border border-card-border space-y-2">
                         <div className="flex items-center justify-between gap-3">
                           <button
                             type="button"
                             onClick={() => toggleDayActive(d.value)}
                             className={cn(
                               'w-14 h-9 rounded-xl text-xs font-bold transition-all shadow-sm',
-                              active ? 'bg-violet-600 text-white' : 'bg-slate-200 text-slate-500'
+                              active ? 'bg-violet-600 text-white' : 'bg-card-border text-text-secondary'
                             )}
                           >
                             {d.label}
@@ -587,34 +587,34 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                                 if (parsed !== null) updateDayHours(d.key, parsed);
                               }}
                               onBlur={() => setDayHourText((prev) => ({ ...prev, [d.key]: '' }))}
-                              className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 focus:border-violet-500 focus:outline-none disabled:opacity-40"
+                              className="w-full h-9 rounded-xl border border-card-border bg-card-bg px-3 text-sm font-medium text-text-primary focus:border-violet-500 focus:outline-none disabled:opacity-40"
                             />
-                            <span className="text-xs text-slate-500 font-medium">h:min</span>
+                            <span className="text-xs text-text-secondary font-medium">h:min</span>
                           </div>
                           <button
                             type="button"
                             onClick={() => { updateDayHours(d.key, 0); updateDayWindow(d.key, 'start', ''); updateDayWindow(d.key, 'end', ''); }}
-                            className="text-xs font-medium text-slate-400 hover:text-red-500 px-2 py-1"
+                            className="text-xs font-medium text-text-muted hover:text-danger px-2 py-1"
                           >
                             Limpar
                           </button>
                         </div>
 
                         {showDayWindows && active && (
-                          <div className="pt-2 border-t border-slate-200/60 flex items-center gap-2">
-                            <Clock className="h-3.5 w-3.5 text-slate-400" />
+                          <div className="pt-2 border-t border-card-border flex items-center gap-2">
+                            <Clock className="h-3.5 w-3.5 text-text-muted" />
                             <input
                               type="time"
                               value={w.start}
                               onChange={(e) => updateDayWindow(d.key, 'start', e.target.value)}
-                              className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-violet-500"
+                              className="h-8 rounded-lg border border-card-border bg-card-bg px-2 text-xs font-medium text-text-primary focus:outline-none focus:border-violet-500"
                             />
-                            <span className="text-xs text-slate-400">até</span>
+                            <span className="text-xs text-text-muted">até</span>
                             <input
                               type="time"
                               value={w.end}
                               onChange={(e) => updateDayWindow(d.key, 'end', e.target.value)}
-                              className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-violet-500"
+                              className="h-8 rounded-lg border border-card-border bg-card-bg px-2 text-xs font-medium text-text-primary focus:outline-none focus:border-violet-500"
                             />
                           </div>
                         )}
@@ -628,8 +628,8 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
             {step === 1 && (
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 mb-1">Duração dos blocos de estudo</h3>
-                  <p className="text-sm text-slate-500 mb-4">Escolha o tempo ideal para sua concentração.</p>
+                  <h3 className="text-base font-bold text-text-primary mb-1">Duração dos blocos de estudo</h3>
+                  <p className="text-sm text-text-secondary mb-4">Escolha o tempo ideal para sua concentração.</p>
 
                   <div className="grid grid-cols-3 gap-3 mb-5">
                     {FOCUS_OPTIONS.map((v) => (
@@ -641,18 +641,18 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                           'p-4 rounded-2xl border text-center transition-all',
                           (answers.focusBlockMinutes || answers.focusMinutes) === v
                             ? 'border-violet-600 bg-violet-50/50 ring-2 ring-violet-600/20'
-                            : 'border-slate-200 bg-white hover:border-slate-300'
+                            : 'border-card-border bg-card-bg hover:border-card-border'
                         )}
                       >
-                        <span className="block text-lg font-bold text-slate-900">{v}</span>
-                        <span className="block text-xs font-medium text-slate-500">minutos</span>
+                        <span className="block text-lg font-bold text-text-primary">{v}</span>
+                        <span className="block text-xs font-medium text-text-secondary">minutos</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 mb-1">Tempo de pausa</h3>
+                  <h3 className="text-base font-bold text-text-primary mb-1">Tempo de pausa</h3>
                   <div className="grid grid-cols-3 gap-3">
                     {BREAK_OPTIONS.map((v) => (
                       <button
@@ -663,11 +663,11 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                           'p-4 rounded-2xl border text-center transition-all',
                           answers.breakMinutes === v
                             ? 'border-violet-600 bg-violet-50/50 ring-2 ring-violet-600/20'
-                            : 'border-slate-200 bg-white hover:border-slate-300'
+                            : 'border-card-border bg-card-bg hover:border-card-border'
                         )}
                       >
-                        <span className="block text-lg font-bold text-slate-900">{v}</span>
-                        <span className="block text-xs font-medium text-slate-500">minutos</span>
+                        <span className="block text-lg font-bold text-text-primary">{v}</span>
+                        <span className="block text-xs font-medium text-text-secondary">minutos</span>
                       </button>
                     ))}
                   </div>
@@ -677,8 +677,8 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
 
             {step === 2 && (
               <div className="space-y-4">
-                <h3 className="text-base font-bold text-slate-900 mb-1">Horário ideal para matérias difíceis</h3>
-                <p className="text-sm text-slate-500 mb-4">Quando você rende mais nos estudos?</p>
+                <h3 className="text-base font-bold text-text-primary mb-1">Horário ideal para matérias difíceis</h3>
+                <p className="text-sm text-text-secondary mb-4">Quando você rende mais nos estudos?</p>
 
                 <div className="space-y-3">
                   {[
@@ -697,12 +697,12 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                           'w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between',
                           isSelected
                             ? 'border-violet-600 bg-violet-50/50 ring-2 ring-violet-600/20'
-                            : 'border-slate-200 bg-white hover:border-slate-300'
+                            : 'border-card-border bg-card-bg hover:border-card-border'
                         )}
                       >
                         <div>
-                          <span className="block text-sm font-bold text-slate-900">{opt.label}</span>
-                          <span className="block text-xs text-slate-500 mt-0.5">{opt.desc}</span>
+                          <span className="block text-sm font-bold text-text-primary">{opt.label}</span>
+                          <span className="block text-xs text-text-secondary mt-0.5">{opt.desc}</span>
                         </div>
                         {isSelected && <Check className="h-5 w-5 text-violet-600" />}
                       </button>
@@ -714,8 +714,8 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
 
             {step === 3 && (
               <div className="space-y-4">
-                <h3 className="text-base font-bold text-slate-900 mb-1">Estilo de estudo preferido</h3>
-                <p className="text-sm text-slate-500 mb-4">Como você prefere balancear sua rotina?</p>
+                <h3 className="text-base font-bold text-text-primary mb-1">Estilo de estudo preferido</h3>
+                <p className="text-sm text-text-secondary mb-4">Como você prefere balancear sua rotina?</p>
 
                 <div className="space-y-3">
                   {[
@@ -733,12 +733,12 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                           'w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between',
                           isSelected
                             ? 'border-violet-600 bg-violet-50/50 ring-2 ring-violet-600/20'
-                            : 'border-slate-200 bg-white hover:border-slate-300'
+                            : 'border-card-border bg-card-bg hover:border-card-border'
                         )}
                       >
                         <div>
-                          <span className="block text-sm font-bold text-slate-900">{opt.label}</span>
-                          <span className="block text-xs text-slate-500 mt-0.5">{opt.desc}</span>
+                          <span className="block text-sm font-bold text-text-primary">{opt.label}</span>
+                          <span className="block text-xs text-text-secondary mt-0.5">{opt.desc}</span>
                         </div>
                         {isSelected && <Check className="h-5 w-5 text-violet-600" />}
                       </button>
@@ -750,18 +750,18 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
 
             {step === 4 && (
               <div className="space-y-4">
-                <h3 className="text-base font-bold text-slate-900 mb-1">Data da prova ou concurso</h3>
-                <p className="text-sm text-slate-500 mb-4">Isso ajuda a IA a calibrar revisões e ritmo.</p>
+                <h3 className="text-base font-bold text-text-primary mb-1">Data da prova ou concurso</h3>
+                <p className="text-sm text-text-secondary mb-4">Isso ajuda a IA a calibrar revisões e ritmo.</p>
 
-                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
+                <div className="bg-row-soft p-5 rounded-2xl border border-card-border space-y-4">
                   <label className="flex items-center gap-3 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={hasExamDate}
                       onChange={(e) => setHasExamDate(e.target.checked)}
-                      className="h-5 w-5 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                      className="h-5 w-5 rounded border-card-border text-violet-600 focus:ring-violet-500"
                     />
-                    <span className="text-sm font-semibold text-slate-900">Já tenho uma data de prova definida</span>
+                    <span className="text-sm font-semibold text-text-primary">Já tenho uma data de prova definida</span>
                   </label>
 
                   {hasExamDate && (
@@ -771,7 +771,7 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
                         value={answers.examDate}
                         onChange={(e) => patchAnswers({ examDate: e.target.value })}
                         min={todayKey}
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 focus:border-violet-600 focus:outline-none shadow-sm"
+                        className="h-11 w-full rounded-xl border border-card-border bg-card-bg px-4 text-sm font-medium text-text-primary focus:border-violet-600 focus:outline-none shadow-sm"
                       />
                     </div>
                   )}
@@ -781,11 +781,11 @@ export default function PresetConfigWizard({ isOpen, presetId, presetName, baseS
           </div>
 
           {/* FOOTER FIXO COM AÇÕES */}
-          <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-t border-slate-100">
+          <div className="flex items-center justify-between px-6 py-4 bg-row-soft border-t border-card-border">
             {step > 0 ? (
               <Button
                 variant="ghost"
-                className="h-11 px-5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                className="h-11 px-5 rounded-xl border border-card-border bg-card-bg text-sm font-semibold text-text-secondary hover:bg-surface-soft"
                 onClick={() => setStep((s) => Math.max(0, s - 1))}
               >
                 <ArrowLeft className="h-4 w-4 mr-2" /> Voltar

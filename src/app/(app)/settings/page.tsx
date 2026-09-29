@@ -29,6 +29,7 @@ import {
   Moon,
   Palette,
   Sun,
+  HardDrive,
   type LucideIcon,
 } from 'lucide-react';
 import { Card, Button, Badge } from '@/components/ui';
@@ -1135,6 +1136,22 @@ export default function SettingsPage() {
         )}
         {saveFeedback && <p className={cn('text-xs', saveFeedback.className)}>{saveFeedback.text}</p>}
       </div>
+
+      {/* Aviso de dados locais: só no modo sem conta (demo). Em produção, com
+          banco, os dados ficam no servidor e este aviso não faz sentido. */}
+      {isLocalDemoAuthEnabled && !activeSection && (
+        <div className="rounded-xl border border-warning bg-warning-soft p-3">
+          <p className="flex items-start gap-2 text-xs text-warning-strong sm:text-sm">
+            <HardDrive className="mt-0.5 w-4 h-4 shrink-0" />
+            <span>
+              <strong>Seus dados estão salvos apenas neste navegador.</strong> Limpar
+              os dados do site, usar janela anônima ou trocar de celular faz o
+              cronograma e o progresso desaparecer. A versão com conta na nuvem,
+              que sincroniza entre aparelhos, é o próximo passo.
+            </span>
+          </p>
+        </div>
+      )}
 
       <div className="hidden min-w-0 flex-col gap-3 md:flex sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">

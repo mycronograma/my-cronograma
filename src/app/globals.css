@@ -917,5 +917,10 @@ h1, h2, h3, h4, h5, h6 {
    (bg-background-light/40 e hover:bg-white/5 quebravam no tema claro:
    ficavam escuros/invisíveis porque o Tailwind usa hex fixo). */
 .bg-row-soft { background-color: var(--surface-soft); }
+/* Superfície "invertida": escura no tema claro, clara no tema escuro. Usada em
+   estados selecionados (ex.: dia marcado no preenchimento em massa), onde a
+   cor fixa quebrava o tema oposto. */
+.bg-inverse { background-color: var(--text-primary); }
+.text-inverse { color: var(--card-bg); }
 .bg-surface-soft { background-color: var(--surface-soft); }
 .hover\:bg-surface-soft:hover { background-color: var(--surface-soft); }

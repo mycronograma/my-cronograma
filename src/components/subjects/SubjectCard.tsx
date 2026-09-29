@@ -35,7 +35,6 @@ interface SubjectCardProps {
   onLogQuestions?: (subject: Subject) => void;
 }
 
-const difficultyLabels = ['Muito Fácil', 'Fácil', 'Médio', 'Difícil', 'Muito Difícil'];
 
 export default function SubjectCard({
   subject,
@@ -44,7 +43,6 @@ export default function SubjectCard({
   onLogQuestions,
 }: SubjectCardProps) {
   const completionPercent = percentage(subject.completedHours, subject.targetHours);
-  const difficultyLabel = difficultyLabels[Math.floor((subject.difficulty - 1) / 2)] || 'Médio';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
@@ -101,9 +99,8 @@ export default function SubjectCard({
                     color: subject.color,
                   }}
                 >
-                  P{subject.priority}
+                  Peso {subject.priority}
                 </span>
-                <span className="text-[11px] font-medium text-text-muted">{difficultyLabel}</span>
               </div>
             </div>
           </div>
@@ -249,7 +246,6 @@ export default function SubjectCard({
                           >
                             Peso {subject.priority}
                           </span>
-                          <span className="text-xs font-medium text-text-muted border border-card-border rounded-md px-2 py-0.5">{difficultyLabel}</span>
                         </div>
                       </div>
                     </div>
