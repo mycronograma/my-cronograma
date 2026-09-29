@@ -22,7 +22,7 @@ import { Button, Card } from '@/components/ui';
 import { SubjectCard, SubjectForm, PresetSelector } from '@/components/subjects';
 import { EmptySubjects } from '@/components/onboarding';
 import { useOnboarding, useLocalStorage } from '@/hooks';
-import { formatHoursDuration, generateId, parseBlockDate } from '@/lib/utils';
+import { cn, formatHoursDuration, generateId, parseBlockDate } from '@/lib/utils';
 import {
   createEnemSubjectBank,
   isEnemGoal,
@@ -697,9 +697,11 @@ function SubjectsPageContent() {
   const weeklyGoalFromPrefs = userSettings.dailyHoursByWeekday
     ? Object.values(userSettings.dailyHoursByWeekday).reduce((sum, value) => sum + value, 0)
     : studyPrefs.hoursPerDay * studyPrefs.daysOfWeek.length;
-  const totalTargetHours = weeklyGoalFromPrefs > 0
-    ? weeklyGoalFromPrefs
-    : subjects.reduce((sum, s) => sum + s.targetHours, 0);
+  // Soma real das metas das matérias. Antes o cabeçalho mostrava a capacidade
+  // configurada, então dizia "Meta Semanal: 20h" mesmo com as matérias somando 34h.
+  const totalTargetHours = subjects.reduce((sum, s) => sum + (s.targetHours || 0), 0);
+  const capacityHours = weeklyGoalFromPrefs > 0 ? weeklyGoalFromPrefs : 0;
+  const weeklyOverflow = capacityHours > 0 ? Math.max(0, totalTargetHours - capacityHours) : 0;
   const totalCompletedHours = subjects.reduce(
     (sum, s) => sum + s.completedHours,
     0
@@ -815,7 +817,12 @@ function SubjectsPageContent() {
               </div>
               <div>
                 <span className="text-text-secondary">Meta Semanal: </span>
-                <span className="font-bold text-white">{formatHoursDuration(totalTargetHours)}</span>
+                <span className={cn('font-bold', weeklyOverflow > 0 ? 'text-warning' : 'text-white')}>
+                  {formatHoursDuration(totalTargetHours)}
+                </span>
+                {capacityHours > 0 && (
+                  <span className="text-text-muted"> / {formatHoursDuration(capacityHours)} disponíveis</span>
+                )}
               </div>
               <div>
                 <span className="text-text-secondary">Concluído: </span>
@@ -824,6 +831,14 @@ function SubjectsPageContent() {
                 </span>
               </div>
             </div>
+            {weeklyOverflow > 0 && (
+              <p className="mt-3 rounded-xl border border-warning bg-warning-soft p-3 text-xs text-warning-strong">
+                Suas matérias somam {formatHoursDuration(totalTargetHours)}, mas você tem{' '}
+                {formatHoursDuration(capacityHours)} por semana — faltam{' '}
+                {formatHoursDuration(weeklyOverflow)}. Baixe o peso de alguma matéria, reduza uma meta
+                ou aumente as horas em Ajustes.
+              </p>
+            )}
           </div>
         </Card>
       )}
@@ -913,6 +928,12 @@ function SubjectsPageContent() {
             onCancel={() => setShowForm(false)}
             weeklyAvailableHours={weeklyGoalFromPrefs}
             peerWeightSum={peerWeightSum}
+            peers={subjects.map((s) => ({
+              id: s.id,
+              priority: s.priority,
+              difficulty: s.difficulty,
+              targetHours: s.targetHours,
+            }))}
           />
         )}
       </AnimatePresence>

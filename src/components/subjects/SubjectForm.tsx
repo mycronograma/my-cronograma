@@ -18,6 +18,11 @@ import { motion } from 'framer-motion';
 import { X, Palette, Info, RotateCcw, Combine, Split } from 'lucide-react';
 import { cn, subjectColors, formatHoursDuration } from '@/lib/utils';
 import { Button, Card, Badge } from '@/components/ui';
+import {
+  allocateWeeklyTargets,
+  computeAutoTargetHours,
+  describeAutoTarget,
+} from '@/services/weeklyTarget';
 import type { Subject } from '@/types';
 
 interface SubjectFormProps {
@@ -26,37 +31,19 @@ interface SubjectFormProps {
   onCancel: () => void;
   /** Carga semanal disponível (horas). Sem ela, usa-se a soma das metas atuais. */
   weeklyAvailableHours?: number;
-  /** Soma dos pesos das OUTRAS matérias (para dividir a carga proporcionalmente). */
+  /** Soma dos pesos das OUTRAS matérias (usada só quando `peers` não vem). */
   peerWeightSum?: number;
-}
-
-/** Peso de uma matéria: prioridade pesa mais que dificuldade. */
-export function subjectWeight(priority: number, difficulty: number): number {
-  const p = Math.min(10, Math.max(1, priority));
-  const d = Math.min(10, Math.max(1, difficulty));
-  return (0.6 * p + 0.4 * d) / 10; // 0.1 (mínimo) .. 1 (máximo)
+  /**
+   * As outras matérias, com a meta já fixada quando houver. É o que permite
+   * reservar as horas já comprometidas antes de dividir o resto.
+   */
+  peers?: Array<{ id: string; priority: number; difficulty: number; targetHours?: number | null }>;
 }
 
 const clampHours = (v: number) => Math.min(40, Math.max(0.5, Math.round(v * 12) / 12));
+const SELF_ID = '__esta__';
 
-/**
- * Meta automática de uma matéria: fatia da carga semanal proporcional ao peso.
- * `peerWeightSum` é a soma dos pesos das outras matérias, para a divisão
- * fechar na carga disponível.
- */
-export function computeAutoTargetHours(params: {
-  priority: number;
-  difficulty: number;
-  weeklyAvailableHours?: number;
-  peerWeightSum?: number;
-}): number {
-  const capacity =
-    params.weeklyAvailableHours && params.weeklyAvailableHours > 0 ? params.weeklyAvailableHours : 20;
-  const weight = subjectWeight(params.priority, params.difficulty);
-  const totalWeight = weight + Math.max(0, params.peerWeightSum ?? 0);
-  const share = totalWeight > 0 ? weight / totalWeight : 1;
-  return clampHours(capacity * share);
-}
+export { computeAutoTargetHours };
 const hoursToHM = (v: number) => {
   const h = Math.floor(v + 1e-6);
   const m = Math.round((v - h) * 60);
@@ -77,6 +64,7 @@ export default function SubjectForm({
   onCancel,
   weeklyAvailableHours,
   peerWeightSum = 0,
+  peers = [],
 }: SubjectFormProps) {
   const [name, setName] = useState(subject?.name || '');
   const [color, setColor] = useState(subject?.color || subjectColors[0]);
@@ -115,10 +103,66 @@ export default function SubjectForm({
   const [targetText, setTargetText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // Meta automática: fatia da carga semanal proporcional ao peso da matéria.
+  // Carga semanal em jogo (horas).
+  const capacityHours =
+    weeklyAvailableHours && weeklyAvailableHours > 0 ? weeklyAvailableHours : 20;
+
+  // Metas "puras": a divisão automática de todas as matérias, sem reservar
+  // nada. Serve para saber quais metas a pessoa escolheu na mão — essas são as
+  // que precisam ser reservadas antes de dividir o resto.
+  const pureTargets = useMemo(() => {
+    const itens = [
+      { id: SELF_ID, priority, difficulty },
+      ...peers.filter((p) => p.id !== subject?.id).map((p) => ({
+        id: p.id,
+        priority: p.priority,
+        difficulty: p.difficulty,
+      })),
+    ];
+    return allocateWeeklyTargets(itens, { capacityHours }).byId;
+  }, [peers, subject?.id, priority, difficulty, capacityHours]);
+
+  const peerItems = useMemo(
+    () =>
+      peers
+        .filter((p) => p.id !== subject?.id)
+        .map((p) => {
+          const auto = pureTargets[p.id] ?? 0;
+          const fixed =
+            typeof p.targetHours === 'number' && p.targetHours > 0 && Math.abs(p.targetHours - auto) > 0.05;
+          return {
+            id: p.id,
+            priority: p.priority,
+            difficulty: p.difficulty,
+            fixedHours: fixed ? (p.targetHours as number) : null,
+          };
+        }),
+    [peers, subject?.id, pureTargets]
+  );
+
+  // Meta automática: fatia do que sobrou da semana, proporcional ao peso.
   const autoTarget = useMemo(
-    () => computeAutoTargetHours({ priority, difficulty, weeklyAvailableHours, peerWeightSum }),
-    [priority, difficulty, weeklyAvailableHours, peerWeightSum]
+    () =>
+      computeAutoTargetHours({
+        priority,
+        difficulty,
+        weeklyAvailableHours,
+        peerWeightSum,
+        peers: peerItems,
+      }),
+    [priority, difficulty, weeklyAvailableHours, peerWeightSum, peerItems]
+  );
+
+  // Números para explicar de onde veio a meta, em vez de mostrar um número solto.
+  const autoInfo = useMemo(
+    () =>
+      describeAutoTarget({
+        priority,
+        difficulty,
+        weeklyAvailableHours,
+        peers: peerItems,
+      }),
+    [priority, difficulty, weeklyAvailableHours, peerItems]
   );
 
   // Enquanto está no automático, a meta segue os sliders.
@@ -362,7 +406,7 @@ export default function SubjectForm({
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-neon-blue hover:underline"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    Voltar ao automático
+                    Voltar ao automático ({formatHoursDuration(autoTarget)})
                   </button>
                 )}
               </div>
@@ -390,17 +434,23 @@ export default function SubjectForm({
                 <Info className="mt-0.5 w-3 h-3 shrink-0" />
                 {isAuto ? (
                   <span>
-                    Calculada:{' '}
                     {splitMode
-                      ? `prioridade ${priority} (60%) + dificuldade ${difficulty} (40%)`
-                      : `peso ${weight}`}{' '}
-                    definem sua fatia das {formatHoursDuration(weeklyAvailableHours || 20)} semanais.
-                    Mexa no controle acima e a meta acompanha.
+                      ? `Prioridade ${priority} (60%) + dificuldade ${difficulty} (40%)`
+                      : `Peso ${weight}`}{' '}
+                    definem sua fatia:{' '}
+                    {autoInfo.reservedHours > 0
+                      ? `${formatHoursDuration(autoInfo.reservedHours)} da semana já estão com metas fixas, e dos ${formatHoursDuration(autoInfo.poolHours)} que sobraram você leva ${formatHoursDuration(autoTarget)}`
+                      : `${formatHoursDuration(autoTarget)} das ${formatHoursDuration(autoInfo.capacityHours)} semanais, divididas com ${autoInfo.autoCount - 1 === 0 ? 'nenhuma outra matéria' : `outras ${autoInfo.autoCount - 1} matérias`}`}
+                    . Mexa no controle acima e a meta acompanha.
                   </span>
                 ) : (
                   <span>
-                    Valor fixado por você ({formatHoursDuration(targetHours)}). O automático sugeriria{' '}
-                    {formatHoursDuration(autoTarget)}.
+                    Fixado por você ({formatHoursDuration(targetHours)}). O automático daria{' '}
+                    {formatHoursDuration(autoTarget)}
+                    {autoInfo.reservedHours > 0
+                      ? ` — ${formatHoursDuration(autoInfo.reservedHours)} da semana já estão com metas fixas`
+                      : ` — as outras ${autoInfo.autoCount - 1} matérias dividem as ${formatHoursDuration(autoInfo.capacityHours)} semanais com você`}
+                    .
                   </span>
                 )}
               </p>
