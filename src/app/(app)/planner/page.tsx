@@ -12,6 +12,7 @@ import { buildSubjectPerformanceProfiles, inferUserLearningLevel } from '@/servi
 import { useLocalStorage } from '@/hooks';
 import { useBacklogRescheduler } from '@/hooks/useBacklogRescheduler';
 import { planBlockMove } from '@/services/blockMove';
+import { findFreeSlot } from '@/services/freeSlot';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import type {
   AnalyticsStore,
@@ -245,16 +246,10 @@ export default function PlannerPage() {
   const [blockModalMode, setBlockModalMode] = useState<'novo' | 'realocar' | 'adiantar'>('novo');
   const [blockMovePreview, setBlockMovePreview] = useState<string | null>(null);
   const [newBlockType, setNewBlockType] = useState<StudyBlock['type']>('AULA');
-  const [newBlockStart, setNewBlockStart] = useState('09:00');
+  // Duração e intervalo vêm da predefinição (wizard/Configurações): o modal não
+  // pergunta mais nada disso. O horário é o primeiro espaço livre do dia.
   const configuredBlockMinutes = studyPrefs?.focusBlockMinutes ?? studyPrefs?.blockDurationMinutes ?? 50;
-  const [newBlockDuration, setNewBlockDuration] = useState(configuredBlockMinutes);
-  const durationOptions = useMemo(
-    () =>
-      Array.from(new Set([30, 45, configuredBlockMinutes, 60, 90, 120]))
-        .filter((v) => Number.isFinite(v) && v >= 15 && v <= 240)
-        .sort((a, b) => a - b),
-    [configuredBlockMinutes]
-  );
+  const configuredBreakMinutes = userSettings?.breakMinutes ?? 10;
 
   // A11y dos três diálogos do planner: role/aria-modal, Escape e prisão de foco.
   const addBlockDialog = useDialogA11y({
@@ -320,6 +315,29 @@ export default function PlannerPage() {
     if (!scheduleStartDate || !scheduleEndDate) return {};
     return buildDailyTimeWindowByDate(scheduleStartDate, scheduleEndDate, safeDailyAvailabilityByWeekday);
   }, [scheduleStartDate, scheduleEndDate, safeDailyAvailabilityByWeekday]);
+
+  const autoSlot = useMemo(() => {
+    const date = addBlockModal.date;
+    if (!date) return null;
+    const dayKey = toLocalDateKey(date);
+    const dayBlocks = blocks.filter((b) => toLocalDateKey(parseBlockDate(b.date) ?? b.date) === dayKey);
+    return findFreeSlot({
+      dayBlocks,
+      durationMinutes: configuredBlockMinutes,
+      breakMinutes: configuredBreakMinutes,
+      window: dailyTimeWindowsByDate[dayKey],
+      dayLimitMinutes: dailyLimitsByDate[dayKey],
+      usedStudyMinutes: dayBlocks
+        .filter((b) => !b.isBreak)
+        .reduce((sum, b) => sum + b.durationMinutes, 0),
+    });
+  }, [addBlockModal.date, blocks, configuredBlockMinutes, configuredBreakMinutes, dailyTimeWindowsByDate, dailyLimitsByDate]);
+
+  // Derivados da predefinição: horário = primeiro espaço livre; duração = a
+  // que o usuário configurou. Nada disso é perguntado no modal.
+  const newBlockStart = autoSlot?.start ?? '09:00';
+  const newBlockDuration = configuredBlockMinutes;
+
 
   const hoursByDate = useMemo(() => {
     const hours: Record<string, number> = {};
@@ -447,8 +465,8 @@ export default function PlannerPage() {
     setAddBlockModal({ open: true, date });
     setNewBlockSubjectId(activeSubjects[0]?.id || '');
     setNewBlockType('AULA');
-    setNewBlockStart('09:00');
-    setNewBlockDuration(60);
+    setBlockModalMode('novo');
+    setBlockMovePreview(null);
   };
 
   /**
@@ -738,68 +756,27 @@ export default function PlannerPage() {
                 </div>
               </div>
 
-              {/* Time + Duration */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-text-primary mb-2">
-                    Horário de Início
-                  </label>
-                  <input
-                    type="time"
-                    value={newBlockStart}
-                    onChange={(e) => setNewBlockStart(e.target.value)}
-                    className="w-full h-10 rounded-xl bg-surface-panel border border-border-subtle px-3 text-sm font-semibold text-text-primary focus:outline-none focus:border-neon-purple/50 transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-text-primary mb-2">
-                    Duração
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {durationOptions.map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => setNewBlockDuration(d)}
-                        className={cn(
-                          'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all border',
-                          newBlockDuration === d
-                            ? 'bg-neon-cyan/20 text-neon-cyan border-neon-cyan/40'
-                            : 'bg-surface-panel border-border-subtle text-text-muted hover:text-text-secondary'
-                        )}
-                      >
-                        {d}m
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              {/* #19: nada de escolher hora nem duração — só mostramos onde vai
+                  entrar, com os números que o usuário já definiu na predefinição. */}
+              {blockModalMode === 'novo' && (
+                autoSlot ? (
+                  <p className="rounded-xl border border-card-border bg-surface-panel p-3 text-xs text-text-secondary">
+                    Vai entrar às <span className="font-semibold text-text-primary">{autoSlot.start}</span>
+                    {' · '}
+                    <span className="font-semibold text-text-primary">{newBlockDuration} min</span> de estudo
+                    {' + '}
+                    <span className="font-semibold text-text-primary">{configuredBreakMinutes} min</span> de intervalo.
+                    Definidos na sua predefinição.
+                  </p>
+                ) : (
+                  <p className="rounded-xl border border-warning bg-warning-soft p-3 text-xs text-warning-strong">
+                    {`Este dia já está cheio com as ${Math.round(
+                      (dailyLimitsByDate[addBlockModal.date ? toLocalDateKey(addBlockModal.date) : ''] ?? 0) / 60
+                    )}h de estudo que você configurou. Escolha outro dia.`}
+                  </p>
+                )
+              )}
 
-              {/* Preview */}
-              {newBlockSubjectId && (() => {
-                const s = activeSubjects.find(sub => sub.id === newBlockSubjectId);
-                const endTime = minutesToTime(timeToMinutes(newBlockStart) + newBlockDuration);
-                return s ? (
-                  <div
-                    className="rounded-xl p-3 border"
-                    style={{
-                      background: `linear-gradient(135deg, ${s.color}15 0%, ${s.color}05 100%)`,
-                      borderColor: `${s.color}30`,
-                    }}
-                  >
-                    <p className="text-xs text-text-muted mb-1">Preview</p>
-                    <p className="font-bold text-sm" style={{ color: s.color }}>{s.name}</p>
-                    {blockModalMode === 'novo' ? (
-                      <p className="text-xs text-text-secondary mt-0.5">
-                        {newBlockStart} – {endTime} · {newBlockDuration} min
-                      </p>
-                    ) : (
-                      <p className="text-xs text-text-secondary mt-0.5">
-                        {movePreviewText ?? 'Nenhum bloco disponível para mover.'}
-                      </p>
-                    )}
-                  </div>
-                ) : null;
-              })()}
             </div>
 
             <div className="flex gap-3 mt-6">
