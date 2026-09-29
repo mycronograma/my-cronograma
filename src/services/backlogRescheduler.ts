@@ -5,6 +5,14 @@ export interface BacklogRescheduleConfig {
   blocks: StudyBlock[];
   today?: Date;
   dailyLimitByDate?: Record<string, number>;
+  /**
+   * Minutos de estudo por dia da semana (0 = domingo), usados quando a data não
+   * tem limite nem blocos — o que acontece em qualquer dia além do fim do
+   * cronograma gerado. Sem isso, o motor via "capacidade zero" nesses dias e
+   * nunca conseguia jogar pendência para depois da data final, deixando o
+   * reagendamento impossível justamente quando a pessoa precisa.
+   */
+  fallbackDayMinutesByWeekday?: Record<number, number>;
   allowedDays?: number[];
   breakMinutes?: number;
   backlogQuotaRatio?: number;
@@ -297,14 +305,22 @@ function cloneBlocks(blocks: StudyBlock[]) {
 function getDayCapacityMinutes(
   dayKey: string,
   blocks: StudyBlock[],
-  dailyLimitByDate: Record<string, number> | undefined
+  dailyLimitByDate: Record<string, number> | undefined,
+  fallbackDayMinutesByWeekday?: Record<string, number> | Record<number, number>
 ) {
   const explicit = dailyLimitByDate?.[dayKey];
   if (typeof explicit === 'number') return Math.max(0, explicit);
   const planned = blocks
     .filter((block) => !block.isBreak && getBlockDateKey(block) === dayKey && block.status !== 'skipped')
     .reduce((sum, block) => sum + block.durationMinutes, 0);
-  return planned;
+  if (planned > 0) return planned;
+  if (fallbackDayMinutesByWeekday) {
+    const [year, month, day] = dayKey.split('-').map(Number);
+    const weekday = new Date(year, month - 1, day).getDay();
+    const fallback = (fallbackDayMinutesByWeekday as Record<number, number>)[weekday];
+    if (typeof fallback === 'number') return Math.max(0, fallback);
+  }
+  return 0;
 }
 
 function getDayStudyBlocks(blocks: StudyBlock[], dayKey: string) {
@@ -452,7 +468,8 @@ function chooseNextDayForSimulado(
   blocksById: Map<string, StudyBlock>,
   dailyLimitByDate: Record<string, number> | undefined,
   quotaRatio: number,
-  todayKey: string
+  todayKey: string,
+  fallbackDayMinutesByWeekday?: Record<number, number> | undefined
 ) {
   // O snapshot é o mesmo para todos os candidatos: era recriado a cada dia
   // (O(dias * blocos) só para montar o array).
@@ -462,7 +479,7 @@ function chooseNextDayForSimulado(
     .filter((dayKey) => dayKey >= todayKey)
     .map((dayKey) => {
       const date = parseDateKey(dayKey);
-      const capacity = getDayCapacityMinutes(dayKey, allBlocks, dailyLimitByDate);
+      const capacity = getDayCapacityMinutes(dayKey, allBlocks, dailyLimitByDate, fallbackDayMinutesByWeekday);
       const current = getCurrentStudyMinutes(allBlocks, dayKey);
       const free = Math.max(0, capacity - current);
       const quota = Math.floor(capacity * quotaRatio);
@@ -568,9 +585,18 @@ export function autoRescheduleBacklog(config: BacklogRescheduleConfig): BacklogR
       const targetDayKey = dayKeys.find((candidateKey) => candidateKey > currentDayKey && candidateKey >= dayKey);
       if (!targetDayKey) break;
       const allNow = Array.from(blocksById.values());
-      const targetCapacity = getDayCapacityMinutes(targetDayKey, allNow, config.dailyLimitByDate);
+      const targetCapacity = getDayCapacityMinutes(
+        targetDayKey,
+        allNow,
+        config.dailyLimitByDate,
+        config.fallbackDayMinutesByWeekday
+      );
       const targetCurrent = getCurrentStudyMinutes(allNow, targetDayKey);
-      if (targetCapacity > 0 && targetCurrent + block.durationMinutes > targetCapacity) continue;
+      // Dia sem capacidade (ex.: além do fim do cronograma, sem limite e sem
+      // blocos) não pode receber nada — antes a verificação só barrava quando
+      // havia capacidade e ela estourou, então o motor jogava blocos para dias
+      // vazios sem nenhum critério.
+      if (targetCapacity <= 0 || targetCurrent + block.durationMinutes > targetCapacity) continue;
       const moved = appendBlockToDay(blocksById, targetDayKey, block.id, {
         status: 'rescheduled',
         incrementReschedule: true,
@@ -587,7 +613,12 @@ export function autoRescheduleBacklog(config: BacklogRescheduleConfig): BacklogR
 
   const placeBlockOnDay = (block: StudyBlock, dayKey: string) => {
     const allBlocks = Array.from(blocksById.values());
-    const capacity = getDayCapacityMinutes(dayKey, allBlocks, config.dailyLimitByDate);
+    const capacity = getDayCapacityMinutes(
+      dayKey,
+      allBlocks,
+      config.dailyLimitByDate,
+      config.fallbackDayMinutesByWeekday
+    );
     if (capacity <= 0) return false;
 
     const plannedBlocks = getActivePlannedDayBlocks(allBlocks, dayKey);
@@ -653,7 +684,8 @@ export function autoRescheduleBacklog(config: BacklogRescheduleConfig): BacklogR
       blocksById,
       config.dailyLimitByDate,
       quotaRatio,
-      todayKey
+      todayKey,
+      config.fallbackDayMinutesByWeekday
     );
     if (!bestDay) continue;
     // Pulado não volta para o mesmo dia: escolhe um dia estritamente futuro.

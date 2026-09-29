@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { cn, getWeekStart, timeToMinutes, minutesToTime, parseLocalDateKey, parseBlockDate, toLocalDateKey } from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { isEnemGoal, upgradeSubjectsToOfficialEnemStructure } from '@/lib/enemCatalog';
@@ -11,6 +11,7 @@ import { resolveScheduleConstraints } from '@/services/scheduleConstraints';
 import { buildSubjectPerformanceProfiles, inferUserLearningLevel } from '@/services/adaptiveStudyIntelligence';
 import { useLocalStorage } from '@/hooks';
 import { useBacklogRescheduler } from '@/hooks/useBacklogRescheduler';
+import { analyzeBacklogCapacity, formatMinutesAsHours } from '@/services/backlogCapacity';
 import { planBlockMove } from '@/services/blockMove';
 import { findFreeSlot } from '@/services/freeSlot';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
@@ -174,6 +175,25 @@ export default function PlannerPage() {
     null
   );
   const [userSettings] = useLocalStorage<UserSettings>('nexora_user_settings', defaultSettings);
+
+  // Carga de estudo por dia da semana, em minutos (0 = dia sem estudo). É o que
+  // dá capacidade aos dias que não têm limite nem blocos — ou seja, aos dias
+  // além do fim do cronograma gerado. Sem isso, o motor via "capacidade zero"
+  // neles e as pendências não tinham para onde ir.
+  const fallbackDayMinutesByWeekday = useMemo(() => {
+    const horas = (userSettings?.dailyHoursByWeekday ??
+      DEFAULT_DAILY_HOURS_BY_WEEKDAY) as NonNullable<UserSettings['dailyHoursByWeekday']>;
+    const minutos = (v?: number) => Math.round((v || 0) * 60);
+    return {
+      0: minutos(horas.dom),
+      1: minutos(horas.seg),
+      2: minutos(horas.ter),
+      3: minutos(horas.qua),
+      4: minutos(horas.qui),
+      5: minutos(horas.sex),
+      6: minutos(horas.sab),
+    };
+  }, [userSettings?.dailyHoursByWeekday]);
   const [showRoadmap, setShowRoadmap] = useState(false);
   const [dailyLimits] = useLocalStorage<Record<string, number>>('nexora_daily_limits', {});
   // #6d/#6c: blocos não cumpridos são empurrados para o próximo dia com horário
@@ -197,19 +217,51 @@ export default function PlannerPage() {
     allowedDays: allowedStudyDays,
     dailyLimitByDate: dailyLimits,
     breakMinutes: userSettings?.breakMinutes,
+    // Dias além do fim do cronograma gerado não têm limite nem blocos: sem esta
+    // carga por dia da semana, o motor os tratava como "capacidade zero" e o
+    // reagendamento ficava impossível justamente quando a pessoa precisa.
+    fallbackDayMinutesByWeekday: fallbackDayMinutesByWeekday,
   });
+
+  // #21: quanto espaço resta de verdade para reagendar. Quando não cabe, a tela
+  // explica com números em vez de dizer apenas "não havia espaço".
+  const backlogCapacity = useMemo(
+    () =>
+      pendingCount === 0
+        ? null
+        : analyzeBacklogCapacity({
+            blocks,
+            today: new Date(),
+            dailyLimitByDate: dailyLimits,
+            fallbackDayMinutesByWeekday,
+            allowedDays: allowedStudyDays,
+          }),
+    [pendingCount, blocks, dailyLimits, fallbackDayMinutesByWeekday, allowedStudyDays]
+  );
   const [backlogFeedback, setBacklogFeedback] = useState<string | null>(null);
+  // Sucesso (verde) ou aviso (âmbar) — antes tudo aparecia com ícone de "ok".
+  const [backlogFeedbackTone, setBacklogFeedbackTone] = useState<'ok' | 'erro'>('ok');
 
   const handleRecalculateBacklog = () => {
     const result = runBacklogNow();
     if (result.movedCount === 0) {
-      setBacklogFeedback(
-        pendingCount === 0 ? 'Nenhum bloco atrasado.' : 'Não havia espaço nos próximos dias.'
-      );
+      setBacklogFeedbackTone('erro');
+      if (pendingCount === 0) {
+        setBacklogFeedback('Nenhum bloco atrasado.');
+        setBacklogFeedbackTone('ok');
+      } else if (result.pendingCount > 0) {
+        setBacklogFeedback(
+          `Não foi possível remarcar ${result.pendingCount === 1 ? '1 bloco' : `${result.pendingCount} blocos`}: não há espaço nos próximos dias.`
+        );
+      } else {
+        setBacklogFeedback('Não havia espaço nos próximos dias.');
+      }
       return;
     }
+    setBacklogFeedbackTone('ok');
+    const restante = result.pendingCount > 0 ? ` Ainda restam ${result.pendingCount} sem espaço.` : '';
     setBacklogFeedback(
-      `${result.movedCount} ${result.movedCount === 1 ? 'bloco remarcado' : 'blocos remarcados'} para os próximos dias.`
+      `${result.movedCount} ${result.movedCount === 1 ? 'bloco remarcado' : 'blocos remarcados'} para os próximos dias.${restante}`
     );
   };
 
@@ -1121,10 +1173,46 @@ export default function PlannerPage() {
               </div>
 
               {backlogFeedback && (
-                <p className="text-xs text-text-secondary flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <p
+                  className={cn(
+                    'text-xs flex items-center gap-1.5',
+                    backlogFeedbackTone === 'erro' ? 'text-warning-strong' : 'text-text-secondary'
+                  )}
+                >
+                  {backlogFeedbackTone === 'erro' ? (
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  )}
                   {backlogFeedback}
                 </p>
+              )}
+
+              {/* #21: quando não há espaço para reagendar, explicar com números
+                  e dizer o que fazer — antes a tela só avisava "não havia
+                  espaço nos próximos dias" e a pessoa ficava sem saída. */}
+              {backlogCapacity && backlogCapacity.noSpace && (
+                <div className="rounded-xl border border-warning bg-warning-soft p-3">
+                  <p className="text-xs font-semibold text-warning-strong flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    Não há espaço para reagendar {backlogCapacity.pendingCount === 1 ? '1 bloco pendente' : `${backlogCapacity.pendingCount} blocos pendentes`}
+                    {backlogCapacity.pendingMinutes > 0 &&
+                      ` (${formatMinutesAsHours(backlogCapacity.pendingMinutes)} de estudo)`}
+                    .
+                  </p>
+                  <p className="mt-1 text-xs text-warning-strong">
+                    {scheduleEndDate
+                      ? `Seus próximos ${backlogCapacity.daysChecked} dias já estão cheios até ${scheduleEndDate.toLocaleDateString('pt-BR')}.`
+                      : `Seus próximos ${backlogCapacity.daysChecked} dias já estão cheios.`}{' '}
+                    Para reagendar você precisa estudar além do que está planejado:{' '}
+                    <strong>
+                      aumente as horas por dia em Ajustes
+                      {backlogCapacity.extraMinutesPerDay > 0 &&
+                        ` (faltam ${formatMinutesAsHours(backlogCapacity.extraMinutesPerDay)} por dia)`}
+                    </strong>{' '}
+                    ou gere o cronograma com uma data final mais distante.
+                  </p>
+                </div>
               )}
 
               {/* Linha 2: Controles de período - layout idêntico à referência */}

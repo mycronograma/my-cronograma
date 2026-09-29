@@ -45,6 +45,12 @@ interface UseBacklogReschedulerParams {
   allowedDays?: number[];
   /** Limite de minutos por data, quando o usuário configurou. */
   dailyLimitByDate?: Record<string, number>;
+  /**
+   * Minutos de estudo por dia da semana (0 = domingo). Usado em dias sem limite
+   * e sem blocos — ou seja, além do fim do cronograma gerado — para que o motor
+   * tenha onde encaixar as pendências em vez de ver "capacidade zero".
+   */
+  fallbackDayMinutesByWeekday?: Record<number, number>;
   breakMinutes?: number;
   /** Desliga o auto-run (usado em telas que não devem mexer no cronograma). */
   enabled?: boolean;
@@ -69,6 +75,7 @@ export function useBacklogRescheduler({
   setBlocks,
   allowedDays,
   dailyLimitByDate,
+  fallbackDayMinutesByWeekday,
   breakMinutes,
   enabled = true,
 }: UseBacklogReschedulerParams) {
@@ -87,6 +94,7 @@ export function useBacklogRescheduler({
       today: new Date(),
       allowedDays,
       dailyLimitByDate,
+      fallbackDayMinutesByWeekday,
       breakMinutes,
       // Pulado significa "não faço hoje": reagenda para um dia futuro.
       rescheduleSkipped: true,
@@ -102,7 +110,7 @@ export function useBacklogRescheduler({
       setBlocks(() => result.blocks);
     }
     return runResult;
-  }, [blocks, allowedDays, dailyLimitByDate, breakMinutes, setBlocks]);
+  }, [blocks, allowedDays, dailyLimitByDate, fallbackDayMinutesByWeekday, breakMinutes, setBlocks]);
 
   /** Disparo manual (botão "Recalcular atrasados"): ignora o gate diário. */
   const runNow = useCallback((): BacklogRunResult => {
