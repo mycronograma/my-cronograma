@@ -12,6 +12,7 @@ import {
   isValidDemoEmail,
   startLocalDemoSession,
 } from '@/lib/localDemoAuth';
+import { SIGNUPS_DISABLED_MESSAGE, signupsEnabled } from '@/lib/signups';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -23,6 +24,8 @@ export default function RegisterPage() {
     password: '',
     confirmPassword: '',
   });
+
+  const cadastroAberto = signupsEnabled();
 
   const navigateToDashboard = (targetUrl: string) => {
     if (typeof window !== 'undefined') {
@@ -138,110 +141,127 @@ export default function RegisterPage() {
 
         <div className="glass-card p-6 sm:p-8">
           <div className="mb-7 text-center">
-            <h1 className="text-2xl font-heading font-bold text-white">Criar conta</h1>
-            <p className="mt-1 text-text-secondary">Nome, e-mail e senha para começar</p>
+            <h1 className="text-2xl font-heading font-bold text-white">
+              {cadastroAberto ? 'Criar conta' : 'Cadastros fechados'}
+            </h1>
+            <p className="mt-1 text-text-secondary">
+              {cadastroAberto
+                ? 'Nome, e-mail e senha para começar'
+                : 'O Nexora ainda não está aceitando novas contas'}
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-              {isLocalDemoAuthEnabled && (
-                <div className="rounded-xl border border-neon-blue/30 bg-neon-blue/10 p-3 text-sm text-sky-100">
-                  Modo teste local: o cadastro entra direto no app, sem banco e sem codigo 2FA.
-                </div>
-              )}
-              {errorMessage && (
-                <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-                  {errorMessage}
-                </div>
-              )}
+          {!cadastroAberto && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+              <p className="text-sm text-amber-100">{SIGNUPS_DISABLED_MESSAGE}</p>
+              <p className="mt-2 text-xs text-amber-200/80">
+                Quando as inscrições abrirem, o formulário volta aqui.
+              </p>
+            </div>
+          )}
 
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">Nome</label>
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    placeholder="Seu nome"
-                    className="input-field pl-12"
-                    minLength={2}
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
-              </div>
+          {cadastroAberto && (
+            <form onSubmit={handleSubmit} className="space-y-4">
+                {isLocalDemoAuthEnabled && (
+                  <div className="rounded-xl border border-neon-blue/30 bg-neon-blue/10 p-3 text-sm text-sky-100">
+                    Modo teste local: o cadastro entra direto no app, sem banco e sem codigo 2FA.
+                  </div>
+                )}
+                {errorMessage && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+                    {errorMessage}
+                  </div>
+                )}
 
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">E-mail</label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    placeholder="seu@email.com"
-                    className="input-field pl-12"
-                    required
-                    autoComplete="email"
-                    disabled={isLoading}
-                  />
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">Nome</label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+                    <input
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      placeholder="Seu nome"
+                      className="input-field pl-12"
+                      minLength={2}
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">Senha</label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
-                  <input
-                    type="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    placeholder="No mínimo 8 caracteres"
-                    className="input-field pl-12"
-                    minLength={8}
-                    required
-                    autoComplete="new-password"
-                    disabled={isLoading}
-                  />
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">E-mail</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      placeholder="seu@email.com"
+                      className="input-field pl-12"
+                      required
+                      autoComplete="email"
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Confirmar senha
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
-                  <input
-                    type="password"
-                    name="confirmPassword"
-                    value={formData.confirmPassword}
-                    onChange={handleInputChange}
-                    placeholder="Repita sua senha"
-                    className="input-field pl-12"
-                    minLength={8}
-                    required
-                    autoComplete="new-password"
-                    disabled={isLoading}
-                  />
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">Senha</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+                    <input
+                      type="password"
+                      name="password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      placeholder="No mínimo 8 caracteres"
+                      className="input-field pl-12"
+                      minLength={8}
+                      required
+                      autoComplete="new-password"
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full"
-                loading={isLoading}
-                rightIcon={!isLoading && <ArrowRight className="w-4 h-4" />}
-              >
-                Criar conta
-              </Button>
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
+                    Confirmar senha
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+                    <input
+                      type="password"
+                      name="confirmPassword"
+                      value={formData.confirmPassword}
+                      onChange={handleInputChange}
+                      placeholder="Repita sua senha"
+                      className="input-field pl-12"
+                      minLength={8}
+                      required
+                      autoComplete="new-password"
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="w-full"
+                  loading={isLoading}
+                  rightIcon={!isLoading && <ArrowRight className="w-4 h-4" />}
+                >
+                  Criar conta
+                </Button>
   
 
-          </form>
+            </form>
+          )}
 
           <p className="mt-5 text-center text-sm text-text-secondary">
             Ja tem conta?{' '}

@@ -113,6 +113,8 @@ const achievementData = [
   },
 ];
 
+const SMOKE_EMAIL = 'smoke@nexora.dev';
+
 async function main() {
   console.log('🌱 Starting database seed...\n');
   const demoPasswordHash = await bcrypt.hash('Nexora@123', 12);
@@ -236,6 +238,21 @@ async function main() {
     },
   });
   console.log(`   Created user: ${user.name} (${user.email})`);
+
+  // Conta descartavel do teste automatizado (scripts/e2e-smoke.mjs).
+  // Os cadastros ficam fechados para pessoas, mas o smoke precisa de uma
+  // conta que possa criar e destruir livremente. Como o seed limpa tudo
+  // antes, ela sempre volta a existir depois de `npm run db:seed`.
+  // Senha igual a do usuario demo: Nexora@123.
+  await prisma.user.create({
+    data: {
+      email: SMOKE_EMAIL,
+      name: 'Smoke Test',
+      passwordHash: demoPasswordHash,
+      emailVerified: new Date(),
+    },
+  });
+  console.log(`   Created smoke user: ${SMOKE_EMAIL}`);
 
   // Create subjects
   console.log('📚 Creating subjects...');

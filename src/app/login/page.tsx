@@ -15,6 +15,7 @@ import {
   LOCAL_DEMO_PASSWORD,
   startLocalDemoSession,
 } from '@/lib/localDemoAuth';
+import { signupsEnabled } from '@/lib/signups';
 
 const DEFAULT_CALLBACK_URL = '/dashboard';
 
@@ -543,12 +544,14 @@ export default function LoginPage() {
               )}
             </form>
 
-            <p className="mt-5 text-center text-sm text-text-secondary">
-              Não tem conta?{' '}
-              <Link href="/register" className="text-neon-blue hover:underline">
-                Criar cadastro
-              </Link>
-            </p>
+            {signupsEnabled() && (
+              <p className="mt-5 text-center text-sm text-text-secondary">
+                Não tem conta?{' '}
+                <Link href="/register" className="text-neon-blue hover:underline">
+                  Criar cadastro
+                </Link>
+              </p>
+            )}
           </div>
 
           <p className="text-center text-text-muted text-xs mt-6">

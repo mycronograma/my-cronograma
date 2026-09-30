@@ -94,6 +94,12 @@ Na tela de login, use o modo de teste:
 (Não é preciso criar conta — nessa versão de teste o app funciona no seu
 próprio computador.)
 
+> **Cadastros desativados de propósito.** O botão "Criar cadastro" sai da tela
+> de login e a página de cadastro mostra um aviso. É assim até o app abrir
+> para o público, porque ele vai virar **assinatura** e as contas passarão a
+> morar num banco de dados na nuvem. Para ligar de novo, mudar em `.env.local`:
+> `NEXT_PUBLIC_SIGNUPS_ENABLED="true"`.
+
 ### O que vai aparecer na tela
 
 Ao rodar o `.bat`, abrem **duas janelas pretas**:

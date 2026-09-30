@@ -174,6 +174,8 @@ echo NOTIFICATIONS_CRON_SECRET="chave-local-cron-0123456789abcdef">>.env.local
 
 echo NEXT_PUBLIC_LOCAL_DEMO_MODE="true">>.env.local
 
+echo NEXT_PUBLIC_SIGNUPS_ENABLED="false">>.env.local
+
 
 
 :config_pronta

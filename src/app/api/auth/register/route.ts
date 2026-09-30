@@ -7,6 +7,11 @@ import {
   consumeRateLimit,
   rateLimitResponse,
 } from '@/lib/rateLimit';
+import {
+  SIGNUPS_DISABLED_MESSAGE,
+  SIGNUPS_DISABLED_STATUS,
+  signupsEnabled,
+} from '@/lib/signups';
 
 const MIN_NAME_LENGTH = 2;
 const MIN_PASSWORD_LENGTH = 8;
@@ -40,6 +45,16 @@ export async function POST(request: Request) {
     const limit = await consumeRateLimit(clientKeyFromRequest(request, 'register', email), AUTH_RATE_LIMITS.register);
     if (!limit.ok) {
       return rateLimitResponse(limit);
+    }
+
+    // Cadastros fechados: recusa aqui, depois do rate limit, para a rota
+    // nao poder ser martelada de graca e para nao entregar dica de quais
+    // e-mails ja existem na base.
+    if (!signupsEnabled()) {
+      return NextResponse.json(
+        { message: SIGNUPS_DISABLED_MESSAGE, signupsDisabled: true },
+        { status: SIGNUPS_DISABLED_STATUS }
+      );
     }
 
     const existingUser = await prisma.user.findUnique({

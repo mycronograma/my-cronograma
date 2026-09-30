@@ -45,6 +45,15 @@ const BASE = argValue('--base', process.env.E2E_BASE_URL || 'http://127.0.0.1:30
 const KEEP_ACCOUNT = args.includes('--keep');
 const CRON_SECRET = process.env.NOTIFICATIONS_CRON_SECRET || process.env.CRON_SECRET || 'harness-cron-secret';
 
+// Os cadastros podem estar fechados (o app vai virar assinatura). O smoke
+// se adapta: com cadastro aberto cria a propria conta; com cadastro fechado
+// confirma o bloqueio e usa a conta descartavel criada pelo seed.
+const SIGNUPS_ON = /^(1|true|yes|on|sim|ativo)$/i.test(
+  (process.env.NEXT_PUBLIC_SIGNUPS_ENABLED ?? '').trim()
+);
+const SMOKE_EMAIL = 'smoke@nexora.dev';
+const SMOKE_PASSWORD = 'Nexora@123';
+
 let passed = 0;
 let failed = 0;
 const failures = [];
@@ -124,31 +133,59 @@ const run = async () => {
   const root = await call('GET', '/login');
   check('GET /login responde 200', root.status === 200, `HTTP ${root.status}`);
 
-  const email = uniqueEmail();
-  const password = 'SenhaForte123';
+  let email;
+  let password;
 
-  section('1. Cadastro');
-  const register = await call('POST', '/api/auth/register', {
-    name: 'Estudante E2E',
-    email,
-    password,
-  });
-  check('POST /api/auth/register -> 201', register.status === 201, `HTTP ${register.status}`);
-  check('cadastro devolve sucesso', register.data?.success === true);
+  if (SIGNUPS_ON) {
+    section('1. Cadastro (aberto)');
+    email = uniqueEmail();
+    password = 'SenhaForte123';
 
-  const shortPassword = await call('POST', '/api/auth/register', {
-    name: 'Estudante E2E',
-    email: uniqueEmail(),
-    password: '123',
-  });
-  check('senha curta -> 400', shortPassword.status === 400, `HTTP ${shortPassword.status}`);
+    const register = await call('POST', '/api/auth/register', {
+      name: 'Estudante E2E',
+      email,
+      password,
+    });
+    check('POST /api/auth/register -> 201', register.status === 201, `HTTP ${register.status}`);
+    check('cadastro devolve sucesso', register.data?.success === true);
 
-  const sameEmail = await call('POST', '/api/auth/register', {
-    name: 'Estudante E2E',
-    email,
-    password,
-  });
-  check('e-mail repetido -> 409', sameEmail.status === 409, `HTTP ${sameEmail.status}`);
+    const shortPassword = await call('POST', '/api/auth/register', {
+      name: 'Estudante E2E',
+      email: uniqueEmail(),
+      password: '123',
+    });
+    check('senha curta -> 400', shortPassword.status === 400, `HTTP ${shortPassword.status}`);
+
+    const sameEmail = await call('POST', '/api/auth/register', {
+      name: 'Estudante E2E',
+      email,
+      password,
+    });
+    check('e-mail repetido -> 409', sameEmail.status === 409, `HTTP ${sameEmail.status}`);
+  } else {
+    section('1. Cadastro (fechado)');
+    email = SMOKE_EMAIL;
+    password = SMOKE_PASSWORD;
+
+    const blocked = await call('POST', '/api/auth/register', {
+      name: 'Estudante E2E',
+      email: uniqueEmail(),
+      password: 'SenhaForte123',
+    });
+    check('cadastro recusado -> 503', blocked.status === 503, `HTTP ${blocked.status}`);
+    check(
+      'recusa explica o motivo',
+      typeof blocked.data?.message === 'string' && blocked.data.message.length > 10,
+      blocked.data?.message ? blocked.data.message.slice(0, 60) : 'sem mensagem'
+    );
+
+    const known = await call('POST', '/api/auth/register', {
+      name: 'Estudante E2E',
+      email: SMOKE_EMAIL,
+      password: SMOKE_PASSWORD,
+    });
+    check('e-mail existente tambem e recusado -> 503', known.status === 503, `HTTP ${known.status}`);
+  }
 
   section('2. Login por credenciais (NextAuth)');
   const csrf = await call('GET', '/api/auth/csrf');
@@ -162,6 +199,19 @@ const run = async () => {
   );
   check('POST /api/auth/callback/credentials → 200', login.status === 200, `HTTP ${login.status}`);
   check('cookie de sessão criado', Array.from(jar.keys()).some((name) => name.includes('session-token')));
+
+  if (!SIGNUPS_ON && login.status !== 200) {
+    console.log(
+      `\nA conta de teste ${SMOKE_EMAIL} nao existe. Com os cadastros fechados ` +
+        'ela vem do seed:'
+    );
+    console.log(
+      '  node scripts/dev-inmemory-prisma.cjs --reset   (limpa o banco em memoria)'
+    );
+    console.log('  npm run db:seed                              (recria as contas)');
+    console.log('  npm run dev                                  (sobe o servidor)');
+    throw new Error('conta de teste ausente');
+  }
 
   const session = await call('GET', '/api/auth/session');
   const userId = session.data?.user?.id;
