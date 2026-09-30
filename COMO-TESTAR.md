@@ -65,11 +65,17 @@ Se você já tem a pasta do projeto, pule para o passo 3.
 3. Cole este comando e aperte Enter:
 
 ```
-git clone https://github.com/mycronograma/my-cronograma.git
+git clone -b arena/01a0d9e7-my-cronograma https://github.com/mycronograma/my-cronograma.git
 ```
 
 4. **O que esperar:** uma pasta `my-cronograma` aparece dentro de `C:\Nexora`,
-   com vários arquivos.
+   com vários arquivos, inclusive o `TESTAR-NEXORA.bat`.
+
+> **Atenção ao `-b arena/01a0d9e7-my-cronograma`:** sem esse trecho o Git
+> baixa a branch `main`, que é só o esqueleto inicial do projeto e **não tem
+> o app**. Se você clonou sem o `-b`, o `TESTAR-NEXORA.bat` simplesmente não
+> existe na pasta — é sinal de que veio a branch errada. Apague a pasta e
+> clone de novo com o comando acima.
 
 ---
 
@@ -117,6 +123,38 @@ Ao rodar o `.bat`, abrem **duas janelas pretas**:
 
 Clique na janela preta e aperte **Ctrl + C**. Para abrir de novo, é só dar
 duplo clique no `TESTAR-NEXORA.bat`.
+
+### Como atualizar (receber uma versão nova minha)
+
+É o **mesmo arquivo**. O `TESTAR-NEXORA.bat` sempre começa buscando a versão
+mais nova no GitHub, então **atualizar = rodar ele de novo**. Também existe o
+`atualizar.bat`, que só chama o `TESTAR-NEXORA.bat` — os dois fazem a mesma
+coisa, use o que achar mais fácil de lembrar.
+
+Antes de atualizar, faça isto:
+
+1. **Feche a janela preta "Servidor do Nexora"** (a que está rodando o app).
+   A porta 3000 só pode ser usada por um servidor por vez — se a janela
+   antiga continuar aberta, a nova não consegue subir.
+2. Dê duplo clique no `TESTAR-NEXORA.bat`.
+3. Aperte uma tecla quando ele pedir e espere.
+
+**O que acontece com os seus dados:** o cronograma, o progresso e as matérias
+ficam salvos no **navegador**, e o script de atualização mexe apenas nos
+arquivos do programa. Então atualizar **não apaga** o que você estudou.
+
+**Se aparecer a mensagem** *"O Git buscou atualizações, mas não trouxe a
+branch"*: o seu clone está configurado para buscar só a branch principal.
+Resolva com dois comandos, digitados **dentro da pasta do projeto**:
+
+```
+git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+git fetch origin
+```
+
+Depois rode o `TESTAR-NEXORA.bat` de novo. Se preferir não usar Git de forma
+nenhuma, veja a seção 2 — dá para receber o app por **ZIP**, e nesse caso a
+atualização é baixar o ZIP novo por cima.
 
 ---
 

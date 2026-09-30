@@ -96,13 +96,54 @@ git fetch origin >nul 2>nul
 
 if errorlevel 1 goto :sem_atualizacao
 
+rem So da para resetar se o Git realmente trouxe a branch deste projeto.
+rem Alguns clones buscam so a "main", e ai origin/arena/... nao existe.
+
+git rev-parse --verify origin/arena/01a0d9e7-my-cronograma >nul 2>nul
+
+if errorlevel 1 goto :sem_branch_remota
+
 git checkout arena/01a0d9e7-my-cronograma >nul 2>nul
 
 git reset --hard origin/arena/01a0d9e7-my-cronograma >nul 2>nul
 
+if errorlevel 1 goto :sem_atualizacao
+
 echo  Codigo atualizado do GitHub.
 
 goto :instalar
+
+
+
+rem ---- o Git buscou, mas nao trouxe a branch do projeto ---------------
+
+:sem_branch_remota
+
+echo.
+
+echo [X] O Git conversou com o GitHub, mas nao trouxe a branch deste projeto.
+
+echo     A configuracao deste clone so esta buscando a branch "main".
+
+echo.
+
+echo     SOLUCAO - rode estes dois comandos DENTRO desta pasta:
+
+echo.
+
+echo       git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+
+echo       git fetch origin
+
+echo.
+
+echo     Depois rode o TESTAR-NEXORA.bat de novo.
+
+echo.
+
+pause
+
+exit /b 1
 
 
 
@@ -158,7 +199,47 @@ if errorlevel 1 goto :falha_banco
 
 
 
-if exist .env.local goto :config_pronta
+rem O .env.local guarda as configuracoes locais. Ele e criado sozinho e
+rem COMPLETADO quando ja existe: uma versao antiga do arquivo nao pode
+rem deixar o app sem uma variavel que passou a existir depois.
+
+if not exist .env.local type nul > .env.local
+
+call :garantir_env DATABASE_URL "postgresql://nexora:nexora@localhost:26257/nexora?sslmode=require"
+
+call :garantir_env NEXTAUTH_URL "http://localhost:3000"
+
+call :garantir_env NEXTAUTH_SECRET "chave-local-de-teste-0123456789abcdef0123456789abcdef"
+
+call :garantir_env CRON_SECRET "chave-local-cron-0123456789abcdef"
+
+call :garantir_env NOTIFICATIONS_CRON_SECRET "chave-local-cron-0123456789abcdef"
+
+call :garantir_env NEXT_PUBLIC_LOCAL_DEMO_MODE "true"
+
+call :garantir_env NEXT_PUBLIC_SIGNUPS_ENABLED "false"
+
+echo  Configuracao local pronta.
+
+goto :config_pronta
+
+
+
+rem ---- completa uma variavel que esteja faltando no .env.local -----------
+
+:garantir_env
+
+findstr /C:"%~1=" .env.local >nul 2>nul
+
+if not errorlevel 1 goto :eof
+
+echo %~1=%~2>>.env.local
+
+goto :eof
+
+
+
+:config_pronta
 
 echo  Criando o arquivo de configuracao local...
 
