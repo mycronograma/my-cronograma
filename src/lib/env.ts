@@ -36,7 +36,6 @@ export const env = {
 };
 
 export const hasGoogleAuth = Boolean(env.googleClientId && env.googleClientSecret);
-export const hasEmailAuth = Boolean(env.emailServer && env.emailFrom);
 export const hasWebPush = Boolean(env.vapidPublicKey && env.vapidPrivateKey && env.vapidSubject);
 
 /**
@@ -44,7 +43,6 @@ export const hasWebPush = Boolean(env.vapidPublicKey && env.vapidPrivateKey && e
  * desenvolvimento. `NODE_ENV !== 'production'` também é verdadeiro em
  * previews/staging, então exigimos explicitamente que não seja um deploy.
  */
-export const canExposeDevVerificationCode = !isProduction && !isVercel;
 
 export const missingAuthEnv = () => {
   const missing: string[] = [];

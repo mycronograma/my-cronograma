@@ -1404,12 +1404,7 @@ export default function PlannerPage() {
                     <p className="text-lg font-extrabold text-neon-blue mt-1">{doneHours}h <span className="text-xs font-bold text-neon-blue/60">({pct}%)</span></p>
                     <p className="text-xs text-text-muted">{all - done} blocos restantes</p>
                   </div>
-                  <div className="rounded-2xl bg-background-light border border-card-border p-3">
-                    <p className="text-[11px] font-bold tracking-widest text-text-muted uppercase">Aderência aos Blocos</p>
-                    <p className="text-lg font-extrabold text-emerald-400 mt-1">{pct}%</p>
-                    <p className="text-xs text-emerald-400/70">Desempenho excelente</p>
-                  </div>
-                  <div className="rounded-2xl bg-background-light border border-card-border p-3">
+                                    <div className="rounded-2xl bg-background-light border border-card-border p-3">
                     <p className="text-[11px] font-bold tracking-widest text-text-muted uppercase">Disciplinas Prioritárias</p>
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {topSubjects.length ? topSubjects.map(n => <span key={n} className="px-2 py-1 rounded-full bg-neon-purple/15 border border-neon-purple/20 text-xs font-semibold text-neon-purple">{n}</span>) : <span className="text-xs text-text-muted">Nenhuma ainda</span>}

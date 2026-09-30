@@ -22,7 +22,6 @@ import {
   RefreshCw,
   LogOut,
   Trash2,
-  RotateCcw,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -256,9 +255,7 @@ export default function SettingsPage() {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm'>('idle');
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [resetTutorialStep, setResetTutorialStep] = useState<'idle' | 'confirm'>('idle');
   const [resetProgressStep, setResetProgressStep] = useState<'idle' | 'confirm'>('idle');
-  const [isResettingTutorial, setIsResettingTutorial] = useState(false);
   const [isResettingProgress, setIsResettingProgress] = useState(false);
   const [switchPresetStep, setSwitchPresetStep] = useState<'idle' | 'confirm'>('idle');
   const [isSwitchingPreset, setIsSwitchingPreset] = useState(false);
@@ -857,49 +854,8 @@ export default function SettingsPage() {
     setHasChanges(true);
     setSaveState('idle');
   };
-
-  const startResetTutorialFlow = () => {
-    setResetTutorialStep('confirm');
-    setResetProgressStep('idle');
-    setDeleteStep('idle');
-    setDeleteConfirmText('');
-    setGeneralDangerFeedback(null);
-    setDeleteFeedback(null);
-  };
-
-  const cancelResetTutorialFlow = () => {
-    if (isResettingTutorial) return;
-    setResetTutorialStep('idle');
-  };
-
-  const confirmResetTutorial = async () => {
-    setIsResettingTutorial(true);
-    setGeneralDangerFeedback(null);
-    setDeleteFeedback(null);
-
-    try {
-      // Modo demo: dados só existem no navegador, não há o que limpar no servidor.
-      if (isLocalDemoAuthEnabled) {
-        wipeProgressLocally();
-      } else {
-        await clearServerProgress('onboarding');
-        resetOnboarding();
-        setHasRemotePrefs(false);
-      }
-      setGeneralDangerFeedback({ type: 'success', message: 'Tutorial reiniciado. Recarregando...' });
-      setTimeout(() => window.location.reload(), 350);
-    } catch (error) {
-      console.warn('Erro ao reiniciar tutorial:', error);
-      setGeneralDangerFeedback({ type: 'error', message: 'Falha ao reiniciar tutorial. Tente novamente.' });
-    } finally {
-      setIsResettingTutorial(false);
-      setResetTutorialStep('idle');
-    }
-  };
-
   const startResetProgressFlow = () => {
     setResetProgressStep('confirm');
-    setResetTutorialStep('idle');
     setDeleteStep('idle');
     setDeleteConfirmText('');
     setGeneralDangerFeedback(null);
@@ -962,7 +918,6 @@ export default function SettingsPage() {
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
-    setResetTutorialStep('idle');
     setResetProgressStep('idle');
     setDeleteStep('idle');
     setDeleteConfirmText('');
@@ -990,7 +945,6 @@ export default function SettingsPage() {
   const startDeleteFlow = () => {
     setDeleteStep('confirm');
     setDeleteConfirmText('');
-    setResetTutorialStep('idle');
     setResetProgressStep('idle');
     setGeneralDangerFeedback(null);
     setDeleteFeedback(null);
@@ -2012,49 +1966,6 @@ export default function SettingsPage() {
             >
               Sair da Conta
             </Button>
-          </div>
-
-          {/* Reiniciar tutorial — atenção */}
-          <div className="flex flex-col gap-3 rounded-xl border border-warning bg-warning-soft p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-warning">Reiniciar tutorial</p>
-              <p className="text-xs text-text-secondary mt-0.5">
-                Mostra novamente o passo a passo inicial. Não apaga suas matérias nem seu progresso.
-              </p>
-            </div>
-            {resetTutorialStep === 'idle' ? (
-              <Button
-                variant="secondary"
-                className="w-full sm:w-auto shrink-0 border-warning text-warning hover:bg-warning-soft-strong"
-                onClick={startResetTutorialFlow}
-                leftIcon={<RotateCcw className="w-4 h-4" />}
-              >
-                Reiniciar Tutorial
-              </Button>
-            ) : (
-              <div className="w-full sm:w-auto sm:min-w-[260px] rounded-xl border border-warning bg-warning-soft p-3 space-y-2">
-                <p className="text-xs text-warning">Confirmar reinício do tutorial?</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="ghost"
-                    className="border border-card-border text-text-secondary hover:bg-card-bg"
-                    onClick={cancelResetTutorialFlow}
-                    disabled={isResettingTutorial}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    className="border-warning text-warning hover:bg-warning-soft-strong"
-                    onClick={confirmResetTutorial}
-                    loading={isResettingTutorial}
-                    leftIcon={<RotateCcw className="w-4 h-4" />}
-                  >
-                    Confirmar
-                  </Button>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Trocar predefinição — destrutivo (reseta progresso) */}

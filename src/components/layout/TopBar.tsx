@@ -15,14 +15,12 @@ import {
   Flame,
   Bell,
   Search,
-  Plus,
   User,
   LogOut,
   Moon,
   Sun,
 } from 'lucide-react';
 import { percentage, formatNumber, cn } from '@/lib/utils';
-import { QuickSessionModal } from '@/components/session';
 import { useLocalStorage } from '@/hooks';
 import { defaultSettings } from '@/lib/defaultSettings';
 import { clearLocalDemoSession, isLocalDemoAuthEnabled } from '@/lib/localDemoAuth';
@@ -56,7 +54,6 @@ interface TopBarDesktopProps {
   unreadCount: number;
   xpProgress: number;
   theme: 'light' | 'dark';
-  onOpenQuickSession: () => void;
   onToggleNotifications: () => void;
   onToggleTheme: () => void;
   onSignOut: () => void;
@@ -148,7 +145,6 @@ function TopBarDesktop({
   unreadCount,
   xpProgress,
   theme,
-  onOpenQuickSession,
   onToggleNotifications,
   onToggleTheme,
   onSignOut,
@@ -224,16 +220,6 @@ function TopBarDesktop({
       </div>
 
       <div className="flex min-w-0 shrink-0 items-center justify-end gap-2 xl:gap-3">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={onOpenQuickSession}
-          className="btn-primary flex min-h-[44px] items-center gap-2 px-3 xl:px-4 py-2 text-sm"
-        >
-          <Plus className="h-4 w-4" />
-          <span className="hidden xl:inline">Sessão rápida</span>
-          <span className="xl:hidden">Sessão</span>
-        </motion.button>
 
         <motion.button
           type="button"
@@ -306,7 +292,6 @@ export default function TopBar({ user }: TopBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { status } = useSession();
-  const [showQuickSession, setShowQuickSession] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isNotificationsLoading, setIsNotificationsLoading] = useState(false);
@@ -324,10 +309,6 @@ export default function TopBar({ user }: TopBarProps) {
   const routeTitle = useMemo(() => resolveRouteTitle(pathname || '/dashboard'), [pathname]);
   const theme = userSettings.theme === 'light' ? 'light' : 'dark';
   const canUseServerNotifications = status === 'authenticated';
-  const quickSessionSubjects = useMemo(
-    () => subjects.map((subject) => ({ id: subject.id, name: subject.name, color: subject.color })),
-    [subjects]
-  );
   const unreadCount = notifications.filter((item) => !item.read).length;
 
   const handleSearch = useCallback(
@@ -552,7 +533,6 @@ export default function TopBar({ user }: TopBarProps) {
 
   useEffect(() => {
     setShowNotifications(false);
-    setShowQuickSession(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -578,7 +558,6 @@ export default function TopBar({ user }: TopBarProps) {
             unreadCount={unreadCount}
             xpProgress={xpProgress}
             theme={theme}
-            onOpenQuickSession={() => setShowQuickSession(true)}
             onToggleNotifications={() => setShowNotifications((prev) => !prev)}
             onToggleTheme={toggleTheme}
             onSearch={handleSearch}
@@ -628,11 +607,6 @@ export default function TopBar({ user }: TopBarProps) {
         </>
       )}
 
-      <QuickSessionModal
-        isOpen={showQuickSession}
-        onClose={() => setShowQuickSession(false)}
-        subjects={quickSessionSubjects}
-      />
     </>
   );
 }

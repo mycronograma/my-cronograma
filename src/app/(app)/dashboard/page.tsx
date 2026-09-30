@@ -13,25 +13,18 @@ import {
   Play,
   CheckCircle2,
   SkipForward,
-  Coffee,
-  ChevronRight,
-  Calendar,
-  CalendarDays,
   TrendingUp,
   Flame,
   Target,
   Sparkles,
   BookOpen,
   Zap,
-  Lightbulb,
   Lock,
-  Award,
 } from 'lucide-react';
 import { cn, formatDuration, formatHoursDuration, formatDate, toLocalDateKey, parseBlockDate, getWeekStart, timeToMinutes, minutesToTime, getHoursForDate, getWeeklyGoalHours, parseLocalDateKey } from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { computeGamificationSnapshot } from '@/lib/progressSnapshot';
 import { applyBlockCompletionMetrics } from '@/services/adaptiveStudyIntelligence';
-import { buildCoachSuggestion, currentWeeklyGoal, type CoachSuggestion } from '@/services/adaptiveCoach';
 import { checkSequentialLock } from '@/services/sequentialLock';
 import { reportCompletedSession } from '@/lib/sessionSync';
 import { getStudyBlockDisplayTitle } from '@/lib/studyBlockLabels';
@@ -46,7 +39,6 @@ import { WeeklyChart } from '@/components/dashboard';
 import type { StudyBlock, Subject, AnalyticsStore, StudyPreferences, UserSettings, DailyHoursByWeekday, WeekdayKey } from '@/types';
 import { useSession } from 'next-auth/react';
 import { useOnboarding, useLocalStorage, useClientNow } from '@/hooks';
-import { defaultTrainerTips } from '@/services/studyTrainer';
 import { defaultSettings } from '@/lib/defaultSettings';
 
 interface DashboardProps {
@@ -69,13 +61,9 @@ const NEUTRAL_WEEKDAY_DATE = new Date(2024, 0, 1); // segunda-feira em qualquer 
 export default function Dashboard() {
   const router = useRouter();
   const { data: session } = useSession();
-  const [coachDismissed, setCoachDismissed] = useState<string | null>(null);
   // Aviso da trava sequencial (#6e): aparece quando a pessoa tenta estudar
   // matéria de dia futuro com o dia de hoje ainda pendente.
   const [lockNotice, setLockNotice] = useState<string | null>(null);
-  const [coachApplied, setCoachApplied] = useState<string | null>(null);
-
-  const [showAllTips, setShowAllTips] = useState(false);
   const { hasCompletedWelcome } = useOnboarding();
   const [plannerBlocks, setPlannerBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
   const [subjects, setSubjects] = useLocalStorage<Subject[]>('nexora_subjects', []);
@@ -89,22 +77,7 @@ export default function Dashboard() {
   // Usa os mesmos defaults globais das demais telas: fallbacks divergentes
   // faziam o snapshot enviado ao servidor depender da página visitada primeiro.
   const [userSettings, setUserSettings] = useLocalStorage<UserSettings>('nexora_user_settings', defaultSettings);
-  // Sugestão só existe quando há evidência real de algo a ajustar (ritmo
-  // caindo, matéria pulada ou foco abaixo do planejado).
-  const coachSuggestion = useMemo(
-    () =>
-      buildCoachSuggestion({
-        subjects,
-        plannerBlocks,
-        analytics,
-        studyPrefs,
-        userSettings,
-      }),
-    [subjects, plannerBlocks, analytics, studyPrefs, userSettings]
-  );
 
-  const coachVisible: CoachSuggestion | null =
-    coachSuggestion && coachSuggestion.id !== coachDismissed ? coachSuggestion : null;
 
   // Banner de "complete seu perfil" só faz sentido sem nenhum setup realizado:
   // com matérias ou blocos já existentes, o perfil já foi configurado.
@@ -251,45 +224,7 @@ export default function Dashboard() {
     };
   }, [gamificationSnapshot, dailyAnalytics]);
 
-  /** Aplica a sugestão do coach: muda a configuração de verdade. */
-  const handleApplyCoach = (suggestion: CoachSuggestion) => {
-    if (coachApplied === suggestion.id) return;
 
-    if (suggestion.actionKind === 'reduce-subject' && suggestion.subjectId) {
-      setSubjects((prev) =>
-        prev.map((subject) =>
-          subject.id === suggestion.subjectId
-            ? { ...subject, targetHours: suggestion.suggestedTargetHours ?? subject.targetHours }
-            : subject
-        )
-      );
-    }
-
-    if (suggestion.actionKind === 'reduce-goal' && suggestion.suggestedWeeklyHours) {
-      // Reduz a meta semanal proporcionalmente em todos os dias com hora > 0,
-      // para o plano deixar de ser impossível de cumprir.
-      const target = suggestion.suggestedWeeklyHours;
-      const current = currentWeeklyGoal(userSettings, studyPrefs) || target;
-      const factor = target / current;
-      setUserSettings((prev) => {
-        const base = prev.dailyHoursByWeekday || defaultSettings.dailyHoursByWeekday;
-        const byWeekday = { ...base } as DailyHoursByWeekday;
-        for (const day of Object.keys(byWeekday) as WeekdayKey[]) {
-          byWeekday[day] = Math.round((Number(byWeekday[day]) || 0) * factor * 2) / 2;
-        }
-        return { ...prev, dailyHoursByWeekday: byWeekday };
-      });
-    }
-
-    if (suggestion.actionKind === 'shorten-blocks' && suggestion.suggestedBlockMinutes) {
-      setStudyPrefs((prev) => ({
-        ...prev,
-        focusBlockMinutes: suggestion.suggestedBlockMinutes,
-      }));
-    }
-
-    setCoachApplied(suggestion.id);
-  };
 
   const handleStartBlock = (block: StudyBlock) => {
     // Blocos concluídos/pulados não podem voltar a "em andamento": isso permitia
@@ -628,97 +563,11 @@ const handleCompleteBlock = (
               </Card>
             </motion.div>
 
-            {coachVisible && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="relative overflow-hidden rounded-xl border border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-transparent p-5 backdrop-blur-glass"
-              >
-                <div className="absolute top-0 right-0 rounded-bl-xl bg-amber-500/10 px-2.5 py-1 border-b border-l border-amber-500/20">
-                  <span className="text-[10px] font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
-                    <div className="w-1 h-1 rounded-full bg-amber-400 animate-pulse-slow" />
-                    Ajuste sugerido
-                  </span>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div
-                    className={cn(
-                      'w-10 h-10 rounded-full border flex items-center justify-center flex-shrink-0 mt-1 transition-colors',
-                      coachApplied === coachVisible.id
-                        ? 'bg-emerald-500/10 border-emerald-500/20'
-                        : 'bg-amber-500/10 border-amber-500/20'
-                    )}
-                  >
-                    {coachApplied === coachVisible.id ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    ) : (
-                      <Lightbulb className="w-4 h-4 text-amber-400" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-heading font-bold text-text-primary mb-0.5 text-base">
-                      {coachApplied === coachVisible.id ? 'Ajuste aplicado' : coachVisible.title}
-                    </h3>
-
-                    {coachApplied === coachVisible.id ? (
-                      <>
-                        <p className="mt-1.5 text-sm text-text-secondary leading-relaxed">
-                          {coachVisible.actionLabel} — feito.
-                        </p>
-                        <p className="mt-2 text-xs text-text-muted leading-relaxed">
-                          Gere o cronograma novamente na Agenda Inteligente para redistribuir os
-                          blocos com a nova configuração.
-                        </p>
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="w-full sm:w-auto"
-                            onClick={() => router.push('/planner')}
-                            leftIcon={<CalendarDays className="w-3.5 h-3.5" />}
-                          >
-                            Gerar cronograma agora
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <p className="mt-1.5 text-sm text-text-secondary leading-relaxed">
-                          {coachVisible.evidence}
-                        </p>
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="w-full sm:w-auto bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 border border-amber-500/30"
-                            onClick={() => handleApplyCoach(coachVisible)}
-                            leftIcon={<Lightbulb className="w-3.5 h-3.5" />}
-                          >
-                            {coachVisible.actionLabel}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="w-full text-text-muted hover:text-text-secondary sm:w-auto"
-                            onClick={() => setCoachDismissed(coachVisible.id)}
-                          >
-                            {coachVisible.dismissLabel}
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
               <Card className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="text-lg font-heading font-bold text-text-primary">Nível e XP</h3>
-                    <p className="text-sm text-text-secondary">Continue estudando para subir de nível!</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-text-muted">Estudado hoje</p>
@@ -752,33 +601,10 @@ const handleCompleteBlock = (
                 </div>
               </Card>
             </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
-              <Card className="p-5">
-                <h3 className="text-lg font-heading font-bold text-text-primary mb-4">Dicas do Study Trainer</h3>
-                <div className="space-y-3">
-                  {defaultTrainerTips.slice(0, showAllTips ? undefined : 2).map((tip, index) => (
-                    <div key={tip.id} className="flex gap-3">
-                      <div className="w-6 h-6 rounded-full bg-neon-blue/20 text-neon-blue font-bold text-xs flex items-center justify-center flex-shrink-0">
-                        {index + 1}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-text-primary mb-1">{tip.title}</p>
-                        <p className={cn("text-xs text-text-secondary", !showAllTips && "line-clamp-2")}>{tip.content}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {defaultTrainerTips.length > 2 && (
-                  <Button variant="secondary" size="sm" className="w-full mt-4" onClick={() => setShowAllTips(!showAllTips)}>
-                    {showAllTips ? "Mostrar Menos" : "Ver Todas as Dicas"}
-                  </Button>
-                )}
-              </Card>
-            </motion.div>
           </div>
         </div>
       </div>
+
 
       <StudyBlockSessionModal
         block={activeSessionBlock}

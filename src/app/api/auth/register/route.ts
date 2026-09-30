@@ -1,56 +1,20 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/password';
-import { canExposeDevVerificationCode, env } from '@/lib/env';
 import {
   AUTH_RATE_LIMITS,
   clientKeyFromRequest,
   consumeRateLimit,
   rateLimitResponse,
 } from '@/lib/rateLimit';
-import { sendEmail } from '@/lib/mail';
-import {
-  REGISTER_2FA_TTL_MS,
-  buildRegister2FAIdentifier,
-  generateRegister2FACode,
-  hashRegister2FACode,
-} from '@/lib/register-2fa';
 
 const MIN_NAME_LENGTH = 2;
 const MIN_PASSWORD_LENGTH = 8;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const allowLocalVerificationCode = canExposeDevVerificationCode;
-
-const sendRegisterCodeEmail = async ({
-  name,
-  email,
-  code,
-}: {
-  name: string;
-  email: string;
-  code: string;
-}) => {
-  const firstName = name.trim().split(' ')[0] || 'Estudante';
-
-  await sendEmail({
-    to: email,
-    subject: 'Código de verificação - Nexora',
-    text: `Oi, ${firstName}. Seu código de verificação da Nexora é ${code}. Ele expira em 10 minutos.`,
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111;">
-        <h2>Verificação de conta</h2>
-        <p>Oi, ${firstName}.</p>
-        <p>Seu código de verificação da Nexora é:</p>
-        <p style="font-size: 28px; font-weight: 700; letter-spacing: 6px; margin: 16px 0;">${code}</p>
-        <p>Este código expira em 10 minutos.</p>
-      </div>
-    `,
-  });
-};
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
     const password = typeof body?.password === 'string' ? body.password : '';
@@ -63,7 +27,7 @@ export async function POST(request: Request) {
     }
 
     if (!emailRegex.test(email)) {
-      return NextResponse.json({ message: 'Informe um e-mail válido.' }, { status: 400 });
+      return NextResponse.json({ message: 'Informe um e-mail valido.' }, { status: 400 });
     }
 
     if (password.length < MIN_PASSWORD_LENGTH) {
@@ -73,20 +37,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Sem limite, dá para enumerar e-mails e criar contas em massa.
-    const limit = consumeRateLimit(
-      clientKeyFromRequest(request, 'register', email),
-      AUTH_RATE_LIMITS.register
-    );
+    const limit = await consumeRateLimit(clientKeyFromRequest(request, 'register', email), AUTH_RATE_LIMITS.register);
     if (!limit.ok) {
       return rateLimitResponse(limit);
-    }
-
-    if (!allowLocalVerificationCode && (!env.emailServer || !env.emailFrom)) {
-      return NextResponse.json(
-        { message: 'Envio de e-mail não configurado no servidor.' },
-        { status: 503 }
-      );
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -101,81 +54,18 @@ export async function POST(request: Request) {
     const passwordHash = await hashPassword(password);
 
     const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        passwordHash,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-      },
+      data: { name, email, passwordHash },
+      select: { id: true, name: true, email: true },
     });
-
-    const rawCode = generateRegister2FACode();
-    const hashedCode = hashRegister2FACode(rawCode);
-    const identifier = buildRegister2FAIdentifier(email);
-    const expiresAt = new Date(Date.now() + REGISTER_2FA_TTL_MS);
-
-    await prisma.verificationToken.deleteMany({
-      where: { identifier },
-    });
-
-    await prisma.verificationToken.create({
-      data: {
-        identifier,
-        token: hashedCode,
-        expires: expiresAt,
-      },
-    });
-
-    let codeSent = false;
-
-    if (env.emailServer && env.emailFrom) {
-      try {
-        await sendRegisterCodeEmail({
-          name: user.name,
-          email: user.email,
-          code: rawCode,
-        });
-        codeSent = true;
-      } catch (mailError) {
-        console.error('Erro ao enviar código 2FA de cadastro:', mailError);
-      }
-    }
-
-    if (!codeSent && !allowLocalVerificationCode) {
-      await prisma.$transaction([
-        prisma.verificationToken.deleteMany({ where: { identifier } }),
-        prisma.user.delete({ where: { id: user.id } }),
-      ]);
-
-      return NextResponse.json(
-        { message: 'Não foi possível enviar o código de verificação agora.' },
-        { status: 503 }
-      );
-    }
-
-    const localCodeMessage = `Conta criada. Ambiente local sem envio de e-mail: use o código ${rawCode}.`;
 
     return NextResponse.json(
-      {
-        success: true,
-        requires2FA: true,
-        email,
-        codeSent,
-        ...(codeSent || !allowLocalVerificationCode ? {} : { devVerificationCode: rawCode }),
-        message: codeSent
-          ? 'Conta criada. Enviamos o código de verificação para seu e-mail.'
-          : localCodeMessage,
-      },
+      { success: true, email: user.email, name: user.name },
       { status: 201 }
     );
   } catch (error) {
-    console.error('Erro ao cadastrar usuário:', error);
+    console.error('Erro ao registrar usuario:', error);
     return NextResponse.json(
-      { message: 'Não foi possível concluir o cadastro agora.' },
+      { message: 'Não foi possível criar sua conta agora.' },
       { status: 500 }
     );
   }

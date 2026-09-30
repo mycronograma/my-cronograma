@@ -3,4 +3,4 @@
  */
 
 export { default as EmptyState, EmptySubjects } from './EmptyState';
-export { default as PresetConfigWizard } from './PresetConfigWizard';
+export { default as SetupWizard } from './SetupWizard';

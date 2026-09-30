@@ -17,7 +17,6 @@ import {
   getCanonicalSubjectName,
   getCuratedPresetByName,
 } from '@/lib/presetCatalog';
-import { buildConcursosPresetSubjectsFromAnswers } from '@/services/concursosPresetIntelligence';
 import type { EnemAreaPriorities, PresetWizardAnswers } from '@/types';
 
 type ImportPresetSubject = {
@@ -207,10 +206,6 @@ function toImportSubjects(
       recommendedWeeklyHours: subject.recommendedWeeklyHours,
     }));
     return applyEnemWizardAdjustments(base, wizardAnswers);
-  }
-
-  if (dbPresetName.toLowerCase().includes('concurso')) {
-    return buildConcursosPresetSubjectsFromAnswers(wizardAnswers);
   }
 
   const curated = getCuratedPresetByName(dbPresetName);

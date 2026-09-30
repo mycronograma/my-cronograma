@@ -19,7 +19,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { Card, Button, Badge } from '@/components/ui';
-import { PresetConfigWizard } from '@/components/onboarding';
+import { SetupWizard } from '@/components/onboarding';
 import { cn, formatHoursDuration } from '@/lib/utils';
 import { getEnemPresetSubjects } from '@/lib/enemCatalog';
 import { getCuratedPresets, normalizeComparableText } from '@/lib/presetCatalog';
@@ -647,7 +647,7 @@ export default function PresetSelector({
         </div>
       </div>
 
-      <PresetConfigWizard
+      <SetupWizard
         isOpen={showWizard && !!selectedPreset && selectedPreset !== 'custom'}
         presetId={selectedPreset || ''}
         presetName={presets.find((preset) => preset.id === selectedPreset)?.name || 'Modelo'}

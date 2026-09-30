@@ -5,14 +5,11 @@
  * Análises abrangentes de produtividade e visualizações
  */
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useMemo, useEffect, useState } from 'react';
 import {
   Clock,
-  ClipboardList,
-  Target,
   TrendingUp,
-  Brain,
   Calendar,
   Award,
 } from 'lucide-react';
@@ -23,8 +20,7 @@ import {
   SubjectDistribution,
   ActivityHeatmap,
 } from '@/components/analytics';
-import { applyQuestionBatch, computeIntelligentAnalyticsSummary } from '@/services/adaptiveStudyIntelligence';
-import QuestionLogModal from '@/components/analytics/QuestionLogModal';
+import { computeIntelligentAnalyticsSummary } from '@/services/adaptiveStudyIntelligence';
 import {
   buildCompletedHoursByDate,
   buildCompletedSessionsByDate,
@@ -54,7 +50,6 @@ export default function AnalyticsPage() {
   const [subjects] = useLocalStorage<Subject[]>('nexora_subjects', []);
   const [plannerBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
   const [mounted, setMounted] = useState(false);
-  const [showQuestionLog, setShowQuestionLog] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -62,27 +57,6 @@ export default function AnalyticsPage() {
 
   const now = useMemo(() => (mounted ? new Date() : null), [mounted]);
 
-  const handleSaveQuestionLog = (payload: {
-    subjectId: string;
-    totalQuestions: number;
-    correctAnswers: number;
-    date: Date;
-    sessionType: 'EXERCICIOS' | 'SIMULADO';
-  }) => {
-    const subject = subjects.find((s) => s.id === payload.subjectId);
-    if (!subject) return;
-    setAnalytics((prev) =>
-      applyQuestionBatch({
-        analytics: prev,
-        subject,
-        totalQuestions: payload.totalQuestions,
-        correctAnswers: payload.correctAnswers,
-        date: payload.date,
-        sessionType: payload.sessionType,
-      })
-    );
-    setShowQuestionLog(false);
-  };
 
   const completedStats = useMemo(() => {
     const hoursByDate = buildCompletedHoursByDate(plannerBlocks);
@@ -210,14 +184,6 @@ export default function AnalyticsPage() {
     [analyticsForSummary, subjects, now]
   );
   const studiedDays = productivityData.filter((item) => item.hours > 0);
-  const avgFocus =
-    intelligentSummary.avgFocusScore ||
-    (studiedDays.length > 0
-      ? Math.round(
-          studiedDays.reduce((sum, d) => sum + d.focusScore, 0) /
-            studiedDays.length
-        )
-      : 0);
   const avgProductivity =
     intelligentSummary.avgProductivityScore ||
     (studiedDays.length > 0
@@ -226,11 +192,13 @@ export default function AnalyticsPage() {
             studiedDays.length
         )
       : 0);
-  const avgAccuracy = Math.round((intelligentSummary.avgAccuracyRate || 0) * 100);
-  const totalLoggedQuestions = Object.values(analytics.performance?.subjects ?? {}).reduce(
-    (sum, profile) => sum + (profile.questionsTotal ?? 0),
-    0
-  );
+    intelligentSummary.avgProductivityScore ||
+    (studiedDays.length > 0
+      ? Math.round(
+          studiedDays.reduce((sum, d) => sum + d.productivityScore, 0) /
+            studiedDays.length
+        )
+      : 0);
 
   if (!mounted) {
     return (
@@ -274,26 +242,6 @@ export default function AnalyticsPage() {
           variant="mobile"
         />
         <StatsCard
-          title="Acerto estimado"
-          titleShort="Acerto"
-          value={`${avgAccuracy}%`}
-          subtitle="Exercícios/simulados"
-          icon={Target}
-          trend={{ value: 0, isPositive: avgAccuracy >= 70 }}
-          color="purple"
-          variant="mobile"
-        />
-        <StatsCard
-          title="Pontuação Média de Foco"
-          titleShort="Foco"
-          value={`${avgFocus}%`}
-          subtitle="Últimos 14 dias"
-          icon={Brain}
-          trend={{ value: 0, isPositive: false }}
-          color="purple"
-          variant="mobile"
-        />
-        <StatsCard
           title="Produtividade Média"
           titleShort="Prod."
           value={`${avgProductivity}%`}
@@ -314,29 +262,7 @@ export default function AnalyticsPage() {
         />
       </motion.div>
 
-      <motion.div variants={itemVariants} className="min-w-0">
-        <Card className="border-neon-blue/20 bg-neon-blue/5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-text-secondary">
-              <span className="font-medium text-text-primary">Sobre o acerto:</span>{' '}
-              {totalLoggedQuestions > 0
-                ? `calculado com ${totalLoggedQuestions} questões que você registrou.`
-                : 'ainda é uma estimativa: registre as questões que você resolve para o número ser real.'}
-            </p>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="w-full shrink-0 sm:w-auto"
-              onClick={() => setShowQuestionLog(true)}
-              leftIcon={<ClipboardList className="w-4 h-4" />}
-            >
-              Registrar questões
-            </Button>
-          </div>
-        </Card>
-      </motion.div>
 
-      {/* Linha de Gráficos */}
       <div className="grid grid-cols-1 gap-4 max-[479px]:gap-3 sm:gap-6 lg:grid-cols-2">
         <motion.div variants={itemVariants} className="min-w-0">
           <ProductivityChart data={productivityData} />
@@ -358,17 +284,7 @@ export default function AnalyticsPage() {
             Insights da IA
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-[479px]:gap-2 sm:gap-4">
-            {/* Horário de Pico de Performance */}
-            <div className="p-4 max-[479px]:p-3 rounded-xl bg-neon-blue/10 border border-neon-blue/20">
-              <div className="flex items-center gap-2 mb-2 max-[479px]:mb-1">
-                <Clock className="w-5 h-5 max-[479px]:w-4 max-[479px]:h-4 text-neon-blue" />
-                <span className="font-medium text-white">Pico de Performance</span>
-              </div>
-              <p className="text-2xl max-[479px]:text-[22px] font-heading font-bold text-neon-blue">--</p>
-              <p className="text-sm max-[479px]:text-xs text-text-secondary mt-1">Sem dados ainda</p>
-            </div>
 
-            {/* Melhor Disciplina */}
             <div className="p-4 max-[479px]:p-3 rounded-xl bg-neon-purple/10 border border-neon-purple/20">
               <div className="flex items-center gap-2 mb-2 max-[479px]:mb-1">
                 <Award className="w-5 h-5 max-[479px]:w-4 max-[479px]:h-4 text-neon-purple" />
@@ -408,7 +324,7 @@ export default function AnalyticsPage() {
               {subjects.length === 0
                 ? 'Sem recomendações ainda. Inicie seus estudos para gerar insights.'
                 : intelligentSummary.weakestSubject
-                ? `Priorize ${intelligentSummary.weakestSubject.name} nos próximos dias. Previsão de evolução em 30 dias: ${intelligentSummary.projectedImprovement30d > 0 ? '+' : ''}${intelligentSummary.projectedImprovement30d.toFixed(1)} pontos percentuais.`
+                ? `Priorize ${intelligentSummary.weakestSubject.name} nos próximos dias.`
                 : 'Continue registrando sessões para gerar recomendações adaptativas.'}
             </p>
           </div>
@@ -421,13 +337,6 @@ export default function AnalyticsPage() {
               </p>
             </div>
             <div className="p-4 max-[479px]:p-3 rounded-xl bg-white/5 border border-card-border">
-              <p className="text-xs text-text-secondary">Previsão de Evolução</p>
-              <p className="text-xl font-heading font-bold text-white mt-1">
-                {intelligentSummary.projectedImprovement30d > 0 ? '+' : ''}
-                {intelligentSummary.projectedImprovement30d.toFixed(1)} pp / 30d
-              </p>
-            </div>
-            <div className="p-4 max-[479px]:p-3 rounded-xl bg-white/5 border border-card-border">
               <p className="text-xs text-text-secondary">Produtividade Média</p>
               <p className="text-xl font-heading font-bold text-white mt-1">
                 {avgProductivity}%
@@ -436,16 +345,6 @@ export default function AnalyticsPage() {
           </div>
         </Card>
       </motion.div>
-
-      <AnimatePresence>
-        {showQuestionLog && subjects.length > 0 && (
-          <QuestionLogModal
-            subjects={subjects}
-            onClose={() => setShowQuestionLog(false)}
-            onSave={handleSaveQuestionLog}
-          />
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }

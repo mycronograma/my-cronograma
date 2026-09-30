@@ -27,7 +27,8 @@
     "test:move": "tsx scripts/block-move.test.ts",
     "test:freeslot": "tsx scripts/free-slot.test.ts",
     "test:target": "tsx scripts/weekly-target.test.ts",
-    "test:capacity": "tsx scripts/backlog-capacity.test.ts"
+    "test:capacity": "tsx scripts/backlog-capacity.test.ts",
+    "test:setup": "tsx scripts/setup-wizard.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

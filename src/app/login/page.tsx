@@ -515,9 +515,7 @@ export default function LoginPage() {
                   </button>
                 </div>
                 <div className="mt-1.5 text-right">
-                  <Link href="/forgot-password" className="text-xs text-neon-blue hover:underline">
-                    Esqueci minha senha
-                  </Link>
+                  
                 </div>
               </div>
 
