@@ -3,6 +3,19 @@
 Guia feito para quem **não é do terminal**. Cada passo diz o que fazer e o que
 esperar na tela. Se travar em algum, me mande o print que eu resolvo.
 
+> ### ⚠️ Onde colocar a pasta (leia antes de tudo)
+>
+> Coloque o projeto em uma pasta **comum**, como `C:\Nexora` ou a sua Área de
+> Trabalho.
+>
+> **Nunca** dentro de `C:\Windows` ou `C:\Windows\System32`. O Windows protege
+> essas pastas e não deixa o app criar os arquivos dele lá. O sintoma é o erro
+> `operation not permitted` ou `Permission denied`.
+>
+> **Como não errar:** abra a pasta onde você quer o projeto, clique com o botão
+> direito em um espaço vazio e escolha **Abrir no Terminal**. Aí o terminal já
+> começa no lugar certo.
+
 ---
 
 ## 1. Instalar o necessário (só na primeira vez)
@@ -185,6 +198,7 @@ Para você não perder tempo com coisas que já sei:
 | `npm` não é reconhecido | instale o Node.js, **feche e abra** a janela, tente de novo |
 | O `.bat` diz "porta 3000 já está em uso" | o app já está aberto em outra janela preta; feche essa janela e rode de novo |
 | `fatal: cannot open '.git/FETCH_HEAD': Permission denied` | a pasta veio do ZIP e nao tem Git. **Nao e erro** — o `.bat` segue com os arquivos da pasta e o app abre normal |
+| `EPERM: operation not permitted, mkdir ...node_modules\.prisma\client` | o projeto está dentro de `C:\Windows\System32`. Mova para `C:\Nexora` (veja o aviso no início deste guia) e rode de novo |
 | `[i] Nao foi possivel buscar atualizacoes` | sem internet ou sem Git. O app abre do mesmo jeito, com a versao que ja esta na pasta |
 | O navegador abre mas dá erro | me mande o print da tela de erro |
 | **Página totalmente branca** | quase sempre é a primeira compilação. Espere 30–90s e aperte **F5**. Se não resolver, me mande um print da janela `Servidor do Nexora` |
