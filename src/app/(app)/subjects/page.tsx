@@ -5,12 +5,13 @@
  * Gerenciar disciplinas com prioridade e dificuldade
  */
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clearClientStoreKeys } from '@/hooks/useLocalStorage';
 import { motion, AnimatePresence } from 'framer-motion';
 import QuestionLogModal from '@/components/analytics/QuestionLogModal';
 import { applyQuestionBatch } from '@/services/adaptiveStudyIntelligence';
+import { recalculateAllTargets } from '@/services/weeklyTarget';
 import {
   Plus,
   RefreshCw,
@@ -447,7 +448,7 @@ function SubjectsPageContent() {
                   : importedSubjects;
 
               const mergedSubjects = mergeImportedSubjects(subjects, normalizedImported);
-              setSubjects(mergedSubjects);
+              setSubjects(aplicarRegraDeMetas(mergedSubjects));
               setShowPresetSelector(false);
               markFirstSubjectAdded();
               if (options?.wizardAnswers) {
@@ -526,7 +527,7 @@ function SubjectsPageContent() {
       }
 
       const mergedSubjects = mergeImportedSubjects(subjects, importedSubjects);
-      setSubjects(mergedSubjects);
+      setSubjects(aplicarRegraDeMetas(mergedSubjects));
       setShowPresetSelector(false);
       markFirstSubjectAdded();
       if (options?.wizardAnswers) {
@@ -610,7 +611,10 @@ function SubjectsPageContent() {
   const confirmDeleteSubject = () => {
     if (!pendingDeleteSubject) return;
     const deletedId = pendingDeleteSubject.id;
-    setSubjects((prev) => prev.filter((subject) => subject.id !== deletedId));
+    // As horas que a matéria removida tinha voltam para as outras.
+    setSubjects((prev) =>
+      aplicarRegraDeMetas(prev.filter((subject) => subject.id !== deletedId))
+    );
     setPlannerBlocks((prev) => prev.filter((block) => block.subjectId !== deletedId));
     setPendingDeleteSubject(null);
   };
@@ -634,9 +638,6 @@ function SubjectsPageContent() {
     if (data.difficulty !== undefined && (data.difficulty < 1 || data.difficulty > 10)) {
       return 'Dificuldade deve estar entre 1 e 10';
     }
-    if (data.targetHours !== undefined && data.targetHours < 0) {
-      return 'Meta de horas não pode ser negativa';
-    }
     return null;
   };
 
@@ -645,10 +646,12 @@ function SubjectsPageContent() {
     if (editingSubject) {
       // Atualizar existente
       setSubjects((prev) =>
-        prev.map((s) =>
-          s.id === editingSubject.id
-            ? { ...s, ...data, updatedAt: new Date() }
-            : s
+        aplicarRegraDeMetas(
+          prev.map((s) =>
+            s.id === editingSubject.id
+              ? { ...s, ...data, updatedAt: new Date() }
+              : s
+          )
         )
       );
     } else {
@@ -661,8 +664,7 @@ function SubjectsPageContent() {
         icon: 'book',
         priority: data.priority ?? 5,
         difficulty: data.difficulty ?? 5,
-        targetHours: data.targetHours ?? 10,
-        targetHoursIsManual: data.targetHoursIsManual ?? false,
+        targetHours: 0,
         completedHours: 0,
         totalHours: 0,
         sessionsCount: 0,
@@ -673,7 +675,7 @@ function SubjectsPageContent() {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      setSubjects((prev) => [...prev, newSubject]);
+      setSubjects((prev) => aplicarRegraDeMetas([...prev, newSubject]));
       
       // Marcar que o usuário adicionou a primeira disciplina
       markFirstSubjectAdded();
@@ -702,7 +704,40 @@ function SubjectsPageContent() {
   // configurada, então dizia "Meta Semanal: 20h" mesmo com as matérias somando 34h.
   const totalTargetHours = subjects.reduce((sum, s) => sum + (s.targetHours || 0), 0);
   const capacityHours = weeklyGoalFromPrefs > 0 ? weeklyGoalFromPrefs : 0;
+  /**
+   * Uma regra só para a meta semanal. Depois de criar, editar ou remover uma
+   * matéria — e também ao abrir a tela — TODAS têm a hora recalculada
+   * (carga × peso² ÷ Σ peso²), então a soma sempre fecha na carga semanal e o
+   * número gravado nunca divergir da regra.
+   */
+  const aplicarRegraDeMetas = useCallback(
+    (lista: Subject[]): Subject[] => {
+      const alvos = recalculateAllTargets(
+        lista.map((s) => ({ id: s.id, priority: s.priority, difficulty: s.difficulty })),
+        weeklyGoalFromPrefs
+      );
+      return lista.map((s) =>
+        typeof alvos[s.id] === 'number'
+          ? { ...s, targetHours: alvos[s.id], updatedAt: new Date() }
+          : s
+      );
+    },
+    [weeklyGoalFromPrefs]
+  );
+
   const weeklyOverflow = capacityHours > 0 ? Math.max(0, totalTargetHours - capacityHours) : 0;
+
+  // A mesma regra vale ao abrir a tela. Se a carga semanal mudou nas
+  // configurações, ou se as matérias vieram de uma predefinição com horas
+  // recomendadas, o valor gravado é corrigido aqui — senão a soma das metas não
+  // fecharia com a semana.
+  const cargaAplicadaRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (capacityHours <= 0 || subjects.length === 0) return;
+    if (cargaAplicadaRef.current === capacityHours) return;
+    cargaAplicadaRef.current = capacityHours;
+    setSubjects((prev) => aplicarRegraDeMetas(prev));
+  }, [capacityHours, subjects.length, setSubjects, aplicarRegraDeMetas]);
   const totalCompletedHours = subjects.reduce(
     (sum, s) => sum + s.completedHours,
     0
@@ -934,8 +969,6 @@ function SubjectsPageContent() {
               id: s.id,
               priority: s.priority,
               difficulty: s.difficulty,
-              targetHours: s.targetHours,
-              targetHoursIsManual: s.targetHoursIsManual,
             }))}
           />
         )}

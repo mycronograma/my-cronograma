@@ -4,15 +4,9 @@
  * SubjectForm Component
  * Formulário para criar/editar disciplinas.
  *
- * #15 — a meta semanal deixou de ser um número solto que o usuário precisa
- * adivinhar: ela é calculada a partir do peso, em relação às outras matérias,
- * sobre a carga semanal disponível. Mexeu no peso → a meta acompanha. Digitou
- * um valor → vira manual e avisa, com botão para voltar ao automático.
- *
- * Peso único: a tela expõe UM controle ("peso no plano") em vez de dois
- * (prioridade e dificuldade). Os dois campos continuam existindo no banco
- * porque o motor os usa, mas a tela só mexe nos dois juntos — escolher a forma
- * do formulário antes de responder à pergunta era fricção sem ganho.
+ * Só três coisas: nome, cor e peso no plano. As horas semanais saem do peso
+ * pela regra única (carga semanal × peso² ÷ Σ peso²) e aparecem ao vivo, então
+ * não existe campo de meta nem escolha entre automático e manual.
  *
  * O campo de horas usa o formato h:min (8:30), nunca decimal (8.5).
  */
@@ -39,17 +33,15 @@ interface SubjectFormProps {
    * do navegador, que some com a estética do app e é bloqueado em vários mobile.
    */
   validate?: (data: Partial<Subject>) => string | null;
-  /**
-   * As outras matérias, com a meta já fixada quando houver. É o que permite
-   * reservar as horas já comprometidas antes de dividir o resto.
+    /**
+   * As outras matérias. Nenhuma reserva horas da semana: a divisão é sempre
+   * proporcional ao peso, então nenhuma matéria fica “fixada”.
    */
   peers?: Array<{
     id: string;
     priority: number;
     difficulty: number;
     targetHours?: number | null;
-    /** A meta foi escolhida pela pessoa? S aí ela reserva horas da semana. */
-    targetHoursIsManual?: boolean;
   }>;
 }
 
@@ -95,40 +87,11 @@ export default function SubjectForm({
   // Um controle só. Matéria antiga com prioridade diferente de dificuldade
   // entra com a média: a tela não tem mais dois sliders para escolher entre.
   const [weight, setWeight] = useState(() => pesoUnico(subject));
-  // Se a matéria já tem uma meta diferente da calculada, ela é preservada e
-  // marcada como manual — abrir o formulário para trocar só o nome não pode
-  // sobrescrever a meta que a pessoa definiu.
-  const [targetHours, setTargetHours] = useState(
-    () =>
-      subject?.targetHours ??
-      computeAutoTargetHours({
-        priority: pesoUnico(subject),
-        difficulty: pesoUnico(subject),
-        weeklyAvailableHours,
-        peerWeightSum,
-      })
-  );
-  const [manualTarget, setManualTarget] = useState(() => {
-    if (typeof subject?.targetHoursIsManual === 'boolean') return subject.targetHoursIsManual;
-    // Matéria antiga, sem o flag: considera manual só se a meta difere bastante
-    // da calculada — assim uma meta já ajustada na mão não é sobrescrita.
-    if (!subject?.targetHours) return false;
-    const sugerida = pesoUnico(subject);
-    const suggested = computeAutoTargetHours({
-      priority: sugerida,
-      difficulty: sugerida,
-      weeklyAvailableHours,
-      peerWeightSum,
-    });
-    return Math.abs(subject.targetHours - suggested) > 0.05;
-  });
-  const [targetText, setTargetText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // Outras matérias no formato do serviço. Só conta como "fixa" (e reserva
-  // horas da semana) a meta que a pessoa escolheu de propósito — o flag
-  // `targetHoursIsManual`. Sem ele, qualquer valor diferente do automático
-  // parecia fixo e a semana inteira ficava reservada.
+  // Outras matérias no formato do serviço. Nenhuma reserva horas: quem decide
+  // a divisão é o peso de cada uma, proporcionalmente à carga da semana.
+
   const peerItems = useMemo(
     () => buildPeerItems(peers, subject?.id),
     [peers, subject?.id]
@@ -159,15 +122,9 @@ export default function SubjectForm({
     [weight, weeklyAvailableHours, peerItems]
   );
 
-  // Enquanto está no automático, a meta segue os sliders.
-  useEffect(() => {
-    if (!manualTarget) setTargetHours(autoTarget);
-  }, [autoTarget, manualTarget]);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = name.trim();
-    const safeTargetHours = Number(targetHours);
 
     if (trimmedName.length < 2) {
       setError('Informe um nome com pelo menos 2 caracteres.');
@@ -177,11 +134,6 @@ export default function SubjectForm({
       setError('Use um nome menor para a disciplina.');
       return;
     }
-    if (!Number.isFinite(safeTargetHours) || safeTargetHours < 0.5 || safeTargetHours > 40) {
-      setError('A meta semanal precisa estar entre 0h30 e 40h.');
-      return;
-    }
-
     // Validação de quem chamou (nome repetido, faixas de valor): mostra no
     // próprio formulário, sem alert() do navegador.
     if (validate) {
@@ -190,8 +142,6 @@ export default function SubjectForm({
         color,
         priority: weight,
         difficulty: weight,
-        targetHours: safeTargetHours,
-        targetHoursIsManual: manualTarget,
       });
       if (message) {
         setError(message);
@@ -199,17 +149,15 @@ export default function SubjectForm({
       }
     }
 
+    // Sem meta no formulário: quem chamou recalcula as horas de todas as
+    // matérias pela regra única depois de salvar.
     onSubmit({
       name: trimmedName,
       color,
       priority: weight,
       difficulty: weight,
-      targetHours: safeTargetHours,
-      targetHoursIsManual: manualTarget,
     });
   };
-
-  const isAuto = !manualTarget;
 
   return (
     <motion.div
@@ -307,91 +255,6 @@ export default function SubjectForm({
               <p className="mt-1.5 text-[11px] text-text-muted">
                 Junta o quanto a matéria vale e o quanto ela te trava. Peso 10 recebe 4× as
                 horas de peso 5.
-              </p>
-            </div>
-
-            {/* Meta semanal */}
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <label className="flex items-center gap-2 text-sm font-medium text-text-secondary">
-                  Meta semanal (h:min)
-                  {isAuto && (
-                    <Badge variant="purple" size="sm">
-                      automática
-                    </Badge>
-                  )}
-                </label>
-                {isAuto ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // Fixa o valor que está na tela: a partir daqui a meta é
-                      // sua e o peso deixa de alterá-la sozinho.
-                      setManualTarget(true);
-                      setTargetText('');
-                    }}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-neon-blue hover:underline"
-                    title="Usar este valor como meta fixa, mesmo que você mude o peso"
-                  >
-                    <Pin className="w-3 h-3" />
-                    Fixar este valor
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setManualTarget(false);
-                      setTargetText('');
-                    }}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-neon-blue hover:underline"
-                    title="Deixar o peso decidir a meta de novo"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Voltar ao automático ({formatHoursDuration(autoTarget)})
-                  </button>
-                )}
-              </div>
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="0:00"
-                aria-label="Meta semanal em horas e minutos"
-                value={targetText ? targetText : hoursToHM(targetHours)}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  setTargetText(raw);
-                  const parsed = parseHoursHM(raw);
-                  if (parsed !== null) {
-                    setTargetHours(parsed);
-                    if (parsed !== autoTarget) setManualTarget(true);
-                  }
-                  if (error) setError(null);
-                }}
-                onBlur={() => setTargetText('')}
-                className="input-field"
-                required
-              />
-              <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-text-muted">
-                <Info className="mt-0.5 w-3 h-3 shrink-0" />
-                {isAuto ? (
-                  autoInfo.poolHours <= 0 ? (
-                    <span className="text-warning-strong">
-                      A semana já está toda comprometida com metas fixas — não sobra hora
-                      para distribuir. Libere horas em outra disciplina ou aumente a carga
-                      semanal em Ajustes.
-                    </span>
-                  ) : (
-                    <span>
-                      Peso {weight} → {autoInfo.sharePercent}% das{' '}
-                      {formatHoursDuration(autoInfo.capacityHours)} semanais. Mexa no peso e a
-                      meta acompanha.
-                    </span>
-                  )
-                ) : (
-                  <span>
-                    Fixo por você. O automático daria {formatHoursDuration(autoTarget)}.
-                  </span>
-                )}
               </p>
             </div>
 

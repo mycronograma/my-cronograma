@@ -1,20 +1,18 @@
 /**
  * Divisão organizada da carga semanal entre as matérias (#15/#20).
  *
- * Antes a meta automática de uma matéria era `capacidade × peso / Σ pesos`.
- * Dois defeitos práticos, ambos aparecendo no print do usuário:
+ * Regra única, sem modo manual. A meta de cada matéria é:
  *
- *  1. **Ignorava o que já estava reservado.** Se cinco matérias já tinham meta
- *     fixada pela pessoa, a sexta continuava dividindo a capacidade *inteira* —
- *     então a soma de todas ficava abaixo (ou acima) do que a semana aguenta.
- *  2. **O peso quase não diferenciava.** Com várias matérias de peso alto, cada
- *     uma ficava com ~capacidade ÷ número de matérias, então "peso 10" rendia
- *     poucas horas a mais que "peso 8" e a meta automática caía muito abaixo da
- *     que a pessoa tinha escolhido na mão.
+ *     capacidade × peso² / Σ peso²
  *
- * Agora: as metas fixadas são reservadas primeiro e nunca mexidas; o que sobra
- * é dividido por peso com curva de destaque (peso²), com piso por matéria e
- * teto para nenhuma engolir a semana. Funções puras — nada de React aqui.
+ * A soma sempre fecha exatamente na carga semanal, e mudar o peso de uma
+ * matéria tira horas das outras — nada fica "fixado".
+ *
+ * Por que o modo manual acabou: ele mostrava dois números diferentes para a
+ * mesma matéria (a meta fixada e "o automático daria"), e o automático era só a
+ * sobra da semana depois das metas já fixadas. Quando todas estavam fixadas,
+ * essa sobra ficava tão pequena que o peso deixava de importar — peso 8 e peso
+ * 10 davam o mesmo resultado. Funções puras — nada de React aqui.
  */
 
 export interface WeeklyTargetItem {
@@ -229,6 +227,14 @@ export function computeAutoTargetHours(params: {
  * era "difere do automático", o que fazia quase toda meta parecer fixa: a
  * semana inteira ficava reservada e as matérias automáticas não recebiam nada.
  */
+/**
+ * Converte as outras matérias no formato do serviço.
+ *
+ * Nenhuma matéria é marcada como fixa: existe uma regra só e todas passam
+ * por ela. `targetHours`/`targetHoursIsManual` continuam aceitos por
+ * compatibilidade com quem chama, mas são ignorados — deixar de reservar
+ * horas foi o que fez o peso voltar a importar.
+ */
 export function buildPeerItems(
   peers: Array<{
     id: string;
@@ -245,11 +251,20 @@ export function buildPeerItems(
       id: peer.id,
       priority: peer.priority,
       difficulty: peer.difficulty,
-      fixedHours:
-        peer.targetHoursIsManual && typeof peer.targetHours === 'number' && peer.targetHours > 0
-          ? peer.targetHours
-          : null,
+      fixedHours: null,
     }));
+}
+
+/**
+ * Metas de TODAS as matérias pela regra única. É o que a tela chama depois
+ * de criar, editar ou remover uma matéria — e quando a carga semanal muda em
+ * Ajustes — para o número gravado nunca divergir da regra.
+ */
+export function recalculateAllTargets(
+  subjects: Array<{ id: string; priority: number; difficulty: number }>,
+  capacityHours: number
+): Record<string, number> {
+  return allocateWeeklyTargets(subjects, { capacityHours }).byId;
 }
 
 /**

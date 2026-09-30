@@ -7,6 +7,7 @@ import {
   buildPeerItems,
   computeAutoTargetHours,
   describeAutoTarget,
+  recalculateAllTargets,
   effectiveWeight,
   subjectWeight,
 } from '../src/services/weeklyTarget';
@@ -142,8 +143,10 @@ const comFlag = buildPeerItems([
   { id: 'a', priority: 8, difficulty: 7, targetHours: 6, targetHoursIsManual: true },
   { id: 'b', priority: 5, difficulty: 5, targetHours: 3 },
 ]);
-check('com flag: só a marcada reserva horas',
-  comFlag[0].fixedHours === 6 && comFlag[1].fixedHours === null, JSON.stringify(comFlag));
+// Não existe mais meta fixada: mesmo com o flag (campo antigo), ninguém reserva
+// horas e a divisão é sempre proporcional ao peso.
+check('com flag: ninguém reserva horas',
+  comFlag[0].fixedHours === null && comFlag[1].fixedHours === null, JSON.stringify(comFlag));
 
 check('buildPeerItems ignora a matéria sendo editada',
   buildPeerItems([{ id: 'eu', priority: 10, difficulty: 10 }, { id: 'outra', priority: 5, difficulty: 5 }], 'eu').length === 1);
@@ -184,6 +187,32 @@ const r11 = allocateWeeklyTargets(
 check('reserva das fixas: automática recebe o que sobrou (6:30)',
   Math.abs(r11.byId.bio - 6.5) < 0.001, String(r11.byId.bio));
 check('reserva das fixas: soma fecha em 20h', Math.abs(r11.totalHours - 20) < 0.09, String(r11.totalHours));
+
+// 13. O defeito que o usuário viu: com 14 matérias e carga 26h, as outras 13
+//     fixas reservavam 20,75h e a matéria editada ficava com a sobra (5,25h).
+//     Por ser a única automática, pegava tudo e o peso não mudava nada.
+//     Agora nenhuma reserva existe: subir o peso tira horas das outras.
+const outras13 = Array.from({ length: 13 }, (_, i) => ({
+  id: `o${i}`,
+  priority: 8,
+  difficulty: 8,
+}));
+const peso8 = recalculateAllTargets(
+  [{ id: 'bio', priority: 8, difficulty: 8 }, ...outras13], 26
+);
+const peso10 = recalculateAllTargets(
+  [{ id: 'bio', priority: 10, difficulty: 10 }, ...outras13], 26
+);
+check('peso 8 e peso 10 dao resultados diferentes',
+  Math.abs(peso10.bio - peso8.bio) > 0.4, `${hm(peso8.bio)} vs ${hm(peso10.bio)}`);
+check('peso 10 leva mais horas que peso 8',
+  peso10.bio > peso8.bio, `${hm(peso10.bio)} > ${hm(peso8.bio)}`);
+const soma8 = Object.values(peso8).reduce((a, b) => a + b, 0);
+const soma10 = Object.values(peso10).reduce((a, b) => a + b, 0);
+check('soma fecha em 26h (peso 8)', Math.abs(soma8 - 26) < 0.09, String(soma8));
+check('soma fecha em 26h (peso 10)', Math.abs(soma10 - 26) < 0.09, String(soma10));
+check('as outras perdem hora quando o peso sobe',
+  peso10.o0 < peso8.o0, `${hm(peso8.o0)} -> ${hm(peso10.o0)}`);
 
 console.log(`\nBio no caso do print: ${hm(caso.byId.bio)} (média ${hm(20 / 7)} de 20h ÷ 7 matérias)`);
 console.log(`Bio com as outras 6 fixas em 13h30: ${hm(r11.byId.bio)} (sobra da semana)`);
