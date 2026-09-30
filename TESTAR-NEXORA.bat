@@ -8,10 +8,15 @@ echo    NEXORA - versao de teste (roda no seu computador)
 echo ============================================================
 echo.
 echo  Este script:
-echo    1. baixa a versao mais nova do codigo
+echo    1. deixa os arquivos prontos
 echo    2. instala o que estiver faltando
 echo    3. prepara o banco de dados local
-echo    4. abre o app em http://localhost:3000
+echo    4. carrega os dados de exemplo
+echo    5. abre o app em http://localhost:3000
+echo.
+echo  Funciona de dois jeitos:
+echo    - pasta vinda do Git  -> busca a versao mais nova
+echo    - pasta vinda do ZIP  -> usa os arquivos que ja estao aqui
 echo.
 echo  Seus dados de estudo (cronograma, progresso, materias) ficam
 echo  salvos no NAVEGADOR e NAO sao apagados por este script.
@@ -21,46 +26,67 @@ echo  leva menos de 1 minuto.
 echo.
 pause
 
-where git >nul 2>nul
-if errorlevel 1 goto :sem_git
-
 where node >nul 2>nul
 if errorlevel 1 goto :sem_node
 
+rem ---------------------------------------------------------------- passo 1
+if exist .git\FETCH_HEAD goto :tem_git
+
+echo.
+echo === 1/5 Preparando os arquivos ===
+echo  Pasta sem historico do Git (veio do ZIP): usando os arquivos daqui.
+goto :instalar
+
+:tem_git
+where git >nul 2>nul
+if errorlevel 1 goto :sem_git
 echo.
 echo === 1/5 Buscando a versao mais nova ===
-git fetch origin
-if errorlevel 1 goto :sem_internet
-git checkout arena/01a0d9e7-my-cronograma
-if errorlevel 1 goto :sem_branch
-git reset --hard origin/arena/01a0d9e7-my-cronograma
-if errorlevel 1 goto :sem_reset
+git fetch origin >nul 2>nul
+if errorlevel 1 goto :sem_atualizacao
+git checkout arena/01a0d9e7-my-cronograma >nul 2>nul
+git reset --hard origin/arena/01a0d9e7-my-cronograma >nul 2>nul
+echo  Codigo atualizado do GitHub.
+goto :instalar
 
+:sem_atualizacao
+echo [i] Nao foi possivel conversar com o GitHub.
+echo     Usando os arquivos que ja estao nesta pasta.
+
+rem ---------------------------------------------------------------- passo 2
+:instalar
+if exist node_modules goto :tem_deps
 echo.
-echo === 2/5 Instalando dependencias (so se faltar) ===
-if exist node_modules (
-    echo Dependencias ja instaladas. Pulando.
-) else (
-    echo Instalando... isso pode levar varios minutos.
-    call npm install --ignore-scripts --no-audit --no-fund
-    if errorlevel 1 goto :falha_install
-)
+echo === 2/5 Instalando dependencias ===
+echo  Isso pode levar varios minutos so na primeira vez.
+call npm install --ignore-scripts --no-audit --no-fund
+if errorlevel 1 goto :falha_install
+goto :banco
 
+:tem_deps
+echo.
+echo === 2/5 Instalando dependencias ===
+echo  Ja estao instaladas. Pulando.
+
+rem ---------------------------------------------------------------- passo 3
+:banco
 echo.
 echo === 3/5 Preparando o banco de dados local ===
 node scripts/dev-inmemory-prisma.cjs --reset
 if errorlevel 1 goto :falha_banco
 
-if not exist .env.local (
-    echo Criando o arquivo de configuracao local...
-    echo DATABASE_URL="postgresql://nexora:nexora@localhost:26257/nexora?sslmode=require">.env.local
-    echo NEXTAUTH_URL="http://localhost:3000">>.env.local
-    echo NEXTAUTH_SECRET="chave-local-de-teste-0123456789abcdef0123456789abcdef">>.env.local
-    echo CRON_SECRET="chave-local-cron-0123456789abcdef">>.env.local
-    echo NOTIFICATIONS_CRON_SECRET="chave-local-cron-0123456789abcdef">>.env.local
-    echo NEXT_PUBLIC_LOCAL_DEMO_MODE="true">>.env.local
-)
+if exist .env.local goto :config_pronta
+echo  Criando o arquivo de configuracao local...
+echo DATABASE_URL="postgresql://nexora:nexora@localhost:26257/nexora?sslmode=require">.env.local
+echo NEXTAUTH_URL="http://localhost:3000">>.env.local
+echo NEXTAUTH_SECRET="chave-local-de-teste-0123456789abcdef0123456789abcdef">>.env.local
+echo CRON_SECRET="chave-local-cron-0123456789abcdef">>.env.local
+echo NOTIFICATIONS_CRON_SECRET="chave-local-cron-0123456789abcdef">>.env.local
+echo NEXT_PUBLIC_LOCAL_DEMO_MODE="true">>.env.local
 
+:config_pronta
+
+rem ---------------------------------------------------------------- passo 4
 echo.
 echo === 4/5 Carregando os dados de exemplo ===
 call npm run db:seed
@@ -69,6 +95,7 @@ if errorlevel 1 echo [i] Nao foi possivel carregar os dados de exemplo - o app a
 netstat -ano | findstr ":3000" >nul
 if not errorlevel 1 goto :porta_ocupada
 
+rem ---------------------------------------------------------------- passo 5
 echo.
 echo === 5/5 Abrindo o app ===
 echo.
@@ -89,8 +116,9 @@ rem ---------------------------------------------------------------- erros
 :sem_git
 echo.
 echo [X] O Git nao foi encontrado neste computador.
-echo     Instale em https://git-scm.com/download/win e rode este arquivo de novo.
-echo     Depois de instalar, FECHE e ABRA de novo esta janela.
+echo     A pasta tem historico do Git, mas o comando git nao existe.
+echo     Instale em https://git-scm.com/download/win ou apague a pasta
+echo     .git para usar a versao dos arquivos locais.
 echo.
 pause
 exit /b 1
@@ -104,33 +132,10 @@ echo.
 pause
 exit /b 1
 
-:sem_internet
-echo.
-echo [X] Nao foi possivel conversar com o GitHub.
-echo     Verifique sua internet e tente de novo.
-echo.
-pause
-exit /b 1
-
-:sem_branch
-echo.
-echo [X] Nao foi possivel trocar para a branch da sessao.
-echo     Me mande um print desta janela.
-echo.
-pause
-exit /b 1
-
-:sem_reset
-echo.
-echo [X] Nao foi possivel alinhar o codigo com a versao do GitHub.
-echo     Me mande um print desta janela.
-echo.
-pause
-exit /b 1
-
 :falha_install
 echo.
-echo [X] A instalacao falhou. Feche outros programas e tente de novo.
+echo [X] A instalacao das dependencias falhou.
+echo     Verifique sua internet, feche outros programas e tente de novo.
 echo     Se repetir, me mande um print desta janela.
 echo.
 pause

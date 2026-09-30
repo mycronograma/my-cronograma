@@ -16,12 +16,16 @@ Você precisa de dois programas. Se já tem, pule para o passo 2.
 3. Abra o arquivo baixado e clique **Next → Next → Install** (deixe tudo como está).
 4. **O que esperar:** uma tela de instalação terminar com "Completed".
 
-### Git (baixa as atualizações do app)
+### Git (opcional — só para receber minhas atualizações)
 
 1. Acesse <https://git-scm.com/download/win>
 2. Baixe o instalador de 64 bits e abra.
 3. Clique **Next** em todas as telas (as opções padrão servem).
 4. **O que esperar:** "Completing the Git Setup Wizard" → **Finish**.
+
+> **Pode pular o Git.** Ele só serve para o app buscar correções minhas durante a
+> semana. Sem ele o app funciona igual, com os arquivos que você baixou. Se você
+> baixou o **ZIP**, ele não vem com Git — e está tudo bem.
 
 > **Importante:** depois de instalar os dois, **feche e abra de novo** a janela
 > que você estiver usando, para o Windows reconhecê-los.
@@ -31,6 +35,16 @@ Você precisa de dois programas. Se já tem, pule para o passo 2.
 ## 2. Baixar o app
 
 Se você já tem a pasta do projeto, pule para o passo 3.
+
+**Jeito A — pelo ZIP (mais simples, não precisa de Git):**
+
+1. Abra este link no navegador:
+   <https://github.com/mycronograma/my-cronograma/archive/refs/heads/arena/01a0d9e7-my-cronograma.zip>
+2. **O que esperar:** baixa um arquivo `my-cronograma-arena-01a0d9e7-my-cronograma.zip`.
+3. Clique com o botão direito nele → **Extrair Tudo** → escolha onde salvar.
+4. Pronto: dentro da pasta extraída está o `TESTAR-NEXORA.bat`.
+
+**Jeito B — pelo Git (recebe minhas atualizações):**
 
 1. Crie uma pasta para o projeto, por exemplo `C:\Nexora`.
 2. Abra essa pasta, clique com o botão direito em um espaço vazio e escolha
@@ -154,9 +168,11 @@ Para você não perder tempo com coisas que já sei:
 
 | Sintoma | O que fazer |
 |---|---|
-| A janela preta some na hora | leia a última linha antes de fechar — quase sempre falta o Node.js ou o Git. O `.bat` avisa qual |
+| A janela preta some na hora | leia a última linha antes de fechar — quase sempre falta o Node.js. O `.bat` avisa qual |
 | `npm` não é reconhecido | instale o Node.js, **feche e abra** a janela, tente de novo |
 | O `.bat` diz "porta 3000 já está em uso" | o app já está aberto em outra janela preta; feche essa janela e rode de novo |
+| `fatal: cannot open '.git/FETCH_HEAD': Permission denied` | a pasta veio do ZIP e nao tem Git. **Nao e erro** — o `.bat` segue com os arquivos da pasta e o app abre normal |
+| `[i] Nao foi possivel buscar atualizacoes` | sem internet ou sem Git. O app abre do mesmo jeito, com a versao que ja esta na pasta |
 | O navegador abre mas dá erro | me mande o print da tela de erro |
 | Sumiu com os meus dados | você limpou os dados do site no navegador; use uma aba normal (não anônima) da próxima vez |
 
