@@ -5,17 +5,21 @@
  * Formulário para criar/editar disciplinas.
  *
  * #15 — a meta semanal deixou de ser um número solto que o usuário precisa
- * adivinhar: ela é calculada a partir da prioridade (60%) e da dificuldade
- * (40%) em relação às outras matérias, sobre a carga semanal disponível.
- * Mexeu nos sliders → a meta acompanha. Digitou um valor → vira manual e
- * avisa, com botão para voltar ao automático.
+ * adivinhar: ela é calculada a partir do peso, em relação às outras matérias,
+ * sobre a carga semanal disponível. Mexeu no peso → a meta acompanha. Digitou
+ * um valor → vira manual e avisa, com botão para voltar ao automático.
+ *
+ * Peso único: a tela expõe UM controle ("peso no plano") em vez de dois
+ * (prioridade e dificuldade). Os dois campos continuam existindo no banco
+ * porque o motor os usa, mas a tela só mexe nos dois juntos — escolher a forma
+ * do formulário antes de responder à pergunta era fricção sem ganho.
  *
  * O campo de horas usa o formato h:min (8:30), nunca decimal (8.5).
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Palette, Info, RotateCcw, Pin, Combine, Split } from 'lucide-react';
+import { X, Info, RotateCcw, Pin } from 'lucide-react';
 import { cn, subjectColors, formatHoursDuration } from '@/lib/utils';
 import { Button, Card, Badge } from '@/components/ui';
 import { buildPeerItems, computeAutoTargetHours, describeAutoTarget } from '@/services/weeklyTarget';
@@ -51,6 +55,17 @@ interface SubjectFormProps {
 
 const clampHours = (v: number) => Math.min(40, Math.max(0.5, Math.round(v * 12) / 12));
 
+/**
+ * Peso exibido na tela. Matéria antiga guardava prioridade e dificuldade
+ * separadas; com um controle só, ela entra com a média dos dois — assim nenhum
+ * slider escondido continua existindo por trás do formulário.
+ */
+const pesoUnico = (subject?: Subject): number => {
+  const p = subject?.priority || 5;
+  const d = subject?.difficulty || 5;
+  return p === d ? p : Math.round((p + d) / 2);
+};
+
 export { computeAutoTargetHours };
 const hoursToHM = (v: number) => {
   const h = Math.floor(v + 1e-6);
@@ -77,15 +92,9 @@ export default function SubjectForm({
 }: SubjectFormProps) {
   const [name, setName] = useState(subject?.name || '');
   const [color, setColor] = useState(subject?.color || subjectColors[0]);
-  // Fusão prioridade/dificuldade: um único controle "peso no plano" move as
-  // duas juntas. Quem quiser diferenciar (ex.: matéria fácil mas decisiva na
-  // prova) abre o modo separado — os dados continuam gravando os dois campos.
-  const [priority, setPriority] = useState(subject?.priority || 5);
-  const [difficulty, setDifficulty] = useState(subject?.difficulty || 5);
-  const [splitMode, setSplitMode] = useState(
-    () => !!subject && subject.priority !== subject.difficulty
-  );
-  const [weight, setWeight] = useState(subject?.priority || 5);
+  // Um controle só. Matéria antiga com prioridade diferente de dificuldade
+  // entra com a média: a tela não tem mais dois sliders para escolher entre.
+  const [weight, setWeight] = useState(() => pesoUnico(subject));
   // Se a matéria já tem uma meta diferente da calculada, ela é preservada e
   // marcada como manual — abrir o formulário para trocar só o nome não pode
   // sobrescrever a meta que a pessoa definiu.
@@ -93,8 +102,8 @@ export default function SubjectForm({
     () =>
       subject?.targetHours ??
       computeAutoTargetHours({
-        priority: subject?.priority || 5,
-        difficulty: subject?.difficulty || 5,
+        priority: pesoUnico(subject),
+        difficulty: pesoUnico(subject),
         weeklyAvailableHours,
         peerWeightSum,
       })
@@ -104,9 +113,10 @@ export default function SubjectForm({
     // Matéria antiga, sem o flag: considera manual só se a meta difere bastante
     // da calculada — assim uma meta já ajustada na mão não é sobrescrita.
     if (!subject?.targetHours) return false;
+    const sugerida = pesoUnico(subject);
     const suggested = computeAutoTargetHours({
-      priority: subject.priority || 5,
-      difficulty: subject.difficulty || 5,
+      priority: sugerida,
+      difficulty: sugerida,
       weeklyAvailableHours,
       peerWeightSum,
     });
@@ -128,47 +138,31 @@ export default function SubjectForm({
   const autoTarget = useMemo(
     () =>
       computeAutoTargetHours({
-        priority,
-        difficulty,
+        priority: weight,
+        difficulty: weight,
         weeklyAvailableHours,
         peerWeightSum,
         peers: peerItems,
       }),
-    [priority, difficulty, weeklyAvailableHours, peerWeightSum, peerItems]
+    [weight, weeklyAvailableHours, peerWeightSum, peerItems]
   );
 
   // Números para explicar de onde veio a meta, em vez de mostrar um número solto.
   const autoInfo = useMemo(
     () =>
       describeAutoTarget({
-        priority,
-        difficulty,
+        priority: weight,
+        difficulty: weight,
         weeklyAvailableHours,
         peers: peerItems,
       }),
-    [priority, difficulty, weeklyAvailableHours, peerItems]
+    [weight, weeklyAvailableHours, peerItems]
   );
 
   // Enquanto está no automático, a meta segue os sliders.
   useEffect(() => {
     if (!manualTarget) setTargetHours(autoTarget);
   }, [autoTarget, manualTarget]);
-
-  /** Controle único: move prioridade e dificuldade juntas. */
-  const handleWeightChange = (value: number) => {
-    setWeight(value);
-    setPriority(value);
-    setDifficulty(value);
-  };
-
-  /** Volta ao controle único usando a média dos dois valores atuais. */
-  const handleMergeWeights = () => {
-    const merged = Math.round((priority + difficulty) / 2);
-    setWeight(merged);
-    setPriority(merged);
-    setDifficulty(merged);
-    setSplitMode(false);
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -194,8 +188,8 @@ export default function SubjectForm({
       const message = validate({
         name: trimmedName,
         color,
-        priority,
-        difficulty,
+        priority: weight,
+        difficulty: weight,
         targetHours: safeTargetHours,
         targetHoursIsManual: manualTarget,
       });
@@ -208,8 +202,8 @@ export default function SubjectForm({
     onSubmit({
       name: trimmedName,
       color,
-      priority,
-      difficulty,
+      priority: weight,
+      difficulty: weight,
       targetHours: safeTargetHours,
       targetHoursIsManual: manualTarget,
     });
@@ -266,19 +260,18 @@ export default function SubjectForm({
               />
             </div>
 
-            {/* Cor */}
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                Cor
-              </label>
-              <div className="flex gap-2 flex-wrap">
+            {/* Cor — escolha cosmética, então fica compacta numa linha só */}
+            <div className="flex items-center gap-3">
+              <label className="shrink-0 text-sm font-medium text-text-secondary">Cor</label>
+              <div className="flex flex-wrap gap-1.5">
                 {subjectColors.map((c) => (
                   <button
                     key={c}
                     type="button"
                     onClick={() => setColor(c)}
+                    aria-label={'Cor ' + c}
                     className={cn(
-                      'w-8 h-8 rounded-lg transition-all',
+                      'h-6 w-6 rounded-md transition-all',
                       color === c && 'ring-2 ring-white ring-offset-2 ring-offset-background'
                     )}
                     style={{ backgroundColor: c }}
@@ -287,105 +280,34 @@ export default function SubjectForm({
               </div>
             </div>
 
-            {/* Peso no plano — controle único (prioridade + dificuldade fundidos) */}
+            {/* Peso no plano — um controle só, com as horas ao vivo */}
             <div>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <label className="block text-sm font-medium text-text-secondary">
-                  {splitMode ? (
-                    <>
-                      Peso no plano{' '}
-                      <span className="text-text-muted">(separado abaixo)</span>
-                    </>
-                  ) : (
-                    <>
-                      Peso no plano: <span className="font-bold text-text-primary">{weight}</span>
-                    </>
-                  )}
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <label className="text-sm font-medium text-text-secondary">
+                  Peso no plano:{' '}
+                  <span className="font-bold text-text-primary">{weight}</span>
                 </label>
-                {splitMode ? (
-                  <button
-                    type="button"
-                    onClick={handleMergeWeights}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-neon-blue hover:underline"
-                  >
-                    <Combine className="w-3 h-3" />
-                    Fundir em um só
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setSplitMode(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-text-secondary hover:text-neon-blue hover:underline"
-                  >
-                    <Split className="w-3 h-3" />
-                    Separar prioridade e dificuldade
-                  </button>
-                )}
+                <span className="text-xs font-medium text-text-muted">
+                  {formatHoursDuration(autoTarget)} por semana
+                </span>
               </div>
-
-              {splitMode ? (
-                <div className="space-y-4 rounded-xl border border-card-border bg-row-soft p-3">
-                  <div>
-                    <label className="block text-xs font-medium text-text-secondary mb-1.5">
-                      Prioridade: {priority}
-                    </label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="10"
-                      value={priority}
-                      onChange={(e) => setPriority(Number(e.target.value))}
-                      className="w-full accent-neon-blue"
-                    />
-                    <div className="flex justify-between text-[10px] text-text-muted mt-1">
-                      <span>Baixa</span>
-                      <span>Alta</span>
-                    </div>
-                    <p className="mt-1 text-[11px] text-text-muted">
-                      O quanto essa matéria vale para o seu objetivo (peso na prova, urgência).
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-text-secondary mb-1.5">
-                      Dificuldade: {difficulty}
-                    </label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="10"
-                      value={difficulty}
-                      onChange={(e) => setDifficulty(Number(e.target.value))}
-                      className="w-full accent-neon-purple"
-                    />
-                    <div className="flex justify-between text-[10px] text-text-muted mt-1">
-                      <span>Fácil</span>
-                      <span>Difícil</span>
-                    </div>
-                    <p className="mt-1 text-[11px] text-text-muted">
-                      O quanto você erra hoje nela.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={weight}
-                    onChange={(e) => handleWeightChange(Number(e.target.value))}
-                    className="w-full accent-neon-blue"
-                  />
-                  <div className="flex justify-between text-xs text-text-muted mt-1">
-                    <span>Leve</span>
-                    <span>Máximo</span>
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-text-muted">
-                    Junta os dois numa nota só: o quanto a matéria vale <em>e</em> o quanto ela te
-                    trava. Quanto maior, mais horas por semana ela recebe.
-                  </p>
-                </>
-              )}
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={weight}
+                onChange={(e) => setWeight(Number(e.target.value))}
+                aria-label="Peso no plano"
+                className="w-full accent-neon-blue"
+              />
+              <div className="mt-1 flex justify-between text-xs text-text-muted">
+                <span>Leve</span>
+                <span>Máximo</span>
+              </div>
+              <p className="mt-1.5 text-[11px] text-text-muted">
+                Junta o quanto a matéria vale e o quanto ela te trava. Peso 10 recebe 4× as
+                horas de peso 5.
+              </p>
             </div>
 
             {/* Meta semanal */}
@@ -454,32 +376,20 @@ export default function SubjectForm({
                 {isAuto ? (
                   autoInfo.poolHours <= 0 ? (
                     <span className="text-warning-strong">
-                      A semana já está toda comprometida com metas fixas (
-                      {formatHoursDuration(autoInfo.reservedHours)} de{' '}
-                      {formatHoursDuration(autoInfo.capacityHours)}), então não sobra hora para
-                      distribuir. Libere horas em outra disciplina ou aumente a carga semanal em
-                      Ajustes.
+                      A semana já está toda comprometida com metas fixas — não sobra hora
+                      para distribuir. Libere horas em outra disciplina ou aumente a carga
+                      semanal em Ajustes.
                     </span>
                   ) : (
                     <span>
-                      {splitMode
-                        ? `Prioridade ${priority} (60%) + dificuldade ${difficulty} (40%)`
-                        : `Peso ${weight}`}{' '}
-                      define sua fatia:{' '}
-                      {autoInfo.reservedHours > 0
-                        ? `${formatHoursDuration(autoInfo.reservedHours)} da semana já estão com metas fixas e, das ${formatHoursDuration(autoInfo.poolHours)} que sobraram, você leva ${formatHoursDuration(autoTarget)}`
-                        : `${formatHoursDuration(autoTarget)} das ${formatHoursDuration(autoInfo.capacityHours)} semanais, divididas com ${autoInfo.autoCount - 1 === 0 ? 'nenhuma outra matéria' : `outras ${autoInfo.autoCount - 1} matérias`}`}
-                      . Mexa no controle acima e a meta acompanha.
+                      Peso {weight} → {autoInfo.sharePercent}% das{' '}
+                      {formatHoursDuration(autoInfo.capacityHours)} semanais. Mexa no peso e a
+                      meta acompanha.
                     </span>
                   )
                 ) : (
                   <span>
-                    Fixado por você ({formatHoursDuration(targetHours)}). O automático daria{' '}
-                    {formatHoursDuration(autoTarget)}
-                    {autoInfo.reservedHours > 0
-                      ? ` — ${formatHoursDuration(autoInfo.reservedHours)} da semana já estão com metas fixas`
-                      : ` — as outras ${autoInfo.autoCount - 1} matérias dividem as ${formatHoursDuration(autoInfo.capacityHours)} semanais com você`}
-                    .
+                    Fixo por você. O automático daria {formatHoursDuration(autoTarget)}.
                   </span>
                 )}
               </p>
