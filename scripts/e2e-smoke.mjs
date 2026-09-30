@@ -9,13 +9,31 @@
  * Uso:
  *   node scripts/e2e-smoke.mjs [--base http://127.0.0.1:3000] [--keep]
  *
- * O que cobre: cadastro → verificação 2FA → login por credenciais → importação
- * de preset → geração de cronograma → conclusão de sessão (XP/streak) →
- * idempotência → progresso (snapshot) → preferências → notificações →
- * rate limiting → exclusão de conta em cascata.
+ * O que cobre: cadastro → login por credenciais → importação de preset →
+ * geração do cronograma → conclusão de sessão (XP/streak) → idempotência →
+ * progresso (snapshot) → preferências → notificações → rate limiting →
+ * exclusão de conta em cascata.
  *
  * Não usa dependências externas (só fetch do Node 18+).
  */
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+// O servidor le .env.local; o smoke precisa do MESMO segredo de cron, senao o
+// dispatch agendado responde 401 aqui e 200 no servidor.
+const envFile = path.join(HERE, '..', '.env.local');
+if (fs.existsSync(envFile)) {
+  for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
+    const match = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
+    if (!match) continue;
+    const value = match[2].replace(/^["']|["']$/g, '');
+    if (!(match[1] in process.env)) process.env[match[1]] = value;
+  }
+}
 
 const args = process.argv.slice(2);
 const argValue = (flag, fallback) => {
@@ -109,38 +127,28 @@ const run = async () => {
   const email = uniqueEmail();
   const password = 'SenhaForte123';
 
-  section('1. Cadastro + verificação 2FA');
+  section('1. Cadastro');
   const register = await call('POST', '/api/auth/register', {
     name: 'Estudante E2E',
     email,
     password,
   });
-  check('POST /api/auth/register → 201', register.status === 201, `HTTP ${register.status}`);
-  check('resposta pede 2FA', register.data?.requires2FA === true);
+  check('POST /api/auth/register -> 201', register.status === 201, `HTTP ${register.status}`);
+  check('cadastro devolve sucesso', register.data?.success === true);
 
-  const devCode = register.data?.devVerificationCode;
-  check(
-    'código de verificação devolvido em ambiente local',
-    typeof devCode === 'string' && /^\d{6}$/.test(devCode),
-    devCode ? `código ${devCode}` : 'ausente'
-  );
-
-  if (!devCode) {
-    console.log('\nSem devVerificationCode: impossível continuar o fluxo autenticado.');
-    throw new Error('fluxo interrompido');
-  }
-
-  const wrongCode = await call('POST', '/api/auth/register/verify-2fa', {
-    email,
-    code: devCode === '000000' ? '000001' : '000000',
+  const shortPassword = await call('POST', '/api/auth/register', {
+    name: 'Estudante E2E',
+    email: uniqueEmail(),
+    password: '123',
   });
-  check('código errado → 400', wrongCode.status === 400, `HTTP ${wrongCode.status}`);
+  check('senha curta -> 400', shortPassword.status === 400, `HTTP ${shortPassword.status}`);
 
-  const verify = await call('POST', '/api/auth/register/verify-2fa', { email, code: devCode });
-  check('código correto → 200', verify.status === 200 && verify.data?.success === true, `HTTP ${verify.status}`);
-
-  const verifyAgain = await call('POST', '/api/auth/register/verify-2fa', { email, code: devCode });
-  check('código não é reutilizável → 400', verifyAgain.status === 400, `HTTP ${verifyAgain.status}`);
+  const sameEmail = await call('POST', '/api/auth/register', {
+    name: 'Estudante E2E',
+    email,
+    password,
+  });
+  check('e-mail repetido -> 409', sameEmail.status === 409, `HTTP ${sameEmail.status}`);
 
   section('2. Login por credenciais (NextAuth)');
   const csrf = await call('GET', '/api/auth/csrf');

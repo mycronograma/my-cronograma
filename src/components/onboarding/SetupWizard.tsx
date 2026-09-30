@@ -1,28 +1,27 @@
 'use client';
 
 /**
- * SetupWizard — assistente de configuração (refeito do zero).
+ * SetupWizard — assistente de configuração.
  *
- * Substitui o antigo PresetConfigWizard (18 perguntas em 5 grupos) por 5 telas
- * que fazem só o que o motor do cronograma realmente usa:
+ * 5 telas, na ordem em que as respostas fazem sentido umas com as outras:
  *
- *   1. Quando é a prova?        -> examDate / endDate
- *   2. Seu nível no conteúdo    -> calibra o ritmo inicial
- *   3. Quanto tempo por dia?    -> dailyHoursByWeekday
+ *   1. Qual seu nível?          -> calibra o ritmo inicial
+ *   2. Quanto tempo por dia?    -> horas por dia da semana
+ *   3. Até quando?              -> data da prova e/ou carga horária total
  *   4. Como prefere estudar?    -> duração do bloco e intervalo
- *   5. Confirmação              -> resumo antes de gerar
+ *   5. Tudo certo?              -> resumo antes de gerar
  *
- * Fora de propósito as perguntas de "estilo de estudo", "quando você rende
- * mais" e "horário ideal para matérias difíceis": o app usa um padrão bom e a
- * pessoa ajusta em Perfil quando quiser.
+ * A tela 3 vem depois da 2 de propósito: só com as horas por dia é possível
+ * dizer se a carga total caberia no prazo. A tela mostra o cálculo ao vivo.
  *
- * O contrato de saída é o mesmo de antes — (settings, studyPrefs, answers) —
- * para não mexer em quem consome (PresetSelector, tela de matérias, motor).
+ * O contrato de saída é (settings, studyPrefs, answers) — igual ao de antes,
+ * para não mexer em quem consome.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  AlertTriangle,
   CalendarDays,
   Check,
   ChevronLeft,
@@ -31,11 +30,18 @@ import {
   Coffee,
   GraduationCap,
   Sparkles,
+  Target,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { computeStudyPreferences } from '@/services/presetConfigurator';
-import { formatHoursDuration } from '@/lib/utils';
+import {
+  computeLoadPlan,
+  formatarDataLonga,
+  formatarHoras,
+  toDateKey,
+  WEEKDAY_KEYS,
+} from '@/lib/studyLoad';
 import type {
   BreakDuration,
   FocusDuration,
@@ -69,24 +75,21 @@ const DIAS: { key: WeekdayKey; label: string; short: string }[] = [
   { key: 'dom', label: 'Domingo', short: 'Dom' },
 ];
 
-const NIVELS = [
+const NIVEIS = [
   {
     id: 'iniciante',
     titulo: 'Começando agora',
     descricao: 'Nunca estudei esse conteúdo ou faz muito tempo.',
-    horas: 1,
   },
   {
     id: 'intermediario',
     titulo: 'Já sei o básico',
     descricao: 'Estudei antes, mas ainda travo em bastante coisa.',
-    horas: 1,
   },
   {
     id: 'avancado',
     titulo: 'Domino a maior parte',
     descricao: 'Só quero manter o ritmo e revisar o que falta.',
-    horas: 1,
   },
 ] as const;
 
@@ -104,21 +107,6 @@ const INTERVALOS: { minutos: BreakDuration; titulo: string }[] = [
 
 const TOTAL_TELAS = 5;
 
-const toDateKey = (date: Date) => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
-
-const parseKey = (key: string) => new Date(`${key}T00:00:00`);
-
-const formatarData = (key: string) => {
-  const d = parseKey(key);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
-};
-
 const resolveGoal = (presetId: string, presetName: string): PresetWizardAnswers['goal'] => {
   const s = `${presetId} ${presetName}`.toLowerCase();
   if (s.includes('enem')) return 'enem';
@@ -133,11 +121,7 @@ const defaultDailyHours = (goal: PresetWizardAnswers['goal']): Record<WeekdayKey
   return { dom: 0, seg: 3, ter: 3, qua: 3, qui: 3, sex: 3, sab: 2 };
 };
 
-const overlayVariants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1 },
-};
-
+const overlayVariants = { hidden: { opacity: 0 }, visible: { opacity: 1 } };
 const modalVariants = {
   hidden: { opacity: 0, y: 24, scale: 0.98 },
   visible: { opacity: 1, y: 0, scale: 1 },
@@ -156,19 +140,18 @@ export default function SetupWizard({
   const [step, setStep] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
 
-  // --- estado das respostas (só o que o motor usa) ---
-  const [temProva, setTemProva] = useState(false);
-  const [examDate, setExamDate] = useState('');
-  const [nivel, setNivel] = useState<(typeof NIVELS)[number]['id']>('intermediario');
+  const [nivel, setNivel] = useState<(typeof NIVEIS)[number]['id']>('intermediario');
   const [horas, setHoras] = useState<Record<WeekdayKey, number>>(() =>
     defaultDailyHours(resolveGoal(presetId, presetName))
   );
+  const [temProva, setTemProva] = useState(false);
+  const [examDate, setExamDate] = useState('');
+  const [cargaTotal, setCargaTotal] = useState('');
   const [bloco, setBloco] = useState<FocusDuration>(50);
   const [intervalo, setIntervalo] = useState<BreakDuration>(10);
 
   const goal = useMemo(() => resolveGoal(presetId, presetName), [presetId, presetName]);
 
-  // Trava o scroll do fundo enquanto o assistente está aberto.
   useEffect(() => {
     if (!isOpen) return;
     const anterior = document.body.style.overflow;
@@ -178,7 +161,6 @@ export default function SetupWizard({
     };
   }, [isOpen]);
 
-  // Fecha no Escape.
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (event: KeyboardEvent) => {
@@ -188,11 +170,10 @@ export default function SetupWizard({
     return () => document.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
 
-  const semanahHoras = useMemo(
-    () => DIAS.reduce((total, dia) => total + (horas[dia.key] || 0), 0),
+  const diasAtivos = useMemo(
+    () => WEEKDAY_KEYS.filter((chave) => (Number(horas[chave]) || 0) > 0).length,
     [horas]
   );
-  const diasAtivos = useMemo(() => DIAS.filter((dia) => (horas[dia.key] || 0) > 0).length, [horas]);
 
   const ajustarHora = (key: WeekdayKey, delta: number) => {
     setHoras((prev) => {
@@ -202,13 +183,32 @@ export default function SetupWizard({
     });
   };
 
-  const podeAvancar = () => {
-    if (step === 0 && temProva && !examDate) {
-      setErro('Escolha a data da prova.');
+  const cargaNumero = useMemo(() => {
+    const limpo = cargaTotal.replace(',', '.').trim();
+    if (!limpo) return null;
+    const valor = Number(limpo);
+    return Number.isFinite(valor) && valor > 0 ? valor : null;
+  }, [cargaTotal]);
+
+  /** Cálculo ao vivo da tela 3 — depende das horas por dia da tela 2. */
+  const plano = useMemo(
+    () =>
+      computeLoadPlan({
+        startKey: toDateKey(new Date()),
+        examDate: temProva && examDate ? examDate : undefined,
+        totalHours: cargaNumero,
+        daily: horas,
+      }),
+    [temProva, examDate, cargaNumero, horas]
+  );
+
+  const podeAvancar = (): boolean => {
+    if (step === 1 && diasAtivos === 0) {
+      setErro('Marque pelo menos um dia com horas de estudo.');
       return false;
     }
-    if (step === 2 && diasAtivos === 0) {
-      setErro('Marque pelo menos um dia com horas de estudo.');
+    if (step === 2 && temProva && !examDate) {
+      setErro('Escolha a data da prova.');
       return false;
     }
     setErro(null);
@@ -228,19 +228,8 @@ export default function SetupWizard({
   const concluir = () => {
     if (!podeAvancar()) return;
 
-    const inicio = toDateKey(new Date());
-    const startDate = inicio;
-
-    // Sem data de prova: o plano cobre a primeira semana e a pessoa estende
-    // quando quiser. Com data: o plano vai até ela.
-    let endDate: string;
-    if (temProva && examDate) {
-      endDate = examDate;
-    } else {
-      const d = parseKey(inicio);
-      d.setDate(d.getDate() + 6);
-      endDate = toDateKey(d);
-    }
+    const startDate = toDateKey(new Date());
+    const endDate = plano.dataFim;
 
     const answers: PresetWizardAnswers = {
       goal,
@@ -269,7 +258,7 @@ export default function SetupWizard({
       startDate,
       endDate,
       periodMode: 'date',
-      totalHours: Math.round(semanahHoras * 4),
+      totalHours: cargaNumero ?? undefined,
       examDate: temProva && examDate ? examDate : '',
     };
 
@@ -320,7 +309,6 @@ export default function SetupWizard({
             </button>
           </div>
 
-          {/* BARRA DE PROGRESSO */}
           <div className="h-1 w-full bg-surface-soft">
             <div
               className="h-full bg-violet-500 transition-all duration-300"
@@ -333,81 +321,6 @@ export default function SetupWizard({
             {step === 0 && (
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-xl font-bold text-text-primary">Quando é a prova?</h3>
-                  <p className="mt-1 text-sm text-text-secondary">
-                    Com a data, o app calcula o ritmo até ela. Sem data, o plano cobre a primeira
-                    semana e você estende depois.
-                  </p>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTemProva(true);
-                      setErro(null);
-                    }}
-                    className={`rounded-2xl border p-4 text-left transition-all ${
-                      temProva
-                        ? 'border-violet-500 bg-violet-500/10'
-                        : 'border-card-border hover:border-violet-400'
-                    }`}
-                  >
-                    <CalendarDays className="mb-2 h-5 w-5 text-violet-600" />
-                    <span className="block text-sm font-semibold text-text-primary">
-                      Já tenho a data
-                    </span>
-                    <span className="mt-0.5 block text-xs text-text-secondary">
-                      O plano vai até o dia da prova.
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTemProva(false);
-                      setExamDate('');
-                      setErro(null);
-                    }}
-                    className={`rounded-2xl border p-4 text-left transition-all ${
-                      !temProva
-                        ? 'border-violet-500 bg-violet-500/10'
-                        : 'border-card-border hover:border-violet-400'
-                    }`}
-                  >
-                    <Clock className="mb-2 h-5 w-5 text-violet-600" />
-                    <span className="block text-sm font-semibold text-text-primary">
-                      Ainda não tenho
-                    </span>
-                    <span className="mt-0.5 block text-xs text-text-secondary">
-                      Começo agora e ajusto a data depois.
-                    </span>
-                  </button>
-                </div>
-
-                {temProva && (
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-text-secondary">
-                      Data da prova
-                    </span>
-                    <input
-                      type="date"
-                      value={examDate}
-                      min={toDateKey(new Date())}
-                      onChange={(event) => {
-                        setExamDate(event.target.value);
-                        setErro(null);
-                      }}
-                      className="input-field"
-                    />
-                  </label>
-                )}
-              </div>
-            )}
-
-            {step === 1 && (
-              <div className="space-y-4">
-                <div>
                   <h3 className="text-xl font-bold text-text-primary">Qual seu nível no conteúdo?</h3>
                   <p className="mt-1 text-sm text-text-secondary">
                     Isso muda o ritmo do começo: quem está começando leva mais teoria no início.
@@ -415,7 +328,7 @@ export default function SetupWizard({
                 </div>
 
                 <div className="space-y-3">
-                  {NIVELS.map((opcao) => (
+                  {NIVEIS.map((opcao) => (
                     <button
                       key={opcao.id}
                       type="button"
@@ -445,7 +358,7 @@ export default function SetupWizard({
               </div>
             )}
 
-            {step === 2 && (
+            {step === 1 && (
               <div className="space-y-4">
                 <div>
                   <h3 className="text-xl font-bold text-text-primary">
@@ -478,7 +391,7 @@ export default function SetupWizard({
                             −
                           </button>
                           <span className="w-20 text-center text-sm font-bold text-text-primary">
-                            {valor === 0 ? '—' : formatHoursDuration(valor)}
+                            {valor === 0 ? '—' : formatarHoras(valor)}
                           </span>
                           <button
                             type="button"
@@ -498,9 +411,202 @@ export default function SetupWizard({
                 <div className="rounded-xl bg-surface-soft p-3 text-sm">
                   <span className="text-text-secondary">Total por semana: </span>
                   <span className="font-bold text-text-primary">
-                    {formatHoursDuration(semanahHoras)}
+                    {formatarHoras(plano.horasPorSemana)}
                   </span>
                   <span className="text-text-secondary"> em {diasAtivos} dia(s).</span>
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-xl font-bold text-text-primary">Até quando?</h3>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    Os dois campos são opcionais. Com os dois, o app diz se o plano fecha.
+                  </p>
+                </div>
+
+                {/* Data da prova */}
+                <div className="space-y-3">
+                  <span className="block text-sm font-medium text-text-secondary">Data da prova</span>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTemProva(true);
+                        setErro(null);
+                      }}
+                      className={`rounded-2xl border p-3 text-left transition-all ${
+                        temProva
+                          ? 'border-violet-500 bg-violet-500/10'
+                          : 'border-card-border hover:border-violet-400'
+                      }`}
+                    >
+                      <CalendarDays className="mb-1.5 h-4 w-4 text-violet-600" />
+                      <span className="block text-sm font-semibold text-text-primary">
+                        Já tenho a data
+                      </span>
+                      <span className="mt-0.5 block text-xs text-text-secondary">
+                        O plano vai até o dia da prova.
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTemProva(false);
+                        setExamDate('');
+                        setErro(null);
+                      }}
+                      className={`rounded-2xl border p-3 text-left transition-all ${
+                        !temProva
+                          ? 'border-violet-500 bg-violet-500/10'
+                          : 'border-card-border hover:border-violet-400'
+                      }`}
+                    >
+                      <Clock className="mb-1.5 h-4 w-4 text-violet-600" />
+                      <span className="block text-sm font-semibold text-text-primary">
+                        Ainda não tenho
+                      </span>
+                      <span className="mt-0.5 block text-xs text-text-secondary">
+                        Decido pela carga de horas.
+                      </span>
+                    </button>
+                  </div>
+
+                  {temProva && (
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs text-text-secondary">
+                        Dia da prova ou concurso
+                      </span>
+                      <input
+                        type="date"
+                        value={examDate}
+                        min={toDateKey(new Date())}
+                        onChange={(event) => {
+                          setExamDate(event.target.value);
+                          setErro(null);
+                        }}
+                        className="input-field"
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Carga horária total */}
+                <div className="space-y-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-text-secondary">
+                      Quanto tempo quer estudar no total?
+                    </span>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={cargaTotal}
+                        onChange={(event) => {
+                          setCargaTotal(event.target.value.replace(/[^\d.,]/g, ''));
+                          setErro(null);
+                        }}
+                        placeholder="ex.: 400"
+                        className="input-field pr-14"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-text-muted">
+                        horas
+                      </span>
+                    </div>
+                  </label>
+                  <p className="text-xs text-text-muted">
+                    Deixe vazio se não souber. É o total que você quer estudar até estar pronto.
+                  </p>
+                </div>
+
+                {/* Cálculo ao vivo */}
+                <div className="rounded-2xl border border-card-border bg-surface-soft p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Target className="h-4 w-4 text-violet-600" />
+                    <span className="text-sm font-semibold text-text-primary">Seu plano</span>
+                  </div>
+
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-text-secondary">Ritmo atual</span>
+                      <span className="font-semibold text-text-primary">
+                        {formatarHoras(plano.horasPorSemana)} por semana
+                      </span>
+                    </div>
+
+                    {plano.diasRestantes !== null && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-text-secondary">Até a prova</span>
+                        <span className="font-semibold text-text-primary">
+                          {plano.diasRestantes} dias (
+                          {formatarHoras(plano.horasCobertasAteProva ?? 0)} de estudo)
+                        </span>
+                      </div>
+                    )}
+
+                    {cargaNumero !== null && plano.diasRestantes !== null && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-text-secondary">Precisa estudar</span>
+                        <span className="font-semibold text-text-primary">
+                          {formatarHoras(plano.horasPorDiaAtivoNecessarias ?? 0)} por dia
+                        </span>
+                      </div>
+                    )}
+
+                    {plano.horasCobertasAteProva !== null && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-text-secondary">Vai cobrir</span>
+                        <span className="font-semibold text-text-primary">
+                          {formatarHoras(plano.horasCobertasAteProva)} até a prova
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between gap-3 border-t border-card-border pt-2">
+                      <span className="text-text-secondary">
+                        {plano.origemDataFim === 'prova'
+                          ? 'Plano termina em'
+                          : plano.origemDataFim === 'carga'
+                            ? 'Termina a carga em'
+                            : 'Plano cobre'}
+                      </span>
+                      <span className="font-bold text-violet-600">
+                        {plano.origemDataFim === 'semana'
+                          ? 'a primeira semana'
+                          : formatarDataLonga(plano.dataFim)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {plano.viavel === false && (
+                    <div className="mt-3 flex gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+                      <p className="text-xs text-amber-200">
+                        Com esse ritmo a carga <b>não fecha</b> até a prova — faltariam{' '}
+                        <b>{formatarHoras(plano.faltamHoras ?? 0)}</b>. Aumente as horas por dia,
+                        some mais dias à semana, ou diminua a carga total.
+                      </p>
+                    </div>
+                  )}
+
+                  {plano.viavel === true && cargaNumero !== null && plano.diasRestantes !== null && (
+                    <div className="mt-3 flex gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
+                      <p className="text-xs text-emerald-200">
+                        Fecha! Sobram <b>{formatarHoras(plano.sobramHoras ?? 0)}</b> de folga até a
+                        prova.
+                      </p>
+                    </div>
+                  )}
+
+                  {plano.origemDataFim === 'carga' && (
+                    <p className="mt-3 text-xs text-text-muted">
+                      Sem data de prova, o plano termina quando a carga total estiver completa.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -592,21 +698,31 @@ export default function SetupWizard({
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Prova</span>
-                    <span className="text-sm font-semibold text-text-primary">
-                      {temProva && examDate ? formatarData(examDate) : 'Sem data definida'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between px-4 py-3">
                     <span className="text-sm text-text-secondary">Nível</span>
                     <span className="text-sm font-semibold text-text-primary">
-                      {NIVELS.find((opcao) => opcao.id === nivel)?.titulo}
+                      {NIVEIS.find((opcao) => opcao.id === nivel)?.titulo}
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
                     <span className="text-sm text-text-secondary">Tempo por semana</span>
                     <span className="text-sm font-semibold text-text-primary">
-                      {formatHoursDuration(semanahHoras)} em {diasAtivos} dia(s)
+                      {formatarHoras(plano.horasPorSemana)} em {diasAtivos} dia(s)
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm text-text-secondary">Carga total</span>
+                    <span className="text-sm font-semibold text-text-primary">
+                      {cargaNumero !== null ? formatarHoras(cargaNumero) : 'não definida'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm text-text-secondary">
+                      {plano.origemDataFim === 'prova' ? 'Prova' : 'Termina em'}
+                    </span>
+                    <span className="text-sm font-semibold text-text-primary">
+                      {plano.origemDataFim === 'semana'
+                        ? 'a primeira semana'
+                        : formatarDataLonga(plano.dataFim)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
@@ -616,6 +732,17 @@ export default function SetupWizard({
                     </span>
                   </div>
                 </div>
+
+                {plano.viavel === false && (
+                  <div className="flex gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+                    <p className="text-xs text-amber-200">
+                      Atenção: com esse ritmo faltariam{' '}
+                      <b>{formatarHoras(plano.faltamHoras ?? 0)}</b> para fechar a carga até a prova.
+                      Volte no passo 3 e ajuste as horas ou a carga.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -637,11 +764,19 @@ export default function SetupWizard({
             </Button>
 
             {step < TOTAL_TELAS - 1 ? (
-              <Button variant="primary" onClick={avancar} rightIcon={<ChevronRight className="h-4 w-4" />}>
+              <Button
+                variant="primary"
+                onClick={avancar}
+                rightIcon={<ChevronRight className="h-4 w-4" />}
+              >
                 Continuar
               </Button>
             ) : (
-              <Button variant="primary" onClick={concluir} rightIcon={<Sparkles className="h-4 w-4" />}>
+              <Button
+                variant="primary"
+                onClick={concluir}
+                rightIcon={<Sparkles className="h-4 w-4" />}
+              >
                 Gerar meu cronograma
               </Button>
             )}

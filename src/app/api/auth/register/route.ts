@@ -53,8 +53,10 @@ export async function POST(request: Request) {
 
     const passwordHash = await hashPassword(password);
 
+    // Nao ha etapa de e-mail: a conta nasce verificada. Sem isso o login por
+    // credenciais recusa com "EmailNotVerified" (src/lib/auth.ts).
     const user = await prisma.user.create({
-      data: { name, email, passwordHash },
+      data: { name, email, passwordHash, emailVerified: new Date() },
       select: { id: true, name: true, email: true },
     });
 
