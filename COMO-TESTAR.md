@@ -81,6 +81,19 @@ Na tela de login, use o modo de teste:
 (Não é preciso criar conta — nessa versão de teste o app funciona no seu
 próprio computador.)
 
+### O que vai aparecer na tela
+
+Ao rodar o `.bat`, abrem **duas janelas pretas**:
+
+| Janela | Para que serve |
+|---|---|
+| `TESTAR-NEXORA.bat` | faz a instalação e espera o app ficar pronto |
+| `Servidor do Nexora` | é o app rodando de verdade — **deixe aberta** |
+
+> **A primeira vez demora de 30 a 90 segundos.** O Windows precisa compilar o
+> app. Nesse tempo a página pode aparecer **branca** — é normal, não é erro.
+> Espere e aperte **F5**. Nas vezes seguintes abre em segundos.
+
 ### Para fechar o app
 
 Clique na janela preta e aperte **Ctrl + C**. Para abrir de novo, é só dar
@@ -174,6 +187,7 @@ Para você não perder tempo com coisas que já sei:
 | `fatal: cannot open '.git/FETCH_HEAD': Permission denied` | a pasta veio do ZIP e nao tem Git. **Nao e erro** — o `.bat` segue com os arquivos da pasta e o app abre normal |
 | `[i] Nao foi possivel buscar atualizacoes` | sem internet ou sem Git. O app abre do mesmo jeito, com a versao que ja esta na pasta |
 | O navegador abre mas dá erro | me mande o print da tela de erro |
+| **Página totalmente branca** | quase sempre é a primeira compilação. Espere 30–90s e aperte **F5**. Se não resolver, me mande um print da janela `Servidor do Nexora` |
 | Sumiu com os meus dados | você limpou os dados do site no navegador; use uma aba normal (não anônima) da próxima vez |
 
 > Sempre que o `.bat` mostrar uma mensagem começando com `[X]`, ele já diz o
