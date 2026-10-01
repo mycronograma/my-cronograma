@@ -1429,6 +1429,53 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Data da prova e carga horária total — o par que o painel usa
+              para o card "Você passa?". Ambos opcionais: sem eles o card pede
+              o dado em vez de projetar um prazo inventado. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                Data da prova (opcional)
+              </label>
+              <input
+                type="date"
+                value={settings.examDate || ''}
+                onChange={(e) => updateSetting('examDate', e.target.value)}
+                className="input-field py-2.5"
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                Deixe em branco se você ainda não tem data marcada.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                Carga horária total (opcional)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={5000}
+                  step={10}
+                  value={settings.totalHours ?? ''}
+                  onChange={(e) =>
+                    updateSetting(
+                      'totalHours',
+                      e.target.value === '' ? undefined : Number(e.target.value)
+                    )
+                  }
+                  placeholder="ex: 400"
+                  className="input-field py-2.5"
+                />
+                <span className="shrink-0 text-sm text-text-muted">horas</span>
+              </div>
+              <p className="mt-1 text-xs text-text-muted">
+                Quanto você quer estudar até a prova. Com a data, o painel diz se
+                o seu ritmo chega lá.
+              </p>
+            </div>
+          </div>
+
           {/* Janela de Tempo */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

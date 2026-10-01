@@ -227,6 +227,13 @@ export function computeStudyPreferences(
       typeof answers.autoSchedule === 'boolean' ? answers.autoSchedule : baseSettings.autoSchedule,
     smartBreaks:
       typeof answers.smartBreaks === 'boolean' ? answers.smartBreaks : baseSettings.smartBreaks,
+    // A carga horária total informada no assistente precisa sobreviver ao
+    // "concluir": sem isso o número era calculado na tela e esquecido, e o
+    // painel não tinha como dizer se o ritmo fecha.
+    totalHours:
+      typeof answers.totalHours === 'number' && Number.isFinite(answers.totalHours) && answers.totalHours > 0
+        ? answers.totalHours
+        : baseSettings.totalHours,
   };
 
   const studyPrefs: StudyPreferences = {

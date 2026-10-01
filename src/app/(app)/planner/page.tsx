@@ -1207,7 +1207,7 @@ export default function PlannerPage() {
               {/* #21: quando não há espaço para reagendar, explicar com números
                   e dizer o que fazer — antes a tela só avisava "não havia
                   espaço nos próximos dias" e a pessoa ficava sem saída. */}
-              {backlogCapacity && backlogCapacity.noSpace && (
+              {backlogCapacity && backlogCapacity.missingMinutes > 0 && (
                 <div className="rounded-xl border border-warning bg-warning-soft p-3">
                   <p className="text-xs font-semibold text-warning-strong flex items-center gap-1.5">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
@@ -1217,9 +1217,11 @@ export default function PlannerPage() {
                     .
                   </p>
                   <p className="mt-1 text-xs text-warning-strong">
-                    {scheduleEndDate
-                      ? `Seus próximos ${backlogCapacity.daysChecked} dias já estão cheios até ${scheduleEndDate.toLocaleDateString('pt-BR')}.`
-                      : `Seus próximos ${backlogCapacity.daysChecked} dias já estão cheios.`}{' '}
+                    {backlogCapacity.noSpace
+                      ? scheduleEndDate
+                        ? `Seus próximos ${backlogCapacity.daysChecked} dias já estão cheios até ${scheduleEndDate.toLocaleDateString('pt-BR')}.`
+                        : `Seus próximos ${backlogCapacity.daysChecked} dias já estão cheios.`
+                      : `Dos ${formatMinutesAsHours(backlogCapacity.pendingMinutes)} pendentes, só cabem ${formatMinutesAsHours(backlogCapacity.usableMinutes)} nos próximos ${backlogCapacity.daysChecked} dias.`}{' '}
                     Para reagendar você precisa estudar além do que está planejado:{' '}
                     <strong>
                       aumente as horas por dia em Ajustes

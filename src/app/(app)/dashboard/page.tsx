@@ -34,6 +34,7 @@ import {
   parseBlockDate,
   parseLocalDateKey,
   plannedMinutes,
+  studiedMinutes,
   timeToMinutes,
   toLocalDateKey,
 } from '@/lib/utils';
@@ -49,7 +50,7 @@ import Button from '@/components/ui/Button';
 import { StudyBlockSessionModal } from '@/components/session';
 import { StatsCard, ProgressBar } from '@/components/ui';
 import { LevelProgress } from '@/components/dashboard';
-import { TodayPlan } from '@/components/dashboard';
+import { BacklogWarning, PassProjection, TodayPlan } from '@/components/dashboard';
 import { WeeklyChart } from '@/components/dashboard';
 import type { StudyBlock, Subject, AnalyticsStore, StudyPreferences, UserSettings, DailyHoursByWeekday, WeekdayKey } from '@/types';
 import { useSession } from 'next-auth/react';
@@ -170,6 +171,20 @@ export default function Dashboard() {
   }, [analytics, studyPrefs, userSettings.dailyHoursByWeekday, weekStartKey]);
 
   const totalWeeklyHours = weeklyData.reduce((sum, day) => sum + day.hours, 0);
+  // Dias da semana em que a pessoa estuda (0 = domingo).
+  const diasDeEstudo = useMemo(() => {
+    const excluidos = new Set(userSettings.excludeDays ?? []);
+    return [0, 1, 2, 3, 4, 5, 6].filter((dia) => !excluidos.has(dia));
+  }, [userSettings.excludeDays]);
+
+  // Total já estudado (todas as semanas), pelo tempo REAL de cada bloco.
+  const totalStudiedHours = useMemo(
+    () =>
+      plannerBlocks
+        .filter((block) => !block.isBreak && block.status === 'completed')
+        .reduce((sum, block) => sum + studiedMinutes(block) / 60, 0),
+    [plannerBlocks]
+  );
   const completedWeeklySessions = weeklyData.reduce((sum, day) => sum + day.sessions, 0);
 
   const weeklyGoalHours = Math.max(
@@ -600,6 +615,23 @@ const handleCompleteBlock = (
                   </Button>
                 </motion.div>
               )}
+
+              <div className="mt-6">
+                <BacklogWarning
+                  blocks={plannerBlocks}
+                  dailyHoursByWeekday={userSettings.dailyHoursByWeekday}
+                  allowedDays={diasDeEstudo}
+                  examDate={userSettings.examDate}
+                />
+
+                <PassProjection
+                  examDate={studyPrefs.examDate}
+                  totalHours={userSettings.totalHours}
+                  daily={userSettings.dailyHoursByWeekday}
+                  fallbackHoursPerDay={studyPrefs.hoursPerDay}
+                  studiedHours={totalStudiedHours}
+                />
+              </div>
 
               <div className="mt-6">
                 <TodayPlan

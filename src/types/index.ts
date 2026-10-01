@@ -559,6 +559,12 @@ export interface UserSettings {
   pushSubscription?: Record<string, unknown> | null;
   alarmSound?: 'pulse' | 'beep' | 'chime' | 'soft';
   examDate?: string;
+  /**
+   * Carga horária total que a pessoa quer estudar até a prova, em horas.
+   * Opcional: sem ela o app não consegue dizer se o ritmo fecha, então o card
+   * "Você passa?" pede o número em vez de projetar um prazo inventado.
+   */
+  totalHours?: number;
 }
 
 // ============================================
