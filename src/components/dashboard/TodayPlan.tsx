@@ -246,7 +246,14 @@ export default function TodayPlan({
                     </Badge>
 
                     <div className="flex items-center gap-1.5">
-                      {onStartBlock && (
+                      {/* "Iniciar" para o que ainda vai ser estudado. Some em
+                          bloco concluído (já foi) e em bloco em andamento (já
+                          começou) — antes aparecia nos dois, e o app convidava
+                          a estudar de novo o que já estava estudado. Pulado
+                          continua podendo iniciar: pular não é descarte. */}
+                      {onStartBlock &&
+                        block.status !== 'completed' &&
+                        block.status !== 'in-progress' && (
                         <Button
                           variant={block.isBreak ? 'secondary' : 'primary'}
                           size="sm"
