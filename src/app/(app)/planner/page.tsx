@@ -3,7 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { cn, getWeekStart, timeToMinutes, minutesToTime, parseLocalDateKey, parseBlockDate, toLocalDateKey } from '@/lib/utils';
+import { repairCompletedBlockTimesOnce } from '@/lib/blockTimes';
+import {
+  cn,
+  getWeekStart,
+  minutesToTime,
+  parseBlockDate,
+  parseLocalDateKey,
+  studiedMinutes,
+  timeToMinutes,
+  toLocalDateKey,
+} from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { isEnemGoal, upgradeSubjectsToOfficialEnemStructure } from '@/lib/enemCatalog';
 import { generateChronologicalSchedule, getPhaseForDate } from '@/services/roadmapEngine';
@@ -169,7 +179,9 @@ export default function PlannerPage() {
     mode: 'random',
     examDate: '',
   });
-  const [blocks, setBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
+  const [blocksRaw, setBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
+  // Reparo único dos blocos que a versão anterior salvou com horário distorcido.
+  const blocks = useMemo(() => repairCompletedBlockTimesOnce(blocksRaw), [blocksRaw]);
   const [scheduleRange, setScheduleRange] = useLocalStorage<{ startDate: string; endDate: string } | null>(
     'nexora_schedule_range',
     null
@@ -1388,7 +1400,7 @@ export default function PlannerPage() {
               const pending = all - done;
               const totalMins = blocks.filter(b => !b.isBreak).reduce((s,b) => s + b.durationMinutes, 0);
               const totalHours = (totalMins/60).toFixed(1);
-              const doneMins = blocks.filter(b => b.status === 'completed' && !b.isBreak).reduce((s,b)=> s+b.durationMinutes,0);
+              const doneMins = blocks.filter(b => b.status === 'completed' && !b.isBreak).reduce((s,b)=> s+studiedMinutes(b),0);
               const doneHours = (doneMins/60).toFixed(1);
               const pct = all ? Math.round(done/all*100) : 0;
               const topSubjects = Array.from(new Set(blocks.filter(b=>!b.isBreak).map(b=> subjects.find(s=>s.id===b.subjectId)?.name).filter(Boolean) as string[])).slice(0,2);

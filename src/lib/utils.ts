@@ -94,6 +94,31 @@ export function minutesToTime(totalMinutes: number): string {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 }
 
+/**
+ * Minutos realmente estudados num bloco concluído.
+ *
+ * `durationMinutes` é a duração PLANEJADA e nunca deve ser sobrescrita: era isso
+ * que fazia a agenda mostrar "09:00 - 19:08" para um bloco de 50 minutos. O tempo
+ * real vai em `actualMinutes`. Quando o campo não existe (blocos gravados antes
+ * da mudança), cai em `durationMinutes` — nesses blocos antigos o valor já é o real,
+ * porque era assim que ele era sobrescrito.
+ */
+export function studiedMinutes(block: {
+  durationMinutes: number;
+  actualMinutes?: number;
+}): number {
+  const real = block.actualMinutes;
+  if (typeof real === 'number' && Number.isFinite(real) && real >= 0) {
+    return Math.max(0, Math.round(real));
+  }
+  return Math.max(0, Math.round(block.durationMinutes || 0));
+}
+
+/** Duração planejada do bloco, em minutos. */
+export function plannedMinutes(block: { durationMinutes: number }): number {
+  return Math.max(0, Math.round(block.durationMinutes || 0));
+}
+
 // ============================================
 // Weekly load helpers (fonte única de verdade)
 // ============================================

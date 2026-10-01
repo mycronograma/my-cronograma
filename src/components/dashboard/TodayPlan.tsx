@@ -23,10 +23,18 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { cn, formatDuration, getTimeString, timeToMinutes } from '@/lib/utils';
+import {
+  cn,
+  formatDuration,
+  getTimeString,
+  plannedMinutes,
+  studiedMinutes,
+  timeToMinutes,
+} from '@/lib/utils';
 import { getStudyBlockDisplayTitle, getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
+import CompleteMinutesModal from './CompleteMinutesModal';
 import Button from '@/components/ui/Button';
 import type { StudyBlock } from '@/types';
 
@@ -62,6 +70,8 @@ export default function TodayPlan({
 }: TodayPlanProps) {
   const now = useClientNow();
   const [showAll, setShowAll] = useState(false);
+  // Bloco aguardando a resposta "quanto tempo você estudou?".
+  const [pendingComplete, setPendingComplete] = useState<StudyBlock | null>(null);
 
   const orderedBlocks = useMemo(
     () => [...blocks].sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)),
@@ -91,9 +101,10 @@ export default function TodayPlan({
 
   const completedCount = orderedBlocks.filter((block) => block.status === 'completed').length;
   const studyBlocks = orderedBlocks.filter((block) => !block.isBreak);
+  // Só o que ainda falta estudar, sempre pela duração PLANEJADA.
   const pendingMinutes = studyBlocks
     .filter((block) => block.status !== 'completed' && block.status !== 'skipped')
-    .reduce((total, block) => total + block.durationMinutes, 0);
+    .reduce((total, block) => total + plannedMinutes(block), 0);
 
   const visibleBlocks = showAll ? orderedBlocks : orderedBlocks.slice(0, VISIBLE_LIMIT);
   const hiddenCount = orderedBlocks.length - visibleBlocks.length;
@@ -203,8 +214,13 @@ export default function TodayPlan({
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-secondary">
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {block.startTime} – {block.endTime} · {formatDuration(block.durationMinutes)}
+                        {block.startTime} – {block.endTime} · {formatDuration(plannedMinutes(block))}
                       </span>
+                      {block.status === 'completed' && studiedMinutes(block) !== plannedMinutes(block) && (
+                        <span className="text-text-muted">
+                          estudou {formatDuration(studiedMinutes(block))}
+                        </span>
+                      )}
                       {!block.isBreak && (
                         <span className="text-text-muted">
                           {getStudyBlockTypeLabel(block.type ?? 'AULA')}
@@ -248,7 +264,7 @@ export default function TodayPlan({
                         <Button
                           variant="secondary"
                           size="sm"
-                          onClick={() => onCompleteBlock(block.id)}
+                          onClick={() => setPendingComplete(block)}
                           className="min-h-[32px] max-[479px]:min-h-[30px] px-2.5 text-xs"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
@@ -271,6 +287,19 @@ export default function TodayPlan({
                 </motion.div>
               );
             })}
+
+            {pendingComplete && (
+              <CompleteMinutesModal
+                plannedMinutes={plannedMinutes(pendingComplete)}
+                title={getStudyBlockDisplayTitle(pendingComplete)}
+                onConfirm={(minutos) => {
+                  const alvo = pendingComplete;
+                  setPendingComplete(null);
+                  onCompleteBlock?.(alvo.id, minutos);
+                }}
+                onCancel={() => setPendingComplete(null)}
+              />
+            )}
 
             {hiddenCount > 0 && (
               <button

@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { hasWebPush } from '@/lib/env';
 import { sendWebPushNotification } from '@/lib/web-push';
-import { parseBlockDate } from '@/lib/utils';
+import { parseBlockDate, studiedMinutes } from '@/lib/utils';
 import type { Prisma } from '@prisma/client';
 
 export type NotificationType =
@@ -188,7 +188,7 @@ const extractStudySignalsFromSnapshot = async ({
       const completedAt = new Date(reference);
       if (Number.isNaN(completedAt.getTime())) return;
 
-      const minutesRaw = rawBlock.durationMinutes;
+      const minutesRaw = rawBlock.actualMinutes ?? rawBlock.durationMinutes;
       const minutes =
         typeof minutesRaw === 'number' && Number.isFinite(minutesRaw) ? Math.max(0, Math.round(minutesRaw)) : 0;
 

@@ -6,6 +6,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { repairCompletedBlockTimesOnce } from '@/lib/blockTimes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import {
@@ -21,7 +22,21 @@ import {
   Zap,
   Lock,
 } from 'lucide-react';
-import { cn, formatDuration, formatHoursDuration, formatDate, toLocalDateKey, parseBlockDate, getWeekStart, timeToMinutes, minutesToTime, getHoursForDate, getWeeklyGoalHours, parseLocalDateKey } from '@/lib/utils';
+import {
+  cn,
+  formatDate,
+  formatDuration,
+  formatHoursDuration,
+  getHoursForDate,
+  getWeekStart,
+  getWeeklyGoalHours,
+  minutesToTime,
+  parseBlockDate,
+  parseLocalDateKey,
+  plannedMinutes,
+  timeToMinutes,
+  toLocalDateKey,
+} from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { computeGamificationSnapshot } from '@/lib/progressSnapshot';
 import { applyBlockCompletionMetrics } from '@/services/adaptiveStudyIntelligence';
@@ -65,7 +80,12 @@ export default function Dashboard() {
   // matéria de dia futuro com o dia de hoje ainda pendente.
   const [lockNotice, setLockNotice] = useState<string | null>(null);
   const { hasCompletedWelcome } = useOnboarding();
-  const [plannerBlocks, setPlannerBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
+  const [plannerBlocksRaw, setPlannerBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
+  // Reparo único dos blocos que a versão anterior salvou com horário distorcido.
+  const plannerBlocks = useMemo(
+    () => repairCompletedBlockTimesOnce(plannerBlocksRaw),
+    [plannerBlocksRaw]
+  );
   const [subjects, setSubjects] = useLocalStorage<Subject[]>('nexora_subjects', []);
   const [analytics, setAnalytics] = useLocalStorage<AnalyticsStore>('nexora_analytics', { daily: {} });
   const [studyPrefs, setStudyPrefs] = useLocalStorage<StudyPreferences>('nexora_study_prefs', {
@@ -188,27 +208,55 @@ export default function Dashboard() {
 
   const [activeSessionBlock, setActiveSessionBlock] = useState<StudyBlock | null>(null);
 
-  const recommendedBlock = useMemo(() => {
-    const pending = todayBlocks.filter((block) => !block.isBreak);
-    if (pending.length === 0) return null;
+  // Regra de intervalo que a pessoa configurou em Ajustes (bloco / descanso).
+  const breakRule = useMemo(() => {
+    // `maxBlockMinutes` (Ajustes) é o teto do bloco; `blockDurationMinutes`
+    // (assistente) é o tamanho escolhido. Fica o que estiver preenchido.
+    const bloco =
+      studyPrefs.blockDurationMinutes || userSettings.maxBlockMinutes || 0;
+    const descanso = userSettings.breakMinutes || studyPrefs.breakDurationMinutes || 0;
+    return { bloco, descanso };
+  }, [userSettings, studyPrefs]);
 
-    // 1) sessão já em andamento, 2) bloco que cobre o horário atual,
-    // 3) próximo bloco do dia, 4) primeiro pendente.
+  const recommendedBlock = useMemo(() => {
+    if (todayBlocks.length === 0) return null;
+
+    // Ordem do dia: em andamento > cobrindo o horário atual > o próximo.
+    // Intervalos ENTRAM na fila de propósito: antes eles eram filtrados fora e o
+    // card só recomendava matéria, então o descanso nunca aparecia como passo.
+    const candidatos = todayBlocks.filter(
+      (block) => block.status === 'scheduled' || block.status === 'rescheduled' || block.status === 'in-progress'
+    );
+    if (candidatos.length === 0) return null;
+
     return (
-      pending.find((block) => block.status === 'in-progress') ??
-      pending.find(
+      candidatos.find((block) => block.status === 'in-progress') ??
+      candidatos.find(
         (block) =>
-          (block.status === 'scheduled' || block.status === 'rescheduled') &&
           block.startTime <= currentTime &&
           block.endTime > currentTime
       ) ??
-      pending.find(
-        (block) =>
-          (block.status === 'scheduled' || block.status === 'rescheduled') && block.startTime > currentTime
-      ) ??
-      pending[0]
+      candidatos.find((block) => block.startTime > currentTime) ??
+      candidatos[0]
     );
   }, [currentTime, todayBlocks]);
+
+  // O que vem imediatamente depois da recomendação — para o card mostrar o
+  // ritmo do dia ("depois: intervalo de 10 min às 11:50") em vez de só a matéria.
+  const blockAfterRecommended = useMemo(() => {
+    if (!recommendedBlock) return null;
+    const ordenados = [...todayBlocks].sort(
+      (a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
+    );
+    const indice = ordenados.findIndex((b) => b.id === recommendedBlock.id);
+    if (indice < 0) return null;
+    for (let i = indice + 1; i < ordenados.length; i++) {
+      const proximo = ordenados[i];
+      if (proximo.status === 'completed' || proximo.status === 'skipped') continue;
+      return proximo;
+    }
+    return null;
+  }, [recommendedBlock, todayBlocks]);
 
   const gamificationData = useMemo(() => {
     const todayXP = Math.max(0, Math.round((dailyAnalytics.hours || 0) * 60));
@@ -256,13 +304,26 @@ const handleCompleteBlock = (
     const blockRef = plannerBlocks.find((b) => b.id === blockId) ?? (activeSessionBlock?.id === blockId ? activeSessionBlock : undefined);
     if (!blockRef || blockRef.status === 'completed') return;
     const now = new Date();
-    const completedTime = now.toTimeString().slice(0, 5);
-    const effectiveMinutes = minutesSpent || blockRef.durationMinutes;
+    // Quem chamou sem dizer os minutos estudados assume o planejado — é o
+    // caminho do botão "Concluir", que passa a perguntar antes (ver
+    // TodayPlan). O modal da sessão já manda o tempo real do cronômetro.
+    const effectiveMinutes = minutesSpent ?? blockRef.durationMinutes;
     const hours = effectiveMinutes / 60;
     const updatedBlocks = plannerBlocks.map((block) => {
       if (block.id === blockId) {
-        const updatedBlock = { ...block, status: 'completed' as const, endTime: completedTime, completedAt: now, updatedAt: now };
-        if (minutesSpent) updatedBlock.durationMinutes = minutesSpent;
+        // O plano NÃO é sobrescrito: `startTime`, `endTime` e
+        // `durationMinutes` continuam sendo o que foi agendado, e o tempo
+        // realmente estudado vai em `actualMinutes`. Antes o app gravava a
+        // hora do relógio em `endTime` e os minutos reais em
+        // `durationMinutes`, e a agenda mostrava "09:00 - 19:08" para um
+        // bloco de 50 minutos.
+        const updatedBlock = {
+          ...block,
+          status: 'completed' as const,
+          completedAt: now,
+          updatedAt: now,
+          actualMinutes: effectiveMinutes,
+        };
         return updatedBlock;
       }
       return block;
@@ -448,18 +509,41 @@ const handleCompleteBlock = (
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2 pr-28 sm:pr-0">
                         <Zap className="w-4 h-4 text-neon-purple flex-shrink-0" />
-                        <span className="text-xs font-bold tracking-widest text-neon-purple uppercase truncate">SESSÃO RECOMENDADA AGORA</span>
+                        <span className="text-xs font-bold tracking-widest text-neon-purple uppercase truncate">
+                          {recommendedBlock.isBreak ? 'INTERVALO RECOMENDADO AGORA' : 'SESSÃO RECOMENDADA AGORA'}
+                        </span>
                       </div>
                       <h2 className="text-xl font-heading font-bold text-text-primary mb-2 pr-24 sm:pr-0">
                         {getStudyBlockDisplayTitle(recommendedBlock)}
                       </h2>
                       <p className="text-text-secondary mb-4 line-clamp-2 pr-0 sm:pr-0">
-                        Reforço de prioridade alta baseado no seu ritmo de estudo recente
+                        {recommendedBlock.isBreak
+                          ? 'Descanse agora: o intervalo faz o próximo bloco render mais. Ele já está reservado no seu plano.'
+                          : 'Reforço de prioridade alta baseado no seu ritmo de estudo recente'}
                       </p>
+                      {/* Ritmo do dia: o que vem depois, e a regra de bloco/intervalo. */}
+                      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-muted">
+                        {blockAfterRecommended && (
+                          <span>
+                            depois:{' '}
+                            <strong className="font-semibold text-text-secondary">
+                              {blockAfterRecommended.isBreak ? 'intervalo' : getStudyBlockDisplayTitle(blockAfterRecommended)}
+                            </strong>{' '}
+                            às {blockAfterRecommended.startTime} · {formatDuration(plannedMinutes(blockAfterRecommended))}
+                          </span>
+                        )}
+                        {breakRule.bloco > 0 && breakRule.descanso > 0 && (
+                          <span>
+                            a cada {formatDuration(breakRule.bloco)} de estudo vem {formatDuration(breakRule.descanso)} de intervalo
+                          </span>
+                        )}
+                      </div>
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-4">
                         <div className="flex items-center gap-2">
                           <Clock className="w-4 h-4 text-text-muted" />
-                          <span className="text-lg font-bold text-text-primary">{formatDuration(recommendedBlock.durationMinutes)}</span>
+                          <span className="text-lg font-bold text-text-primary">
+                            {formatDuration(plannedMinutes(recommendedBlock))}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2">
                           <BookOpen className="w-4 h-4 text-text-muted" />

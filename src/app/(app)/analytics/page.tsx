@@ -26,7 +26,14 @@ import {
   buildCompletedSessionsByDate,
   buildMergedDailyStudyData,
 } from '@/lib/progressSnapshot';
-import { formatHoursDuration, getWeekDates, getWeekStart, toLocalDateKey, parseBlockDate } from '@/lib/utils';
+import {
+  formatHoursDuration,
+  getWeekDates,
+  getWeekStart,
+  parseBlockDate,
+  studiedMinutes,
+  toLocalDateKey,
+} from '@/lib/utils';
 import type { AnalyticsStore, StudyBlock, Subject } from '@/types';
 
 const emptyAnalytics: AnalyticsStore = { daily: {} };
@@ -114,7 +121,8 @@ export default function AnalyticsPage() {
         if (block.isBreak || block.status !== 'completed' || !block.subjectId) return;
         const blockDate = parseBlockDate(block.date);
         if (blockDate < weekStart || blockDate >= weekEnd) return;
-        blocksBySubject[block.subjectId] = (blocksBySubject[block.subjectId] ?? 0) + block.durationMinutes / 60;
+        blocksBySubject[block.subjectId] =
+          (blocksBySubject[block.subjectId] ?? 0) + studiedMinutes(block) / 60;
       });
 
       const analyticsBySubject: Record<string, number> = {};

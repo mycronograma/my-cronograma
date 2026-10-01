@@ -123,9 +123,19 @@ export interface StudyBlock {
   
   // Timing
   date: Date;
+  /** Horário planejado de início ("09:00"). Não muda ao concluir. */
   startTime: string;
+  /** Horário planejado de fim ("09:50"). Não muda ao concluir. */
   endTime: string;
+  /** Duração planejada, em minutos. Não muda ao concluir. */
   durationMinutes: number;
+  /**
+   * Minutos que a pessoa realmente estudou, quando o bloco foi concluído.
+   * Antes esse valor sobrescrevia `durationMinutes` e `endTime`, e a agenda
+   * passava a mostrar o plano errado ("09:00 - 19:08" para um bloco de 50
+   * minutos concluído às 19:08). Agora o plano fica intacto e o real mora aqui.
+   */
+  actualMinutes?: number;
   
   // Roadmap metadata
   sessionType?: 'teoria' | 'pratica' | 'revisao' | 'simulado';

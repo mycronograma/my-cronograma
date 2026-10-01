@@ -1,4 +1,4 @@
-import { levelFromXp, parseBlockDate, toLocalDateKey } from '@/lib/utils';
+import { levelFromXp, parseBlockDate, studiedMinutes, toLocalDateKey } from '@/lib/utils';
 import type { AnalyticsStore, DailyAnalyticsRecord, StudyBlock } from '@/types';
 
 type DailyAnalytics = AnalyticsStore['daily'];
@@ -26,7 +26,7 @@ export function buildCompletedHoursByDate(plannerBlocks: StudyBlock[]): Record<s
   plannerBlocks.forEach((block) => {
     if (block.isBreak || block.status !== 'completed') return;
     const key = blockDateKey(block.date);
-    totals[key] = (totals[key] ?? 0) + Math.max(0, block.durationMinutes) / 60;
+    totals[key] = (totals[key] ?? 0) + studiedMinutes(block) / 60;
   });
 
   return totals;
@@ -176,7 +176,7 @@ export function computeGamificationSnapshot(params: {
 
   const minutesFromBlocks = plannerBlocks.reduce((sum, block) => {
     if (block.isBreak || block.status !== 'completed') return sum;
-    return sum + Math.max(0, block.durationMinutes);
+    return sum + studiedMinutes(block);
   }, 0);
 
   const minutesFromAnalytics = Object.values(dailyAnalytics).reduce((sum, day) => {
