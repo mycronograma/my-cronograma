@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2, AlertTriangle, GripVertical } from 'lucide-react';
-import { repairCompletedBlockTimesOnce } from '@/lib/blockTimes';
+import { repairCompletedBlockTimesOnce, repairOverlappingDaysOnce } from '@/lib/blockTimes';
 import {
   cn,
   getWeekStart,
@@ -273,13 +273,21 @@ export default function PlannerPage() {
     examDate: '',
   });
   const [blocksRaw, setBlocks] = useLocalStorage<StudyBlock[]>('nexora_planner_blocks', []);
-  // Reparo único dos blocos que a versão anterior salvou com horário distorcido.
-  const blocks = useMemo(() => repairCompletedBlockTimesOnce(blocksRaw), [blocksRaw]);
   const [scheduleRange, setScheduleRange] = useLocalStorage<{ startDate: string; endDate: string } | null>(
     'nexora_schedule_range',
     null
   );
   const [userSettings] = useLocalStorage<UserSettings>('nexora_user_settings', defaultSettings);
+  const breakMinutos = userSettings?.breakMinutes ?? 10;
+
+  // Reparo único dos blocos que a versão anterior salvou com horário distorcido.
+  const semDistorcao = useMemo(() => repairCompletedBlockTimesOnce(blocksRaw), [blocksRaw]);
+  // Reparo único dos dias com bloco em cima de bloco. Só mexe em dia
+  // sobreposto, e só nos pendentes: bloco estudado fica onde está.
+  const blocks = useMemo(
+    () => repairOverlappingDaysOnce(semDistorcao, breakMinutos),
+    [semDistorcao, breakMinutos]
+  );
 
   // Carga de estudo por dia da semana, em minutos (0 = dia sem estudo). É o que
   // dá capacidade aos dias que não têm limite nem blocos — ou seja, aos dias
@@ -504,7 +512,28 @@ export default function PlannerPage() {
 
   // Derivados da predefinição: horário = primeiro espaço livre; duração = a
   // que o usuário configurou. Nada disso é perguntado no modal.
-  const newBlockStart = autoSlot?.start ?? '09:00';
+  /**
+   * Onde um bloco novo caberia se o dia não tiver vaga: depois do último
+   * bloco do dia, com o intervalo. Só entra quando `findFreeSlot` não acha
+   * espaço (dia cheio ou limite estourado) — antes o app caía em "09:00",
+   * que é justamente onde já tem bloco.
+   */
+  const proximoHorarioLivre = useMemo(() => {
+    const date = addBlockModal.date;
+    if (!date) return '09:00';
+    const dayKey = toLocalDateKey(date);
+    const doDia = blocks.filter(
+      (b) => toLocalDateKey(parseBlockDate(b.date)) === dayKey && !b.isBreak
+    );
+    if (doDia.length === 0) return dailyTimeWindowsByDate[dayKey]?.start ?? '09:00';
+    const fim = Math.max(...doDia.map((b) => timeToMinutes(b.endTime)));
+    return minutesToTime(fim + configuredBreakMinutes);
+  }, [addBlockModal.date, blocks, dailyTimeWindowsByDate, configuredBreakMinutes]);
+
+  // Sem vaga no dia, NÃO existe horário padrão: cair em "09:00" fixo colocava
+  // o bloco novo em cima do primeiro bloco do dia. Melhor começar depois do
+  // último bloco, que é onde há espaço de verdade.
+  const newBlockStart = autoSlot?.start ?? proximoHorarioLivre;
   const newBlockDuration = configuredBlockMinutes;
 
 
@@ -609,7 +638,26 @@ export default function PlannerPage() {
         dailyLimitsOverride: dailyLimits,
       });
 
-      const schedule = await generateChronologicalSchedule({
+      // Janelas livres: para cada dia, a maior fatia que sobrou depois de
+      // descontar os blocos preservados. O motor só aceita uma janela por dia,
+      // então perder um pedaço é melhor que remarcar bloco em cima de bloco.
+      const diasDoPeriodo: string[] = [];
+      for (const cursor = new Date(weekStart); cursor <= weekEnd; cursor.setDate(cursor.getDate() + 1)) {
+        diasDoPeriodo.push(toLocalKey(cursor));
+      }
+      const janelasLivres = computeFreeDayWindows({
+        preservados: blocosPreservados
+          .filter((block) => !block.isBreak)
+          .map((block) => ({
+            date: toLocalKey(parseBlockDate(block.date)),
+            startTime: block.startTime,
+            endTime: block.endTime,
+          })),
+        janelasBase: constraints.dailyTimeWindowByDate,
+        dias: diasDoPeriodo,
+      });
+
+      const scheduleComJanelas = await generateChronologicalSchedule({
         subjects,
         preferences: studyPrefs,
         startDate: weekStart,
@@ -620,20 +668,30 @@ export default function PlannerPage() {
         breakMinutes: constraints.breakMinutes,
         restDays: constraints.restDays,
         dailyLimitByDate: constraints.dailyLimitByDate,
-        dailyTimeWindowByDate: constraints.dailyTimeWindowByDate,
+        dailyTimeWindowByDate: {
+          ...constraints.dailyTimeWindowByDate,
+          ...janelasLivres,
+        },
         simuladoRules: constraints.simuladoRules,
         firstCycleAllSubjects,
       });
 
-      const enrichedBlocks = schedule.blocks.map((block) => ({
+      const enrichedBlocks = scheduleComJanelas.blocks.map((block) => ({
         ...block,
         id: `${block.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         date: parseBlockDate(block.date),
         originalDate: block.originalDate ? parseBlockDate(block.originalDate) : block.originalDate,
       }));
 
-      setBlocks(enrichedBlocks);
-      setPlannerNotice(`✅ Cronograma gerado de ${toLocalKey(weekStart)} até ${toLocalKey(weekEnd)}!`);
+      // PRESERVA: concluídos, pulados e em andamento ficam como estão; só os
+      // pendentes são refeitos. Sem esta linha o botão apagava o progresso.
+      setBlocks([...blocosPreservados, ...enrichedBlocks]);
+      setPlannerNotice(
+        `✅ Cronograma gerado de ${toLocalKey(weekStart)} até ${toLocalKey(weekEnd)}!` +
+          (blocosPreservados.length > 0
+            ? ` ${blocosPreservados.length} bloco(s) já estudado(s) ficaram como estavam.`
+            : '')
+      );
 
       setScheduleRange({
         startDate: toLocalKey(weekStart),
@@ -706,11 +764,11 @@ export default function PlannerPage() {
     }
 
     // Só os blocos do dia mudam; o resto do cronograma fica intocado.
-    // A troca é pelo dia inteiro (e não bloco a bloco) porque remontar o dia
-    // cria intervalos novos — e um mapa por id descartaria justamente eles.
-    const remontados = new Set(resultado.blocks.map((b) => b.id));
+    // A troca é pelo DIA INTEIRO, e não bloco a bloco: remontar o dia cria
+    // intervalos com ids novos, e os intervalos antigos continuavam no array
+    // (cada arrasto deixava ☕s órfãos, alguns em cima de bloco novo).
     setBlocks((prev) => [
-      ...prev.filter((b) => !remontados.has(b.id)),
+      ...prev.filter((b) => toLocalDateKey(parseBlockDate(b.date)) !== activeKey),
       ...resultado.blocks,
     ]);
   };

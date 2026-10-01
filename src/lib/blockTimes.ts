@@ -19,6 +19,11 @@
  * intacto, então passam batidos.
  */
 
+import { repairOverlappingDays } from '@/services/overlapRepair';
+import type { StudyBlock } from '@/types';
+
+type StudyBlockLike = StudyBlock;
+
 type BlocoReparavel = {
   id: string;
   startTime: string;
@@ -83,4 +88,25 @@ export function repairCompletedBlockTimesOnce<T extends BlocoReparavel>(blocks: 
   if (jaRodouNestaPagina) return blocks;
   jaRodouNestaPagina = true;
   return repairCompletedBlockTimes(blocks);
+}
+
+/**
+ * Reparo único dos dias com blocos em cima de blocos.
+ *
+ * Rodapé: a versão anterior deixava três caminhos produzirem sobreposição
+ * (regerar sem vaga, adicionar bloco às 09:00 e o arrastar deixando
+ * intervalos órfãos). Os dias já salvos assim continuavam quebrados para
+ * sempre, então este reparo roda uma vez por página e reencaixa só os
+ * pendentes — bloco estudado nunca sai do lugar.
+ */
+let overlapJaRodouNestaPagina = false;
+
+export function repairOverlappingDaysOnce<T extends StudyBlockLike>(
+  blocks: T[],
+  breakMinutes: number,
+  windowStart = '08:00'
+): T[] {
+  if (overlapJaRodouNestaPagina) return blocks;
+  overlapJaRodouNestaPagina = true;
+  return repairOverlappingDays({ blocks, breakMinutes, windowStart }).blocks as T[];
 }

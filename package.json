@@ -30,6 +30,8 @@
     "test:regerar": "tsx scripts/regerar-preserva.test.ts",
     "test:reorder": "tsx scripts/day-reorder.test.ts",
     "test:drag": "tsx scripts/reorder-integracao.test.ts",
+    "test:empilhar": "tsx scripts/empilhar-blocos.test.ts",
+    "test:reparo": "tsx scripts/overlap-repair.test.ts",
     "test:target": "tsx scripts/weekly-target.test.ts",
     "test:capacity": "tsx scripts/backlog-capacity.test.ts",
     "test:setup": "tsx scripts/setup-wizard.test.ts",
