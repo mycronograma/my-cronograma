@@ -28,6 +28,8 @@
     "test:freeslot": "tsx scripts/free-slot.test.ts",
     "test:freeday": "tsx scripts/free-day-windows.test.ts",
     "test:regerar": "tsx scripts/regerar-preserva.test.ts",
+    "test:reorder": "tsx scripts/day-reorder.test.ts",
+    "test:drag": "tsx scripts/reorder-integracao.test.ts",
     "test:target": "tsx scripts/weekly-target.test.ts",
     "test:capacity": "tsx scripts/backlog-capacity.test.ts",
     "test:setup": "tsx scripts/setup-wizard.test.ts",

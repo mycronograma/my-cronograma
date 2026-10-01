@@ -32,13 +32,12 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Card, Button, Badge } from '@/components/ui';
-import TimePickerField from '@/components/settings/TimePickerField';
 import SystemNotificationsCard from '@/components/settings/SystemNotificationsCard';
 import { useIsMobile, useOnboarding, useLocalStorage } from '@/hooks';
 import { clearClientStoreKeys } from '@/hooks/useLocalStorage';
 import { SERVER_PROGRESS_STORE_KEYS } from '@/hooks/useServerProgressSync';
 import { createAudioContext } from '@/lib/audio';
-import { cn, formatHoursDuration } from '@/lib/utils';
+import { cn, formatHoursDuration, minutesToTime, timeToMinutes } from '@/lib/utils';
 import type { DailyHoursByWeekday, StudyPreferences, UserSettings, WeekdayKey } from '@/types';
 import { defaultSettings } from '@/lib/defaultSettings';
 import { clearLocalDemoSession, isLocalDemoAuthEnabled } from '@/lib/localDemoAuth';
@@ -364,6 +363,29 @@ export default function SettingsPage() {
     setSaveState((prev) => (prev === 'error' ? 'idle' : prev));
   };
 
+  /**
+   * Resumo de quando a pessoa estuda, so para leitura. Sai da janela por dia
+   * dos dias ativos - a mesma fonte que o motor usa - e nao de campos editaveis,
+   * que deixaram de existir. Sem dia ativo, nao ha o que resumir.
+   */
+  const resumoJanela = useMemo(() => {
+    const janela = settings.dailyAvailabilityByWeekday;
+    const ativos = weekDayKeys.filter((key) => (dailyHoursByWeekday[key] ?? 0) > 0);
+    if (ativos.length === 0) return 'Nenhum dia de estudo ativo.';
+
+    const comJanela = ativos
+      .map((key) => janela?.[key as keyof typeof janela])
+      .filter((w): w is { start: string; end: string } => Boolean(w?.start && w?.end));
+
+    if (comJanela.length === 0) {
+      return `das ${settings.preferredStart || '08:00'} as ${settings.preferredEnd || '12:00'}`;
+    }
+
+    const inicio = comJanela.map((w) => w.start).sort()[0];
+    const fim = comJanela.map((w) => w.end).sort().reverse()[0];
+    return `das ${inicio} as ${fim} nos ${ativos.length} dia(s) de estudo`;
+  }, [settings.dailyAvailabilityByWeekday, settings.preferredStart, settings.preferredEnd, dailyHoursByWeekday]);
+
   const updateDailyHours = (nextHours: DailyHoursByWeekday) => {
     const activeDays = weekDayKeys
       .map((key, index) => ({ key, index, value: nextHours[key] }))
@@ -376,11 +398,37 @@ export default function SettingsPage() {
         ? activeDays.reduce((sum, entry) => sum + entry.value, 0) / activeDays.length
         : settings.dailyGoalHours;
 
+    // A janela do dia se ajusta para caber as horas pedidas. Antes a janela era
+    // fixa e as horas eram cortadas em silencio: pedia 6h, estudava 4h, e nada
+    // avisava. Como a escolha manual de horario saiu do app, quem aumenta as
+    // horas precisa ganhar a janela correspondente.
+    const janelaAtual = (settings.dailyAvailabilityByWeekday ?? {}) as Record<
+      string,
+      { start: string; end: string }
+    >;
+    const proximaJanela: Record<string, { start: string; end: string }> = { ...janelaAtual };
+    weekDayKeys.forEach((key) => {
+      const horas = nextHours[key];
+      if (!horas || horas <= 0) return;
+      const janela = janelaAtual[key];
+      const inicio = janela?.start || settings.preferredStart || '08:00';
+      const larguraAtual = janela
+        ? timeToMinutes(janela.end) - timeToMinutes(janela.start)
+        : 0;
+      if (larguraAtual < Math.round(horas * 60)) {
+        proximaJanela[key] = {
+          start: inicio,
+          end: minutesToTime(timeToMinutes(inicio) + Math.round(horas * 60)),
+        };
+      }
+    });
+
     setSettings((prev) => ({
       ...prev,
       dailyHoursByWeekday: nextHours,
       excludeDays: nextExcludeDays,
       dailyGoalHours: Number(nextAverage.toFixed(1)),
+      dailyAvailabilityByWeekday: proximaJanela as typeof prev.dailyAvailabilityByWeekday,
     }));
     setHasChanges(true);
     setSaveState((prev) => (prev === 'error' ? 'idle' : prev));
@@ -1476,46 +1524,20 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Janela de Tempo */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                Horário de Início Preferido
-              </label>
-              {isMobile && isIOS ? (
-                <TimePickerField
-                  label="Horário de início preferido"
-                  value={settings.preferredStart}
-                  onChange={(next) => updateSetting('preferredStart', next)}
-                />
-              ) : (
-                <input
-                  type="time"
-                  value={settings.preferredStart}
-                  onChange={(e) => updateSetting('preferredStart', e.target.value)}
-                  className="input-field py-2.5"
-                />
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                Horário de Término Preferido
-              </label>
-              {isMobile && isIOS ? (
-                <TimePickerField
-                  label="Horário de término preferido"
-                  value={settings.preferredEnd}
-                  onChange={(next) => updateSetting('preferredEnd', next)}
-                />
-              ) : (
-                <input
-                  type="time"
-                  value={settings.preferredEnd}
-                  onChange={(e) => updateSetting('preferredEnd', e.target.value)}
-                  className="input-field py-2.5"
-                />
-              )}
-            </div>
+          {/* Janela de tempo - so leitura.
+              A escolha manual de horario saiu do app: eram dois campos a mais
+              para um resultado que o app ja sabe sozinho. Quem manda e "Horas
+              por dia" acima; a janela se ajusta para caber. */}
+          <div className="rounded-xl border border-card-border bg-card-bg/50 p-4">
+            <p className="text-sm font-medium text-text-primary">Quando voce estuda</p>
+            <p className="mt-1 text-sm text-text-secondary">
+              {resumoJanela}
+            </p>
+            <p className="mt-1.5 text-xs text-text-muted">
+              Definido no assistente de configuracao. Para mudar, refaca a
+              predefinicao - ou ajuste as horas por dia acima, que a janela se
+              ajusta sozinha.
+            </p>
           </div>
 
           {/* Duração dos Blocos */}
