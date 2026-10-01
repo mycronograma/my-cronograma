@@ -26,6 +26,8 @@
     "test:backlog": "tsx scripts/backlog-rescheduler.test.ts",
     "test:move": "tsx scripts/block-move.test.ts",
     "test:freeslot": "tsx scripts/free-slot.test.ts",
+    "test:freeday": "tsx scripts/free-day-windows.test.ts",
+    "test:regerar": "tsx scripts/regerar-preserva.test.ts",
     "test:target": "tsx scripts/weekly-target.test.ts",
     "test:capacity": "tsx scripts/backlog-capacity.test.ts",
     "test:setup": "tsx scripts/setup-wizard.test.ts",

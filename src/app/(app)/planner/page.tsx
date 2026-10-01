@@ -12,6 +12,7 @@ import {
   parseLocalDateKey,
   studiedMinutes,
   timeToMinutes,
+  formatHoursDuration,
   toLocalDateKey,
 } from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
@@ -25,6 +26,8 @@ import { analyzeBacklogCapacity, formatMinutesAsHours } from '@/services/backlog
 import { planBlockMove } from '@/services/blockMove';
 import { findFreeSlot } from '@/services/freeSlot';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
+import Button from '@/components/ui/Button';
+import { computeFreeDayWindows } from '@/services/freeDayWindows';
 import type {
   AnalyticsStore,
   StudyBlock,
@@ -220,6 +223,18 @@ export default function PlannerPage() {
   const [analytics] = useLocalStorage<AnalyticsStore>('nexora_analytics', { daily: {} });
   const [isGenerating, setIsGenerating] = useState(false);
   const [plannerNotice, setPlannerNotice] = useState<string | null>(null);
+  // Confirmação do "Gerar com IA" quando já existe progresso: o app diz o
+  // que vai preservar antes de refazer anything.
+  const [regenConfirm, setRegenConfirm] = useState<{
+    concluidos: number;
+    horasEstudadas: number;
+    pendentes: number;
+  } | null>(null);
+  const regenDialog = useDialogA11y({
+    open: !!regenConfirm,
+    onClose: () => setRegenConfirm(null),
+    ariaLabel: 'Confirmar novo cronograma',
+  });
   // #6d/#6c: blocos não cumpridos são empurrados para o próximo dia com horário
   // livre e a semana é recalculada. Roda 1x por dia sozinho; o botão abaixo
   // permite disparar na hora.
@@ -443,15 +458,38 @@ export default function PlannerPage() {
 
   const activeSubjects = subjects.filter((s) => s.isActive);
 
-  const handleGenerateSchedule = useCallback(async () => {
-    if (subjects.length === 0) {
-      setPlannerNotice('Adicione pelo menos uma matéria para gerar um cronograma.');
-      return;
-    }
-    if (plannerEndDate && plannerEndDate < displayedWeekStart) {
-      setPlannerNotice('A data de fim não pode ser antes do início.');
-      return;
-    }
+  /**
+   * O que o "Gerar com IA" NÃO pode apagar.
+   *
+   * Antes o botão fazia `setBlocks(novos)` e substituía a lista inteira: os
+   * blocos já estudados voltavam a "Agendado" e a pessoa perdia o progresso
+   * do dia, as horas contadas e o XP. Agora concluídos, pulados e o bloco em
+   * andamento ficam intocados, e só o que está pendente é refeito.
+   */
+  const blocosPreservados = useMemo(
+    () =>
+      blocks.filter(
+        (block) =>
+          block.status === 'completed' ||
+          block.status === 'skipped' ||
+          block.status === 'in-progress'
+      ),
+    [blocks]
+  );
+
+  const blocosPendentes = useMemo(
+    () => blocks.filter((block) => block.status === 'scheduled' || block.status === 'rescheduled'),
+    [blocks]
+  );
+
+  /** Horas já estudadas (tempo real) e quantos blocos isso representa. */
+  const progressoAtual = useMemo(() => {
+    const estudados = blocosPreservados.filter((block) => !block.isBreak && block.status === 'completed');
+    const minutos = estudados.reduce((sum, block) => sum + studiedMinutes(block), 0);
+    return { blocos: estudados.length, minutos };
+  }, [blocosPreservados]);
+
+  const gerarCronograma = useCallback(async () => {
     const diffDays = Math.ceil(((plannerEndDate ?? new Date(displayedWeekStart.getTime() + 6*86400000)).getTime() - displayedWeekStart.getTime()) / 86400000) + 1;
     if (diffDays > 730) {
       setPlannerNotice('Período muito longo (máximo 2 anos / 730 dias).');
@@ -518,6 +556,35 @@ export default function PlannerPage() {
       setIsGenerating(false);
     }
   }, [subjects, studyPrefs, userSettings, dailyLimits, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate]);
+
+  const handleGenerateSchedule = useCallback(async () => {
+    if (subjects.length === 0) {
+      setPlannerNotice('Adicione pelo menos uma matéria para gerar um cronograma.');
+      return;
+    }
+    if (plannerEndDate && plannerEndDate < displayedWeekStart) {
+      setPlannerNotice('A data de fim não pode ser antes do início.');
+      return;
+    }
+    // Com progresso já registrado o app pergunta antes: refazer o cronograma
+    // mexe no plano da pessoa, e ela tem o direito de saber o que fica de pé.
+    if (progressoAtual.blocos > 0) {
+      setRegenConfirm({
+        concluidos: progressoAtual.blocos,
+        horasEstudadas: progressoAtual.minutos,
+        pendentes: blocosPendentes.length,
+      });
+      return;
+    }
+    await gerarCronograma();
+  }, [
+    subjects,
+    plannerEndDate,
+    displayedWeekStart,
+    progressoAtual,
+    blocosPendentes.length,
+    gerarCronograma,
+  ]);
 
   const handleResetPlanner = () => {
     setBlocks([]);
@@ -1433,6 +1500,88 @@ export default function PlannerPage() {
         <MapModal />
         <RoadmapModal />
         <AddBlockModal />
+
+        {/* Confirmação do "Gerar com IA" quando já há progresso.
+            O app diz o que preserva antes de refazer o plano. */}
+        <AnimatePresence>
+          {regenConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              ref={regenDialog.dialogRef}
+              {...regenDialog.dialogProps}
+              className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+              onClick={() => setRegenConfirm(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 30 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 30 }}
+                className="bg-card-bg rounded-3xl border border-card-border p-6 w-full max-w-md shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="h-10 w-10 rounded-xl bg-warning/15 border border-warning/20 flex items-center justify-center">
+                    <RefreshCw className="h-5 w-5 text-warning" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading text-lg font-bold text-text-primary">
+                      Refazer o cronograma?
+                    </h3>
+                    <p className="text-xs text-text-muted">
+                      O que já foi estudado continua valendo.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 mb-6">
+                  <div className="flex items-center justify-between rounded-xl border border-card-border bg-background-light px-3 py-2.5">
+                    <span className="text-sm text-text-secondary">Blocos já estudados</span>
+                    <span className="text-sm font-bold text-text-primary">
+                      {regenConfirm.concluidos} · {formatHoursDuration(regenConfirm.horasEstudadas / 60)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border border-card-border bg-background-light px-3 py-2.5">
+                    <span className="text-sm text-text-secondary">Blocos pendentes a refazer</span>
+                    <span className="text-sm font-bold text-text-primary">
+                      {regenConfirm.pendentes}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-text-muted mb-6">
+                  Os {regenConfirm.concluidos} blocos estudados ficam exatamente como estão, com as
+                  horas já contadas. O app remonta só o que ainda está pendente, começando depois
+                  do que você já fez em cada dia.
+                </p>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setRegenConfirm(null)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      setRegenConfirm(null);
+                      void gerarCronograma();
+                    }}
+                  >
+                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                    Refazer
+                  </Button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
     );
