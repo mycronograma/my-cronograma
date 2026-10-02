@@ -13,7 +13,6 @@ import { signOut } from 'next-auth/react';
 import {
   User,
   Clock,
-  Brain,
   Bell,
   Shield,
   LibraryBig,
@@ -72,13 +71,6 @@ const scrollContainerTo = (top: number): void => {
   }
 };
 
-const aiDifficultyOptions = [
-  { value: 'easy', label: 'Leve', description: 'Sessões mais curtas, mais pausas' },
-  { value: 'medium', label: 'Moderado', description: 'Equilíbrio entre estudo e descanso' },
-  { value: 'hard', label: 'Intenso', description: 'Sessões longas, menos pausas' },
-  { value: 'adaptive', label: 'Adaptativo', description: 'A IA ajusta com base no seu desempenho' },
-] as const;
-
 const alarmSoundOptions = [
   {
     value: 'pulse' as const,
@@ -119,7 +111,7 @@ const buildDailyHoursByWeekday = (dailyGoalHours: number, excludeDays: number[])
   }, {} as DailyHoursByWeekday);
 };
 
-type SettingsSection = 'profile' | 'appearance' | 'study' | 'ai' | 'notifications' | 'danger';
+type SettingsSection = 'profile' | 'appearance' | 'study' | 'notifications' | 'danger';
 
 const sectionMeta: Record<
   SettingsSection,
@@ -139,15 +131,9 @@ const sectionMeta: Record<
   },
   study: {
     title: 'Preferências de estudo',
-    description: 'Meta, horários e rotina semanal',
+    description: 'Horas por dia, blocos e rotina semanal',
     icon: Clock,
     iconClassName: 'bg-[#5856d6] text-white',
-  },
-  ai: {
-    title: 'Configurações da IA',
-    description: 'Dificuldade e automações',
-    icon: Brain,
-    iconClassName: 'bg-[#34c759] text-white',
   },
   notifications: {
     title: 'Notificações',
@@ -165,7 +151,7 @@ const sectionMeta: Record<
 
 const sectionGroups: Array<{ title: string; sections: SettingsSection[] }> = [
   { title: 'Conta', sections: ['profile', 'appearance', 'notifications'] },
-  { title: 'Estudo', sections: ['study', 'ai'] },
+  { title: 'Estudo', sections: ['study'] },
   { title: 'Segurança', sections: ['danger'] },
 ];
 
@@ -762,16 +748,6 @@ export default function SettingsPage() {
     } catch (error) {
       console.warn('Erro ao tocar alarme:', error);
     }
-  };
-
-  const toggleExcludeDay = (dayIndex: number) => {
-    const key = weekDayKeys[dayIndex];
-    const isRest = dailyHoursByWeekday[key] === 0;
-    const next = {
-      ...dailyHoursByWeekday,
-      [key]: isRest ? clampHours(settings.dailyGoalHours || 2) : 0,
-    };
-    updateDailyHours(next);
   };
 
   const handleSave = useCallback(async () => {
@@ -1386,7 +1362,7 @@ export default function SettingsPage() {
           {/* Meta Diária */}
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-2">
-              Meta diaria de estudo: {formatHours(settings.dailyGoalHours)}
+              Horas por dia em todos os dias ativos: {formatHours(settings.dailyGoalHours)}
             </label>
             <input
               type="range"
@@ -1401,6 +1377,10 @@ export default function SettingsPage() {
               <span>1h</span>
               <span>12h</span>
             </div>
+            <p className="mt-1.5 text-xs text-text-muted">
+              Mexer aqui ajusta os {activeDayValues.length} dia(s) ativo(s) de uma vez. Se sua
+              rotina varia por dia, use a lista abaixo — ela manda no valor final.
+            </p>
           </div>
 
           <div className="rounded-xl border border-card-border bg-card-bg/50 p-4 overflow-hidden">
@@ -1438,7 +1418,14 @@ export default function SettingsPage() {
                               : 'border-card-border text-text-muted'
                           )}
                         >
-                        {label}
+                        <span className="flex items-center gap-1.5">
+                          {label}
+                          {!isActive && (
+                            <span className="rounded-full bg-card-border/60 px-1.5 py-0.5 text-[10px] font-medium text-text-muted">
+                              descanso
+                            </span>
+                          )}
+                        </span>
                       </button>
                       <div className="flex items-center gap-2">
                         <input
@@ -1572,153 +1559,12 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Dias de Descanso */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-3">
-              Dias de Descanso (sem agendamento automático)
-            </label>
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-              {weekDays.map((day, index) => (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={() => toggleExcludeDay(index)}
-                  aria-pressed={excludeDays.includes(index)}
-                  className={cn(
-                    'w-full h-11 rounded-xl font-medium text-sm transition-all touch-manipulation active:scale-[0.99]',
-                    excludeDays.includes(index)
-                      ? 'bg-neon-purple/20 text-neon-purple border border-neon-purple/50'
-                      : 'bg-card-bg text-text-secondary border border-card-border hover:border-neon-purple/30'
-                  )}
-                >
-                  {day}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => updateSetting('allowSundayBacklog', !allowSundayBacklog)}
-            aria-pressed={allowSundayBacklog}
-            className="w-full flex items-center justify-between gap-3 p-4 rounded-xl bg-card-bg border border-card-border text-left touch-manipulation active:scale-[0.995]"
-          >
-            <div className="min-w-0 pr-2">
-              <div className="font-medium text-text-primary">Permitir pendências no domingo</div>
-              <div className="text-sm text-text-secondary">
-                Usa domingo apenas para reagendamento/backlog, sem alterar a grade fixa.
-              </div>
-            </div>
-            <span
-              aria-hidden
-              className={cn(
-                'relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors duration-200',
-                allowSundayBacklog ? 'bg-neon-cyan' : 'bg-card-border'
-              )}
-            >
-              <span
-                className={cn(
-                  'pointer-events-none inline-block h-5 w-5 rounded-full bg-white transition-transform duration-200',
-                  allowSundayBacklog ? 'translate-x-8' : 'translate-x-1'
-                )}
-              />
-            </span>
-          </button>
-        </div>
-      </Card>
-
-      {/* Configurações da IA */}
-      <Card className={cn(activeSection === 'ai' ? 'block' : 'hidden')}>
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-neon-cyan/20 flex items-center justify-center">
-            <Brain className="w-5 h-5 text-neon-cyan" />
-          </div>
-          <div>
-            <h2 className="text-lg font-heading font-bold text-text-primary">
-              Configurações da IA
-            </h2>
-            <p className="text-sm text-text-secondary">
-              Personalize o comportamento da IA e agendamento
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          {/* Modo de Dificuldade */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-3">
-              Modo de Dificuldade da IA
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              {aiDifficultyOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => updateSetting('aiDifficulty', option.value)}
-                  aria-pressed={settings.aiDifficulty === option.value}
-                  className={cn(
-                    'min-h-[84px] p-4 rounded-xl text-left transition-all touch-manipulation active:scale-[0.99]',
-                    settings.aiDifficulty === option.value
-                      ? 'bg-neon-cyan/20 border-2 border-neon-cyan'
-                      : 'bg-card-bg border border-card-border hover:border-neon-cyan/30'
-                  )}
-                >
-                  <div className="font-medium text-text-primary mb-1">{option.label}</div>
-                  <div className="text-xs text-text-muted">{option.description}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Configurações Toggle */}
-          <div className="space-y-4">
-            {[
-              {
-                key: 'focusMode' as const,
-                label: 'Modo Foco',
-                description: 'Minimizar distrações durante as sessões de estudo',
-              },
-              {
-                key: 'autoSchedule' as const,
-                label: 'Agendamento Automático',
-                description: 'A IA cria automaticamente agendas semanais',
-              },
-              {
-                key: 'smartBreaks' as const,
-                label: 'Pausas Inteligentes',
-                description: 'A IA sugere pausas com base nos níveis de foco',
-              },
-            ].map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => updateSetting(item.key, !settings[item.key])}
-                aria-pressed={settings[item.key]}
-                className="w-full flex items-center justify-between gap-3 p-4 rounded-xl bg-card-bg border border-card-border text-left touch-manipulation active:scale-[0.995]"
-              >
-                <div className="min-w-0 pr-2">
-                  <div className="font-medium text-text-primary">{item.label}</div>
-                  <div className="text-sm text-text-secondary">
-                    {item.description}
-                  </div>
-                </div>
-                <span
-                  aria-hidden
-                  className={cn(
-                    'relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors duration-200',
-                    settings[item.key] ? 'bg-neon-cyan' : 'bg-card-border'
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'pointer-events-none inline-block h-5 w-5 rounded-full bg-white transition-transform duration-200',
-                      settings[item.key] ? 'translate-x-8' : 'translate-x-1'
-                    )}
-                  />
-                </span>
-              </button>
-            ))}
-          </div>
+          {/* Dia descansado: sem bloco na agenda. E o mesmo que 0 horas na
+              lista acima — la o numero, aqui so o rotulo, para o usuario nao
+              achar que sao duas coisas diferentes. */}
+          <p className="text-xs text-text-muted">
+            Dia com 0 hora vira descanso: o motor nao agenda bloco nenhum nele.
+          </p>
         </div>
       </Card>
 
