@@ -282,5 +282,52 @@ checar(
   'linhas em LF puro no meio de CRLF'
 );
 
+// ---------------------------------------------- versao e diagnostico
+// O P1012 insistiu depois da correcao da copia. Duas causas possiveis:
+// (a) o usuario rodou um .bat velho, de uma pasta que veio de ZIP - o
+//     passo 1 so atualiza pastas com historico do Git; (b) a URL esta
+//     num arquivo que o Prisma nao le. A marca de versao e o
+//     diagnostico dizem qual das duas e, sem adivinhacao.
+checar(
+  'o script imprime a versao no inicio',
+  /TESTAR-REAL v\d/.test(bat),
+  'sem isso nao da para saber se o usuario rodou o .bat novo'
+);
+
+checar(
+  'o diagnostico roda ANTES do prisma db push',
+  (() => {
+    const i = bat.indexOf('call npx --no-install prisma db push');
+    const j = bat.indexOf('diagnostico da DATABASE_URL');
+    return i > 0 && j > 0 && j < i;
+  })(),
+  'o numero precisa aparecer antes do comando que falha'
+);
+
+checar(
+  'o diagnostico cobre o .env.local e o .env',
+  /\.env\.local: (existe|NAO existe)/.test(bat) &&
+    /\.env: (existe|NAO existe)/.test(bat),
+  'sao os dois arquivos que o Prisma pode estar lendo'
+);
+
+checar(
+  'o diagnostico diz se cada arquivo tem a linha DATABASE_URL',
+  (bat.match(/tem a linha DATABASE_URL/g) || []).length >= 2,
+  'existir o arquivo nao basta: a linha e que importa'
+);
+
+checar(
+  'o diagnostico avisa quando a URL aponta para LOCALHOST',
+  /a URL aponta para LOCALHOST/.test(bat),
+  'banco de mentira do TESTAR-NEXORA.bat no meio do caminho'
+);
+
+checar(
+  'o diagnostico nao usa for dentro de bloco de parenteses',
+  !/if exist [^\r\n]*\([^\r\n]*for %%F in/.test(bat),
+  'for %%F dentro de if (...) e armadilha conhecida do cmd.exe'
+);
+
 console.log(`\n${passou} passaram, ${falhou} falharam`);
 process.exit(falhou === 0 ? 0 : 1);

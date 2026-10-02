@@ -2,6 +2,10 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
+rem Versao do script. Se o print mostrar v3 ou menos, o .bat e velho
+rem (veio de ZIP) e o passo 1 nao atualizou nada.
+echo  [TESTAR-REAL v4 - copia do .env corrigida]
+
 rem ---------------------------------------------------------------- local
 rem O Windows protege a pasta de sistema: nada consegue criar arquivo dentro
 rem dela. Se o projeto estiver la, falha com "operation not permitted".
@@ -290,6 +294,32 @@ rem ---- ultima garantia: o .env TEM de ter a URL ----------------------
 rem E aqui que o P1012 aparecia. O prisma generate passa sem a URL (so
 rem precisa do provider), mas o db push precisa dela de verdade. Conferir
 rem agora evita o erro misterioso la na frente.
+
+rem ---- diagnostico: onde a URL esta de verdade -----------------------
+rem O P1012 insistiu depois da correcao da copia. Estes numeros dizem
+rem qual arquivo o Prisma deveria estar lendo e o que ele contem.
+
+echo  --- diagnostico da DATABASE_URL ---
+
+if exist .env.local for %%F in (.env.local) do echo   .env.local: existe, %%~zF bytes
+if not exist .env.local echo   .env.local: NAO existe
+
+if exist .env for %%F in (.env) do echo   .env: existe, %%~zF bytes
+if not exist .env echo   .env: NAO existe
+
+findstr /C:"DATABASE_URL=" .env.local >nul 2>nul
+
+if not errorlevel 1 (echo   .env.local: tem a linha DATABASE_URL) else (echo   .env.local: sem a linha DATABASE_URL)
+
+findstr /C:"DATABASE_URL=" .env >nul 2>nul
+
+if not errorlevel 1 (echo   .env: tem a linha DATABASE_URL) else (echo   .env: sem a linha DATABASE_URL)
+
+findstr /C:"DATABASE_URL=" .env | findstr /I /C:"localhost" >nul 2>nul
+
+if not errorlevel 1 echo   .env: a URL aponta para LOCALHOST (banco de mentira)
+
+echo  ------------------------------------
 
 if not exist .env goto :env_prisma_perdido
 
