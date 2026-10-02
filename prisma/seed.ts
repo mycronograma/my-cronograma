@@ -5,6 +5,7 @@
 
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
+import { LOCAL_DEMO_EMAIL, LOCAL_DEMO_PASSWORD } from '../src/lib/localDemoAuth';
 
 const prisma = new PrismaClient();
 
@@ -118,6 +119,11 @@ const SMOKE_EMAIL = 'smoke@nexora.dev';
 async function main() {
   console.log('🌱 Starting database seed...\n');
   const demoPasswordHash = await bcrypt.hash('Nexora@123', 12);
+  // A tela de login pre-preenche esta conta (LOCAL_DEMO_EMAIL/PASSWORD em
+  // src/lib/localDemoAuth.ts). Ela PRECISA existir de verdade: sem ela o login
+  // real falha, o app cai na sessao demo (localStorage) e toda chamada de API
+  // responde 401 — o usuario ve "Falha ao salvar" em qualquer acao.
+  const localDemoPasswordHash = await bcrypt.hash(LOCAL_DEMO_PASSWORD, 12);
 
   // Clean existing data
   console.log('🧹 Cleaning existing data...');
@@ -238,6 +244,26 @@ async function main() {
     },
   });
   console.log(`   Created user: ${user.name} (${user.email})`);
+
+  // Conta do teste local (a que a tela de login pre-preenche). Criada de
+  // verdade para que o login real funcione e a sessao venha com cookie —
+  // assim salvar configuracoes, gerar cronograma etc. gravam no servidor.
+  const localDemoUser = await prisma.user.create({
+    data: {
+      email: LOCAL_DEMO_EMAIL,
+      name: 'Teste Local',
+      passwordHash: localDemoPasswordHash,
+      emailVerified: new Date(),
+      dailyGoalHours: 4.0,
+      preferredStart: '09:00',
+      preferredEnd: '21:00',
+      maxBlockMinutes: 120,
+      breakMinutes: 15,
+      aiDifficulty: 'adaptive',
+      focusMode: false,
+    },
+  });
+  console.log(`   Created local demo user: ${localDemoUser.email} / ${LOCAL_DEMO_PASSWORD}`);
 
   // Conta descartavel do teste automatizado (scripts/e2e-smoke.mjs).
   // Os cadastros ficam fechados para pessoas, mas o smoke precisa de uma

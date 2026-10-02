@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { Prisma } from '@prisma/client';
+import { isDemoRequest } from '@/lib/demoMode';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import type { StudyPreferences, UserSettings } from '@/types';
@@ -8,7 +9,20 @@ import type { StudyPreferences, UserSettings } from '@/types';
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    const userId = session?.user?.id;
+    let userId = session?.user?.id;
+
+    // Preview em iframe sem cookies (modo demo local): não há sessão no
+    // servidor, então não há preferências gravadas. Devolve o fallback com
+    // 200 em vez de 401, para a tela não tratar como falha.
+    if (!userId && (await isDemoRequest())) {
+      return NextResponse.json({
+        success: true,
+        data: null,
+        persisted: false,
+        warning: 'Não foi possível ler as preferências salvas no servidor.',
+      });
+    }
+
     if (!userId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
@@ -44,7 +58,22 @@ export async function POST(request: Request) {
     const settings = body.settings as UserSettings;
     const studyPrefs = body.studyPrefs as StudyPreferences | undefined;
     const session = await getServerSession(authOptions);
-    const userId = session?.user?.id;
+    let userId = session?.user?.id;
+
+    // Preview em iframe sem cookies: a sessão vive no localStorage e não existe
+    // no servidor. Sem este desvio o POST respondia 401 e a tela de
+    // Configurações mostrava "Falha ao salvar" em qualquer ação — inclusive
+    // ao trocar o tema. Resposta 200 com `persisted: false` deixa claro que a
+    // mudança ficou só neste dispositivo.
+    if (!userId && (await isDemoRequest())) {
+      return NextResponse.json({
+        success: true,
+        persisted: false,
+        warning:
+          'Alterações salvas apenas neste dispositivo: o modo de teste local não grava no servidor.',
+      });
+    }
+
     if (!userId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }

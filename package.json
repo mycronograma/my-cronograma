@@ -36,7 +36,8 @@
     "test:target": "tsx scripts/weekly-target.test.ts",
     "test:capacity": "tsx scripts/backlog-capacity.test.ts",
     "test:setup": "tsx scripts/setup-wizard.test.ts",
-    "test:load": "tsx scripts/study-load.test.ts"
+    "test:load": "tsx scripts/study-load.test.ts",
+    "test:login-demo": "tsx scripts/login-demo-credenciais.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
