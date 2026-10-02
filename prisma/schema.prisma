@@ -1,12 +1,19 @@
 // Prisma Schema for Nexora - AI Study Optimization Platform
-// Uses CockroachDB through DATABASE_URL.
+//
+// O banco e definido por DATABASE_URL. O provider padrão é "postgresql",
+// que serve para Neon e Supabase — os dois mais simples de criar de graça.
+//
+// Se um dia você usar CockroachDB de novo, troque a linha do provider para
+// "cockroachdb" e rode `npx prisma db push`. O schema não usa nada
+// específico de CockroachDB (nenhum @db., nenhum STRING/BYTES), então a
+// troca é só essa linha.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "cockroachdb"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
