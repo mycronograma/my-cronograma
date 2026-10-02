@@ -41,8 +41,12 @@ Supabase ou CockroachDB, me avise que eu ajusto — o resto é igual.
 5. A URL tem este formato:
 
    ```
-   postgresql://usuario:senha@ep-xxxx.us-east-2.aws.neon.tech/neondb?sslmode=require
+   postgresql://usuario:senha@ep-xxxx-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
    ```
+
+   Ela vem com **`-pooler`** no nome do host e com **`&channel_binding=require`**
+   no fim. Isso e o formato novo do Neon e e o que o app usa. Copie a URL
+   inteira, sem cortar nada depois do `?`.
 
    **Guarde essa URL.** Ela é a senha do seu banco — não mande para ninguém
    e não cole em lugar nenhum além do `.env.local` daqui.
@@ -65,7 +69,7 @@ Supabase ou CockroachDB, me avise que eu ajusto — o resto é igual.
 4. Cole esta linha, **trocando a URL pela sua**:
 
    ```
-   DATABASE_URL="postgresql://usuario:senha@ep-xxxx.us-east-2.aws.neon.tech/neondb?sslmode=require"
+   DATABASE_URL="postgresql://usuario:senha@ep-xxxx-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
    ```
 
 5. Salve (Ctrl+S) e feche.
@@ -156,7 +160,7 @@ Os erros mais prováveis, e o que significam:
 | Falha no passo 3, `prisma db push` | a `DATABASE_URL` está errada, incompleta, ou o projeto do Neon não foi criado |
 | Falha no passo 5, `npm run build` | **o mais importante de todos.** Se não compila aqui, não compila no servidor. Me manda o print |
 | Tela branca em `localhost:3000` | aperte F12, aba **Console**, e me mande print do que estiver em vermelho |
-| Login dá erro | confira se a URL do Neon está completa, com `?sslmode=require` no fim |
+| Login dá erro | confira se a URL do Neon está completa, com `?sslmode=require&channel_binding=require` no fim |
 
 ---
 
