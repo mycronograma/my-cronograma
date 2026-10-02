@@ -37,6 +37,7 @@
     "test:capacity": "tsx scripts/backlog-capacity.test.ts",
     "test:setup": "tsx scripts/setup-wizard.test.ts",
     "test:load": "tsx scripts/study-load.test.ts",
+    "test:cadastros": "tsx scripts/cadastros-reativados.test.ts",
     "test:login-demo": "tsx scripts/login-demo-credenciais.test.ts"
   },
   "dependencies": {

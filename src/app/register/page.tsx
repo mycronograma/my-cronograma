@@ -70,13 +70,12 @@ export default function RegisterPage() {
 
     setIsLoading(true);
 
+    // Espelha o login: tenta o cadastro REAL primeiro (cria a conta no banco e
+    // a sessão vem com cookie). Só cai no modo demo quando os cookies não
+    // persistem — é o caso do preview em iframe. Sem esta ordem, quem se
+    // cadastrava no teste local ganhava uma sessão falsa e toda chamada de API
+    // respondia 401 (o "Falha ao salvar" das Configurações).
     try {
-      if (isLocalDemoAuthEnabled) {
-        startLocalDemoSession({ email: normalizedEmail, name: normalizedName });
-        navigateToDashboard('/dashboard');
-        return;
-      }
-
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -89,37 +88,50 @@ export default function RegisterPage() {
 
       const payload = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
-        setErrorMessage(payload?.message || 'Não foi possível criar sua conta.');
+      if (response.ok) {
+        // Conta criada de verdade: entra com ela.
+        const result = await signIn('credentials', {
+          email: normalizedEmail,
+          password: formData.password,
+          callbackUrl: '/dashboard',
+          redirect: false,
+        });
+
+        if (result?.error) {
+          setErrorMessage('Conta criada. Faca login para continuar.');
+          router.replace('/login');
+          return;
+        }
+
+        const activeSession = await getSession();
+        if (!activeSession?.user) {
+          router.replace('/login');
+          return;
+        }
+
+        navigateToDashboard('/dashboard');
         return;
       }
 
-      // Sem 2FA: a conta criada entra direto no app.
-      const result = await signIn('credentials', {
-        email: normalizedEmail,
-        password: formData.password,
-        callbackUrl: '/dashboard',
-        redirect: false,
-      });
-
-      if (result?.error) {
-        setErrorMessage('Conta criada. Faca login para continuar.');
-        router.replace('/login');
+      // Recusa explicita do servidor: mostra o motivo e nao tenta o demo.
+      if (payload?.signupsDisabled) {
+        setErrorMessage(payload?.message || SIGNUPS_DISABLED_MESSAGE);
         return;
       }
 
-      const activeSession = await getSession();
-      if (!activeSession?.user) {
-        router.replace('/login');
-        return;
-      }
-
-      navigateToDashboard('/dashboard');
+      setErrorMessage(payload?.message || 'Não foi possível criar sua conta.');
+      return;
     } catch {
-      setErrorMessage('Não foi possível criar sua conta agora.');
-    } finally {
-      setIsLoading(false);
+      // Rede ou servidor indisponiveis: cai no modo demo local, que não
+      // depende de banco nem de cookie.
+      if (!isLocalDemoAuthEnabled) {
+        setErrorMessage('Não foi possível criar sua conta agora.');
+        return;
+      }
     }
+
+    startLocalDemoSession({ email: normalizedEmail, name: normalizedName });
+    navigateToDashboard('/dashboard');
   };
 
   return (
@@ -164,7 +176,7 @@ export default function RegisterPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
                 {isLocalDemoAuthEnabled && (
                   <div className="rounded-xl border border-neon-blue/30 bg-neon-blue/10 p-3 text-sm text-sky-100">
-                    Modo teste local: o cadastro entra direto no app, sem banco e sem codigo 2FA.
+                    Modo teste local: a conta é criada de verdade e você entra direto no app, sem código de verificação.
                   </div>
                 )}
                 {errorMessage && (

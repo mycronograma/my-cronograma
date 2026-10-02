@@ -202,6 +202,10 @@ if errorlevel 1 goto :falha_banco
 rem O .env.local guarda as configuracoes locais. Ele e criado sozinho e
 rem COMPLETADO quando ja existe: uma versao antiga do arquivo nao pode
 rem deixar o app sem uma variavel que passou a existir depois.
+rem
+rem So a chave dos cadastros e FORCADA (ver :forcar_env). As outras sao
+rem apenas completadas, para nao sobrescrever uma URL de banco que voce
+rem colou na mao.
 
 if not exist .env.local type nul > .env.local
 
@@ -217,11 +221,29 @@ call :garantir_env NOTIFICATIONS_CRON_SECRET "chave-local-cron-0123456789abcdef"
 
 call :garantir_env NEXT_PUBLIC_LOCAL_DEMO_MODE "true"
 
-call :garantir_env NEXT_PUBLIC_SIGNUPS_ENABLED "false"
+call :forcar_env NEXT_PUBLIC_SIGNUPS_ENABLED "true"
 
 echo  Configuracao local pronta.
 
 goto :config_pronta
+
+
+
+rem ---- forca o valor de uma variavel, exista ela ou nao -------------------
+rem Diferente de :garantir_env, esta troca a linha quando ela ja existe.
+rem Necessaria para a chave dos cadastros: quem rodou o script com os
+rem cadastros fechados tem NEXT_PUBLIC_SIGNUPS_ENABLED="false" gravado, e
+rem completar nao mudaria nada.
+
+:forcar_env
+
+findstr /V /C:"%~1=" .env.local > .env.novo 2>nul
+
+if exist .env.novo move /y .env.novo .env.local >nul
+
+echo %~1=%~2>>.env.local
+
+goto :eof
 
 
 
@@ -255,7 +277,7 @@ echo NOTIFICATIONS_CRON_SECRET="chave-local-cron-0123456789abcdef">>.env.local
 
 echo NEXT_PUBLIC_LOCAL_DEMO_MODE="true">>.env.local
 
-echo NEXT_PUBLIC_SIGNUPS_ENABLED="false">>.env.local
+echo NEXT_PUBLIC_SIGNUPS_ENABLED="true">>.env.local
 
 
 
