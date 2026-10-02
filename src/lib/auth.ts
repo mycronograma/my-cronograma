@@ -201,6 +201,18 @@ export const authOptions: NextAuthOptions = {
         token.name = user.name;
         token.email = user.email;
         token.picture = user.image;
+        // Inject 2FA + plan status so the middleware can act on it
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { twoFactorEnabled: true, plan: true },
+          });
+          token.twoFactorEnabled = dbUser?.twoFactorEnabled ?? false;
+          token.plan = dbUser?.plan ?? 'free';
+        } catch {
+          token.twoFactorEnabled = false;
+          token.plan = 'free';
+        }
       }
       return token;
     },
@@ -219,6 +231,9 @@ export const authOptions: NextAuthOptions = {
         session.user.email = session.user.email || token?.email || user?.email || '';
         session.user.image =
           session.user.image || (typeof token?.picture === 'string' ? token.picture : null) || user?.image || undefined;
+        (session.user as { plan?: string }).plan = (token?.plan as string) ?? 'free';
+        (session.user as { twoFactorEnabled?: boolean }).twoFactorEnabled =
+          (token?.twoFactorEnabled as boolean) ?? false;
       }
       return session;
     },

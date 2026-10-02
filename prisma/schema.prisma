@@ -71,6 +71,15 @@ model User {
   aiDifficulty String  @default("adaptive") // easy, medium, hard, adaptive
   focusMode    Boolean @default(false)
 
+  // Plan / billing
+  plan             String    @default("free") // "free" | "pro" | "premium"
+  planExpiresAt    DateTime?
+  stripeCustomerId String?   @unique
+
+  // Two-Factor Authentication (TOTP)
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String? // encrypted TOTP secret
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
