@@ -332,7 +332,7 @@ export async function POST(request: Request) {
       data: { xpEarned: result.xpEarned },
     });
 
-    const operations: Promise<unknown>[] = [
+    const operations: any[] = [
       prisma.user.update({
         where: { id: userId },
         data: {
