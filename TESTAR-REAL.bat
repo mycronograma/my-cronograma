@@ -105,7 +105,11 @@ call npm install --no-audit --no-fund
 if errorlevel 1 goto :falha_install
 
 
-rem O generate explicito nao custa nada e deixa claro o que aconteceu.
+rem O teste normal (TESTAR-NEXORA.bat) instala um client FALSO em
+rem node_modules\.prisma\client. Se ele ficar la, o generate de verdade
+rem pode nao sobrescrever tudo. Apagar antes e a unica forma de garantir
+rem que o app vai falar com o Prisma real.
+if exist node_modules\.prisma\client rmdir /s /q node_modules\.prisma\client
 
 echo.
 
@@ -114,6 +118,12 @@ echo === Gerando o client do Prisma ===
 call npx prisma generate
 
 if errorlevel 1 goto :falha_generate
+
+rem Prova real de que o client de verdade entrou: o falso grava num
+rem JSON, o real tem o binario do engine. Sem esse arquivo, ainda e falso.
+if not exist node_modules\.prisma\client\query_engine-windows.dll.node goto :ainda_falso
+
+echo  Client real confirmado.
 
 
 rem ---------------------------------------------------------------- passo 3
@@ -316,6 +326,29 @@ echo [X] Falha ao gerar o client do Prisma.
 echo     Isso precisa de internet para baixar os binarios do Prisma.
 
 echo     Confira a conexao e rode de novo.
+
+goto :fim
+
+
+
+
+:ainda_falso
+
+echo.
+
+echo [X] O Prisma real nao foi gerado.
+
+echo     O client FALSO (arquivo JSON) ainda esta no lugar. Sem o real,
+
+echo     o app nao conversa com banco nenhum de verdade.
+
+echo.
+
+echo     A causa mais comum e rede: o Prisma baixa binarios de
+
+echo     binaries.prisma.sh, e algumas redes bloqueiam esse dominio.
+
+echo     Tente outra internet, ou desligue VPN/proxy.
 
 goto :fim
 
