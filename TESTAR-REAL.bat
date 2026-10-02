@@ -90,59 +90,55 @@ goto :instalar
 
 rem ---------------------------------------------------------------- passo 2
 
-:instalar
-
-echo.
-
-echo === 2/6 Instalando dependencias (gerando o Prisma real) ===
-
-echo  Diferente do teste normal, aqui o npm install roda SEM
-echo  --ignore-scripts. E esse passo que gera o Prisma de verdade.
-echo  Pode levar varios minutos.
-
-call npm install --no-audit --no-fund
-
-if errorlevel 1 goto :falha_install
-
-
-rem O teste normal (TESTAR-NEXORA.bat) instala um client FALSO em
-rem node_modules\.prisma\client. Se ele ficar la, o generate de verdade
-rem pode nao sobrescrever tudo. Apagar antes e a unica forma de garantir
-rem que o app vai falar com o Prisma real.
-if exist node_modules\.prisma\client rmdir /s /q node_modules\.prisma\client
-
-echo.
-
-echo === Gerando o client do Prisma ===
-
-call npx prisma generate
-
-if errorlevel 1 goto :falha_generate
-
-rem Prova real de que o client de verdade entrou: o falso grava num
-rem JSON, o real tem o binario do engine. Sem esse arquivo, ainda e falso.
-if not exist node_modules\.prisma\client\query_engine-windows.dll.node goto :ainda_falso
-
-echo  Client real confirmado.
-
-
-rem ---------------------------------------------------------------- passo 3
-
 :banco
 
+rem A URL do banco e lida de DOIS lugares: o .env.local (do Next) e o
+rem .env (do Prisma). O guia manda colar no .env.local, mas o Prisma
+rem NAO le .env.local - so o .env. Aceita os dois para nao travar
+rem quem ja tinha colocado no .env.
+
 if not exist .env.local type nul > .env.local
-
-
-rem So cria a DATABASE_URL se nao existir. Se ja existe, e a sua
-rem URL de verdade e o script NAO pode sobrescrever.
 
 findstr /C:"DATABASE_URL=" .env.local >nul 2>nul
 
 if not errorlevel 1 goto :tem_database
 
+if not exist .env goto :sem_database
+
+findstr /C:"DATABASE_URL=" .env >nul 2>nul
+
+if errorlevel 1 goto :sem_database
+
+
+rem ---- tem a URL: garante que o Prisma enxerga -----------------------
+rem Sem este passo o prisma generate do postinstall Falha com P1012 e o
+rem npm install ABORTA no meio, deixando o node_modules incompleto - e
+rem dai tudo o mais Falha sem explicacao clara.
+
+:tem_database
+
+copy /y .env.local .env >nul 2>nul
+
+if not exist .env copy /y .env.local.example .env >nul 2>nul
+
+findstr /C:"DATABASE_URL=" .env >nul 2>nul
+
+if errorlevel 1 (
+  echo  Aviso: nao consegui criar o .env com a DATABASE_URL.
+  echo  O Prisma pode Falhar no proximo passo.
+)
+
+echo  URL do banco encontrada. Prisma configurado.
+
+goto :instalar
+
+
+
+:sem_database
+
 echo.
 
-echo [X] O arquivo .env.local nao tem a DATABASE_URL.
+echo [X] Nenhum arquivo tem a DATABASE_URL.
 
 echo     Sem ela o app nao conversa com banco nenhum.
 
@@ -164,25 +160,63 @@ goto :fim
 
 
 
-:tem_database
+rem ---------------------------------------------------------------- passo 3
+
+:instalar
 
 echo.
 
-echo === 3/6 Criando as tabelas no banco ===
+echo === 3/6 Instalando dependencias (gerando o Prisma real) ===
 
-echo  Se o banco estiver vazio, o Prisma cria todas as tabelas.
-echo  Se ja existirem, ele so confere se estao iguais ao schema.
+echo  Diferente do teste normal, aqui o npm install roda SEM
+echo  --ignore-scripts. E esse passo que gera o Prisma de verdade.
+echo  Pode levar varios minutos.
 
-call npx prisma db push
+call npm install --no-audit --no-fund
 
-if errorlevel 1 goto :falha_push
+if errorlevel 1 goto :falha_install
+
+
+rem O teste normal (TESTAR-NEXORA.bat) instala um client FALSO em
+rem node_modules\.prisma\client. Se ele ficar la, o generate de verdade
+rem pode nao sobrescrever tudo. Apagar antes e a unica forma de garantir
+rem que o app vai falar com o Prisma real.
+if exist node_modules\.prisma\client rmdir /s /q node_modules\.prisma\client
+
+echo.
+
+echo === Gerando o client do Prisma ===
+
+call npx --no-install prisma generate
+
+if errorlevel 1 goto :falha_generate
+
+rem Prova real de que o client de verdade entrou: o falso grava num
+rem JSON, o real tem o binario do engine. Sem esse arquivo, ainda e falso.
+if not exist node_modules\.prisma\client\query_engine-windows.dll.node goto :ainda_falso
+
+echo  Client real confirmado.
 
 
 rem ---------------------------------------------------------------- passo 4
 
 echo.
 
-echo === 4/6 Carregando os dados de exemplo ===
+echo === 4/6 Criando as tabelas no banco ===
+
+echo  Se o banco estiver vazio, o Prisma cria todas as tabelas.
+echo  Se ja existirem, ele so confere se estao iguais ao schema.
+
+call npx --no-install prisma db push
+
+if errorlevel 1 goto :falha_push
+
+
+rem ---------------------------------------------------------------- passo 5
+
+echo.
+
+echo === 5/6 Carregando os dados de exemplo ===
 
 call npm run db:seed
 
@@ -198,7 +232,7 @@ if not errorlevel 1 goto :porta_ocupada
 
 echo.
 
-echo === 5/6 Compilando o app (modo producao) ===
+echo === 6/6 Compilando o app (modo producao) ===
 
 echo  E a mesma compilacao que roda no servidor. Se falhar aqui,
 echo  falharia la tambem. Pode levar alguns minutos.
@@ -212,7 +246,7 @@ rem ---------------------------------------------------------------- passo 6
 
 echo.
 
-echo === 6/6 Abrindo o app em MODO PRODUCAO ===
+echo === Pronto. Abrindo o app em MODO PRODUCAO ===
 
 echo.
 
@@ -309,9 +343,11 @@ echo.
 
 echo [X] Falha ao instalar as dependencias.
 
-echo     Confira sua internet e tente de novo. Se o erro mencionar
+echo     A causa mais comum e a DATABASE_URL: o npm install roda o
+echo     prisma generate sozinho e, se ele nao achar a URL, aborta no
+echo     meio. Confira se o .env.local tem a linha DATABASE_URL certa.
 
-echo     "prisma" ou "binaries.prisma.sh", e bloqueio de rede.
+echo     Se o erro mencionar "binaries.prisma.sh", e bloqueio de rede.
 
 goto :fim
 

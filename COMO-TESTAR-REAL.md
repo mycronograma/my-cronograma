@@ -74,6 +74,16 @@ Supabase ou CockroachDB, me avise que eu ajusto — o resto é igual.
 > `localhost`, **apague essa linha** antes de colar a nova. Duas linhas com o
 > mesmo nome fazem o app usar a primeira.
 
+### Por que o `.env.local` basta
+
+O **Prisma** (a ferramenta que cria as tabelas) lê o arquivo **`.env`**, e não
+o `.env.local` — que é o arquivo do app. Como os dois precisam da mesma URL, o
+`TESTAR-REAL.bat` **copia o `.env.local` para o `.env` sozinho**, antes de
+instalar qualquer coisa. Você não precisa fazer esse passo à mão.
+
+> Se você preferir fazer à mão, ou se rodar o Prisma fora do script, crie
+> também um arquivo chamado `.env` com a **mesma linha** `DATABASE_URL=`.
+
 ---
 
 ## Parte 3 — Rodar o teste
@@ -140,7 +150,9 @@ Os erros mais prováveis, e o que significam:
 
 | O que aparecer | O que é |
 |---|---|
+| `Environment variable not found: DATABASE_URL` (código `P1012`) | o Prisma não achou a URL. Quer dizer que o `.env.local` não tinha a linha `DATABASE_URL=` quando o script rodou — ou ela estava incompleta. Rode de novo depois de conferir o arquivo |
 | Falha no passo 2, mencionando `binaries.prisma.sh` | sua rede bloqueou o download do Prisma. Tente outra internet (ou desligue VPN) |
+| Falha no passo 2, e embaixo aparecer `prisma@8.0.0-rc` ou `C:\node_modules\prisma` | o `npm install` tinha abortado no meio e o `npx` baixou um Prisma aleatório da internet. Some sozinho com a correção da `DATABASE_URL` |
 | Falha no passo 3, `prisma db push` | a `DATABASE_URL` está errada, incompleta, ou o projeto do Neon não foi criado |
 | Falha no passo 5, `npm run build` | **o mais importante de todos.** Se não compila aqui, não compila no servidor. Me manda o print |
 | Tela branca em `localhost:3000` | aperte F12, aba **Console**, e me mande print do que estiver em vermelho |
