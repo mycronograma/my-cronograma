@@ -178,5 +178,52 @@ checar(
   'o usuario precisa reconhecer a mensagem do script'
 );
 
+// ---------------------------------------------- chaves de sessao
+// Em producao o src/lib/env.ts nao tem segredo padrao: sem
+// NEXTAUTH_SECRET a autenticacao falha. O guia manda criar um
+// .env.local novinho so com a URL, entao o script tem de completar.
+checar(
+  'o script define a sub-rotina :garantir_env',
+  /^:garantir_env/m.test(bat),
+  'e ela que completa as chaves que faltam'
+);
+
+checar(
+  ':garantir_env e chamada para NEXTAUTH_SECRET',
+  /call :garantir_env NEXTAUTH_SECRET/.test(bat),
+  'sem ela o login falha em modo producao'
+);
+
+checar(
+  ':garantir_env e chamada para NEXTAUTH_URL',
+  /call :garantir_env NEXTAUTH_URL/.test(bat),
+  'missingAuthEnv tambem exige a URL'
+);
+
+checar(
+  ':garantir_env so completa (nunca sobrescreve)',
+  /:garantir_env[\s\S]{0,320}?if not errorlevel 1 goto :eof/.test(bat),
+  'se a linha ja existe ela sai sem mexer - a chave da pessoa sobrevive'
+);
+
+checar(
+  'as chaves sao completadas ANTES do npm install',
+  bat.indexOf('call :garantir_env') > 0 &&
+    bat.indexOf('call :garantir_env') < posInstall,
+  'o build le o .env.local; complete depois nao adianta'
+);
+
+checar(
+  'o label :fim aparece uma unica vez',
+  (bat.match(/^:fim/gm) || []).length === 1,
+  'label duplicada faz o goto :fim cair no bloco errado'
+);
+
+checar(
+  'o guia avisa que o script completa as outras chaves',
+  /completa sozinho as/.test(guia) && /NEXTAUTH_SECRET/.test(guia),
+  'e que so completa o que falta'
+);
+
 console.log(`\n${passou} passaram, ${falhou} falharam`);
 process.exit(falhou === 0 ? 0 : 1);

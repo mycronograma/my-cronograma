@@ -74,6 +74,15 @@ Supabase ou CockroachDB, me avise que eu ajusto — o resto é igual.
 
 5. Salve (Ctrl+S) e feche.
 
+> **Não precisa colocar mais nada.** O `TESTAR-REAL.bat` completa sozinho as
+> outras chaves que o app precisa em modo produção (`NEXTAUTH_URL`,
+> `NEXTAUTH_SECRET`, `CRON_SECRET`, `NOTIFICATIONS_CRON_SECRET` e
+> `NEXT_PUBLIC_SIGNUPS_ENABLED`). E ele **só completa o que falta**: se você
+> já tinha uma chave sua no arquivo, ela continua valendo.
+>
+> Isso importa porque em modo produção o app **não** usa chave padrão. Sem
+> `NEXTAUTH_SECRET` o login simplesmente falha — e o erro não diz o porquê.
+
 > **Atenção — a armadilha mais comum.** Se você já rodou o
 > **`TESTAR-NEXORA.bat`** (o teste normal), o `.env.local` desta pasta já tem
 > uma linha `DATABASE_URL=` apontando para `localhost:26257`. Ela é o banco de

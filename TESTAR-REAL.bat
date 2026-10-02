@@ -136,6 +136,21 @@ rem dai tudo o mais Falha sem explicacao clara.
 
 :tem_database
 
+rem ---- completa as chaves que faltam no .env.local --------------------
+rem Em producao nao existe segredo padrao: sem NEXTAUTH_SECRET o login
+rem falha. :garantir_env so completa, nunca sobrescreve o que ja esta
+rem la - uma URL ou chave colocada na mao continua valendo.
+
+call :garantir_env NEXTAUTH_URL "http://localhost:3000"
+
+call :garantir_env NEXTAUTH_SECRET "chave-do-teste-real-0123456789abcdef0123456789abcdef"
+
+call :garantir_env CRON_SECRET "chave-local-cron-0123456789abcdef"
+
+call :garantir_env NOTIFICATIONS_CRON_SECRET "chave-local-cron-0123456789abcdef"
+
+call :garantir_env NEXT_PUBLIC_SIGNUPS_ENABLED "true"
+
 copy /y .env.local .env >nul 2>nul
 
 if not exist .env copy /y .env.local.example .env >nul 2>nul
@@ -494,6 +509,22 @@ echo     Feche a outra janela do app (ou o TESTAR-NEXORA.bat)
 echo     e rode este script de novo.
 
 goto :fim
+
+
+
+rem ---- completa uma variavel que esteja faltando --------------------
+rem Diferente de forcar: se a linha ja existe, nao mexe. Assim uma
+rem URL de banco ou uma chave colocada na mao nao e perdida.
+
+:garantir_env
+
+findstr /C:"%~1=" .env.local >nul 2>nul
+
+if not errorlevel 1 goto :eof
+
+echo %~1="%~2">>.env.local
+
+goto :eof
 
 
 
