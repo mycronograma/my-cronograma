@@ -109,6 +109,14 @@ findstr /C:"DATABASE_URL=" .env >nul 2>nul
 
 if errorlevel 1 goto :sem_database
 
+rem ---- a URL existe so no .env (o guia permite) ----------------------
+rem Daqui em diante o .env NAO pode ser sobrescrito: ele e a unica
+rem copia da URL. :tem_database respeita isso.
+
+set "URL_SO_NO_ENV=1"
+
+echo  A URL do banco estava so no .env - vou preservar esse arquivo.
+
 
 rem ---- confere se a URL e da nuvem ou e a do teste local -------------
 rem O TESTAR-NEXORA.bat grava uma DATABASE_URL de localhost no
@@ -151,7 +159,16 @@ call :garantir_env NOTIFICATIONS_CRON_SECRET "chave-local-cron-0123456789abcdef"
 
 call :garantir_env NEXT_PUBLIC_SIGNUPS_ENABLED "true"
 
-copy /y .env.local .env >nul 2>nul
+rem ---- materializa o .env (o arquivo que o Prisma le) ---------------
+rem REGRA: nunca apagar uma URL que ja esta la.
+rem  - .env.local tem a URL -> ele e a fonte, copia para o .env
+rem  - so o .env tem a URL  -> o .env fica INTACTO (era a unica copia)
+rem A copia as cegas de antes destruia a URL nesse segundo caso, e so
+rem aparecia no db push, como P1012.
+
+findstr /C:"DATABASE_URL=" .env.local >nul 2>nul
+
+if not errorlevel 1 copy /y .env.local .env >nul 2>nul
 
 if not exist .env copy /y .env.local.example .env >nul 2>nul
 
@@ -268,6 +285,17 @@ echo === 4/6 Criando as tabelas no banco ===
 
 echo  Se o banco estiver vazio, o Prisma cria todas as tabelas.
 echo  Se ja existirem, ele so confere se estao iguais ao schema.
+
+rem ---- ultima garantia: o .env TEM de ter a URL ----------------------
+rem E aqui que o P1012 aparecia. O prisma generate passa sem a URL (so
+rem precisa do provider), mas o db push precisa dela de verdade. Conferir
+rem agora evita o erro misterioso la na frente.
+
+if not exist .env goto :env_prisma_perdido
+
+findstr /C:"DATABASE_URL=" .env >nul 2>nul
+
+if errorlevel 1 goto :env_prisma_perdido
 
 call npx --no-install prisma db push
 
@@ -507,6 +535,34 @@ echo [X] A porta 3000 ja esta em uso.
 echo     Feche a outra janela do app (ou o TESTAR-NEXORA.bat)
 
 echo     e rode este script de novo.
+
+goto :fim
+
+
+
+:env_prisma_perdido
+
+echo.
+
+echo [X] O Prisma nao esta encontrando a DATABASE_URL.
+
+echo     O prisma generate passou porque ele nao precisa da URL
+
+echo     (so do provider). O db push precisa, e por isso para aqui.
+
+echo.
+
+echo     O Prisma le o arquivo .env desta pasta. Ele tem uma linha
+
+echo     DATABASE_URL=? Se nao tiver, e isso o problema.
+
+echo.
+
+echo     SOLUCAO: abra o .env.local no Bloco de Notas, confira se
+
+echo     a linha DATABASE_URL esta la com a url do Neon, salve e
+
+echo     rode este script de novo.
 
 goto :fim
 

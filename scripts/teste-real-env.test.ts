@@ -225,5 +225,62 @@ checar(
   'e que so completa o que falta'
 );
 
+// ---------------------------------------------- a copia nao pode
+// destruir a URL. O guia permite colar a DATABASE_URL so no .env;
+// nesse caso `copy /y .env.local .env` as cegas apagava a unica
+// copia dela. O generate passa (nao precisa da URL), o db push
+// estoura P1012 - o sintoma que o usuario viu.
+checar(
+  'a copia do .env.local para o .env e CONDICIONAL',
+  /if not errorlevel 1 copy \/y \.env\.local \.env/.test(bat),
+  'copia as cegas destruia a URL quando ela so existia no .env'
+);
+
+checar(
+  'nao existe nenhum copy /y .env.local .env solto no arquivo',
+  !/^copy \/y \.env\.local \.env/m.test(bat),
+  'se sobrou um, ele volta a destruir a URL'
+);
+
+checar(
+  'o script tem o bloco :env_prisma_perdido',
+  /^:env_prisma_perdido/m.test(bat),
+  'a mensagem que explica o P1012 no db push'
+);
+
+checar(
+  'o .env e conferido ANTES do prisma db push',
+  (() => {
+    const i = bat.indexOf('call npx --no-install prisma db push');
+    if (i < 0) return false;
+    const antes = bat.slice(0, i);
+    return /findstr \/C:"DATABASE_URL=" \.env >nul 2>nul[\s\S]{0,200}?if errorlevel 1 goto :env_prisma_perdido/.test(antes);
+  })(),
+  'e a ultima barreira antes do comando que precisa da URL'
+);
+
+checar(
+  'a mensagem de :env_prisma_perdido explica que o generate passa sem a URL',
+  /generate passou porque ele nao precisa da URL/.test(bat),
+  'e exatamente o que confunde: um passa, o outro nao'
+);
+
+// ---------------------------------------------- fim de linha
+// Um .bat com fim de linha misto (CRLF e LF) e risco real de
+// quebrar label/goto no cmd.exe. O patch do 0ea2744 deixou 21
+// linhas em LF puro na secao do passo 4.
+checar(
+  'o TESTAR-REAL.bat tem fim de linha uniforme (CRLF)',
+  (() => {
+    const raw = fs.readFileSync(path.join(RAIZ, 'TESTAR-REAL.bat'));
+    const crlf = raw.reduce((n, byte, i) =>
+      n + (byte === 0x0d && raw[i + 1] === 0x0a ? 1 : 0), 0);
+    const lf = raw.reduce((n, byte, i) =>
+      n + (byte === 0x0a && raw[i - 1] !== 0x0d ? 1 : 0), 0);
+    return crlf > 0 && lf === 0;
+  })(),
+  'linhas em LF puro no meio de CRLF'
+);
+
 console.log(`\n${passou} passaram, ${falhou} falharam`);
 process.exit(falhou === 0 ? 0 : 1);

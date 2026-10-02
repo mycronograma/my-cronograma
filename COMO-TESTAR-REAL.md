@@ -105,6 +105,11 @@ instalar qualquer coisa. Você não precisa fazer esse passo à mão.
 
 > Se você preferir fazer à mão, ou se rodar o Prisma fora do script, crie
 > também um arquivo chamado `.env` com a **mesma linha** `DATABASE_URL=`.
+>
+> **Se você colocar a URL só no `.env` e não no `.env.local`, tudo bem também**
+> — o script percebe e **não sobrescreve** o `.env` nesse caso. (Antes ele
+> copiava por cima e apagava a URL; o `prisma generate` passava porque não
+> precisa da URL, e só o `db push` estourava o `P1012`.)
 
 ---
 
@@ -177,6 +182,7 @@ Os erros mais prováveis, e o que significam:
 | Falha no passo 2, e embaixo aparecer `prisma@8.0.0-rc` ou `C:\node_modules\prisma` | o `npm install` tinha abortado no meio e o `npx` baixou um Prisma aleatório da internet. Some sozinho com a correção da `DATABASE_URL` |
 | Falha no passo 3, `prisma db push` | a `DATABASE_URL` está errada, incompleta, ou o projeto do Neon não foi criado |
 | O script para no começo dizendo que a URL aponta para **este computador** | o `.env.local` ainda tem a `DATABASE_URL` de `localhost:26257` que o `TESTAR-NEXORA.bat` gravou. Apague essa linha e cole a do Neon |
+| O `prisma generate` passa, mas o `db push` falha com `P1012` | o `.env` (o arquivo que o Prisma lê) está sem a linha `DATABASE_URL=`. Confira o `.env.local`, salve e rode de novo — o script agora confere isso antes do `db push` |
 | Falha no passo 5, `npm run build` | **o mais importante de todos.** Se não compila aqui, não compila no servidor. Me manda o print |
 | Tela branca em `localhost:3000` | aperte F12, aba **Console**, e me mande print do que estiver em vermelho |
 | Login dá erro | confira se a URL do Neon está completa, com `?sslmode=require&channel_binding=require` no fim |
