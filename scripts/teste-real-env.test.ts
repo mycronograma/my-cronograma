@@ -46,6 +46,8 @@ const posCopyEnv = bat.indexOf('copy /y .env.local .env');
 const posChecaUrl = bat.indexOf('findstr /C:"DATABASE_URL=" .env.local');
 const posGenerate = bat.indexOf('prisma generate');
 const posDbPush = bat.indexOf('prisma db push');
+const posConfere = bat.indexOf(':confere_url');
+const posUrlLocal = bat.indexOf(':url_local');
 
 checar('o script roda npm install', posInstall > 0);
 checar('o script confere a DATABASE_URL', posChecaUrl > 0);
@@ -110,6 +112,70 @@ checar(
   'o package.json tem postinstall com prisma generate',
   /"postinstall":\s*"prisma generate"/.test(pkg),
   'e exatamente esse hook que estourava'
+);
+
+// ---------------------------------------------- URL de localhost
+// O TESTAR-NEXORA.bat grava uma DATABASE_URL de localhost:26257 no
+// .env.local. Sem esta checagem o script aceitava essa URL como se
+// fosse a da nuvem e so quebrava no db push, sem explicar o motivo.
+checar(
+  'o script tem o bloco :confere_url',
+  posConfere > 0,
+  'e onde a URL e examinada antes de seguir'
+);
+
+checar(
+  'o script tem o bloco :url_local',
+  posUrlLocal > 0,
+  'a mensagem que explica a URL de localhost'
+);
+
+checar(
+  'a URL de localhost e detectada pelo nome do host',
+  /findstr \/C:"DATABASE_URL=" \.env\.local \| findstr \/I \/C:"localhost"/.test(bat),
+  'procura localhost dentro da linha DATABASE_URL, nao no arquivo inteiro'
+);
+
+checar(
+  'a URL 127.0.0.1 tambem e detectada',
+  /findstr \/C:"127\.0\.0\.1"/.test(bat),
+  'mesma armadilha, outro endereco'
+);
+
+checar(
+  'a checagem de localhost vem ANTES do npm install',
+  posConfere > 0 && posConfere < posInstall,
+  `confere em ${posConfere}, install em ${posInstall}`
+);
+
+checar(
+  ':url_local para o script (nao segue instalando)',
+  /:url_local[\s\S]{0,900}?goto :fim/.test(bat),
+  'sem isso ele instalaria mesmo assim e falharia no db push'
+);
+
+checar(
+  'a mensagem de :url_local manda apagar a linha DATABASE_URL',
+  /APAGUE a linha DATABASE_URL/.test(bat),
+  'instrucao acionavel, nao so um aviso'
+);
+
+checar(
+  'o guia mostra a URL com -pooler e channel_binding',
+  /-pooler/.test(guia) && /channel_binding=require/.test(guia),
+  'formato novo do Neon; o antigo levava a cortar a URL'
+);
+
+checar(
+  'o guia explica a armadilha da URL de localhost',
+  /localhost:26257/.test(guia) && /apague essa linha/i.test(guia),
+  'quem ja rodou o TESTAR-NEXORA.bat tem essa linha no .env.local'
+);
+
+checar(
+  'o guia tem a linha do erro de URL local na tabela',
+  /aponta para \*\*este computador\*\*/.test(guia),
+  'o usuario precisa reconhecer a mensagem do script'
 );
 
 console.log(`\n${passou} passaram, ${falhou} falharam`);

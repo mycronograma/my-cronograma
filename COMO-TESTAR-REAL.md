@@ -74,9 +74,18 @@ Supabase ou CockroachDB, me avise que eu ajusto — o resto é igual.
 
 5. Salve (Ctrl+S) e feche.
 
-> **Atenção:** se o arquivo já tiver uma linha `DATABASE_URL=` apontando para
-> `localhost`, **apague essa linha** antes de colar a nova. Duas linhas com o
-> mesmo nome fazem o app usar a primeira.
+> **Atenção — a armadilha mais comum.** Se você já rodou o
+> **`TESTAR-NEXORA.bat`** (o teste normal), o `.env.local` desta pasta já tem
+> uma linha `DATABASE_URL=` apontando para `localhost:26257`. Ela é o banco de
+> mentira que o teste normal usa, e **não serve aqui**.
+>
+> **Apague a linha `DATABASE_URL=` inteira** e cole a do Neon no lugar dela.
+> Não deixe as duas: com dois nomes iguais o app lê a primeira e ignora a sua.
+>
+> Se você esquecer, o `TESTAR-REAL.bat` **percebe e para antes de instalar**,
+> com uma mensagem explicando que a URL ainda aponta para este computador.
+> Não é erro seu — é o script te poupando de um `db push` falhando sem razão
+> aparente.
 
 ### Por que o `.env.local` basta
 
@@ -158,6 +167,7 @@ Os erros mais prováveis, e o que significam:
 | Falha no passo 2, mencionando `binaries.prisma.sh` | sua rede bloqueou o download do Prisma. Tente outra internet (ou desligue VPN) |
 | Falha no passo 2, e embaixo aparecer `prisma@8.0.0-rc` ou `C:\node_modules\prisma` | o `npm install` tinha abortado no meio e o `npx` baixou um Prisma aleatório da internet. Some sozinho com a correção da `DATABASE_URL` |
 | Falha no passo 3, `prisma db push` | a `DATABASE_URL` está errada, incompleta, ou o projeto do Neon não foi criado |
+| O script para no começo dizendo que a URL aponta para **este computador** | o `.env.local` ainda tem a `DATABASE_URL` de `localhost:26257` que o `TESTAR-NEXORA.bat` gravou. Apague essa linha e cole a do Neon |
 | Falha no passo 5, `npm run build` | **o mais importante de todos.** Se não compila aqui, não compila no servidor. Me manda o print |
 | Tela branca em `localhost:3000` | aperte F12, aba **Console**, e me mande print do que estiver em vermelho |
 | Login dá erro | confira se a URL do Neon está completa, com `?sslmode=require&channel_binding=require` no fim |

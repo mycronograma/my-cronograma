@@ -101,13 +101,32 @@ if not exist .env.local type nul > .env.local
 
 findstr /C:"DATABASE_URL=" .env.local >nul 2>nul
 
-if not errorlevel 1 goto :tem_database
+if not errorlevel 1 goto :confere_url
 
 if not exist .env goto :sem_database
 
 findstr /C:"DATABASE_URL=" .env >nul 2>nul
 
 if errorlevel 1 goto :sem_database
+
+
+rem ---- confere se a URL e da nuvem ou e a do teste local -------------
+rem O TESTAR-NEXORA.bat grava uma DATABASE_URL de localhost no
+rem .env.local. Se ela ainda estiver la, o Prisma ia tentar falar com
+rem um banco que so existe no seu PC e falharia no db push sem
+rem explicar o motivo.
+
+:confere_url
+
+findstr /C:"DATABASE_URL=" .env.local | findstr /I /C:"localhost" >nul 2>nul
+
+if not errorlevel 1 goto :url_local
+
+findstr /C:"DATABASE_URL=" .env.local | findstr /C:"127.0.0.1" >nul 2>nul
+
+if not errorlevel 1 goto :url_local
+
+goto :tem_database
 
 
 rem ---- tem a URL: garante que o Prisma enxerga -----------------------
@@ -155,6 +174,34 @@ echo     DATABASE_URL="postgresql://usuario:senha@host.neon.tech/neondb?sslmode=
 echo.
 
 echo     Depois rode este script de novo.
+
+goto :fim
+
+
+
+:url_local
+
+echo.
+
+echo [X] A DATABASE_URL do .env.local ainda aponta para ESTE COMPUTADOR.
+
+echo     Ela funciona no teste normal (TESTAR-NEXORA.bat), que usa
+
+echo     um banco de mentira. Aqui o banco tem de ser o da nuvem.
+
+echo.
+
+echo     A linha de hoje e mais ou menos assim:
+
+echo     DATABASE_URL="postgresql://nexora:nexora@localhost:26257/..."
+
+echo.
+
+echo     SOLUCAO: abra o .env.local desta pasta no Bloco de Notas,
+
+echo     APAGUE a linha DATABASE_URL inteira e cole no lugar dela
+
+echo     a url do seu banco no Neon. Depois rode este script de novo.
 
 goto :fim
 
