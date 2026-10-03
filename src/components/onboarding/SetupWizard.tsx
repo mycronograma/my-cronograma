@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
@@ -136,6 +137,8 @@ export default function SetupWizard({
   onApply,
 }: SetupWizardProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const [step, setStep] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
@@ -266,25 +269,24 @@ export default function SetupWizard({
     onApply(resumo.settings, resumo.studyPrefs, answers);
   };
 
-  if (!isOpen) return null;
-
-  return (
+  const modalContent = (
     <AnimatePresence>
-      <motion.div
-        ref={dialogRef}
-        className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto"
-        variants={overlayVariants}
-        initial="hidden"
-        animate="visible"
-        exit="hidden"
-      >
+      {isOpen && (
         <motion.div
-          variants={modalVariants}
+          ref={dialogRef}
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto"
+          variants={overlayVariants}
           initial="hidden"
           animate="visible"
           exit="hidden"
-          className="w-full max-w-xl bg-card-bg rounded-[28px] shadow-2xl border border-card-border flex flex-col my-auto max-h-[90vh] overflow-hidden"
         >
+          <motion.div
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            className="w-full max-w-xl bg-card-bg rounded-[28px] shadow-2xl border border-card-border flex flex-col my-auto max-h-[90vh] overflow-hidden"
+          >
           {/* CABEÇALHO */}
           <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-card-border">
             <div className="flex items-center gap-3">
@@ -781,8 +783,11 @@ export default function SetupWizard({
               </Button>
             )}
           </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
     </AnimatePresence>
   );
+
+  return mounted ? createPortal(modalContent, document.body) : null;
 }
