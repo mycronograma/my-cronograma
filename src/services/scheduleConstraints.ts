@@ -104,7 +104,7 @@ export function resolveSimuladoRules(studyPrefs: StudyPreferences): SimuladoRule
   const intensity = studyPrefs.intensity || 'normal';
   const frequencyDays =
     intensity === 'intensa'
-      ? Math.max(5, adaptiveFrequencyDays - 3)
+      ? Math.max(7, adaptiveFrequencyDays - 3)
       : intensity === 'leve'
       ? adaptiveFrequencyDays + 7
       : adaptiveFrequencyDays;

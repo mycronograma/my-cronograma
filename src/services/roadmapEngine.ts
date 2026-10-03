@@ -854,9 +854,10 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
       }
 
       if (sessionType === 'simulado') {
-        const shouldArea = canScheduleSimuladoArea(date);
+        // Simulados de área foram removidos: exercícios por matéria já cumprem esse papel.
+        // Só agendamos simulados completos.
         const shouldCompleto = canScheduleSimuladoCompleto(date);
-        if (!shouldArea && !shouldCompleto) {
+        if (!shouldCompleto) {
           // Keep the cycle waiting for simulado and reinforce with practice meanwhile.
           sessionType = alreadyHasLesson ? 'pratica' : 'teoria';
           cycleStageMatched = false;
@@ -870,20 +871,8 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
       let blockType = SESSION_TO_BLOCK_TYPE[sessionType];
       let simuladoAreaLabel: string | undefined;
       if (sessionType === 'simulado') {
-        const useCompleto = canScheduleSimuladoCompleto(date);
-        blockType = useCompleto ? 'SIMULADO_COMPLETO' : 'SIMULADO_AREA';
-        if (blockType === 'SIMULADO_AREA') {
-          simuladoAreaLabel =
-            meta.area === 'matematica' || meta.area === 'exatas'
-              ? 'Matemática'
-              : meta.area === 'humanas'
-              ? 'Humanas'
-              : meta.area === 'natureza' || meta.area === 'biologicas'
-              ? 'Natureza'
-              : meta.area === 'linguagens'
-              ? 'Linguagens'
-              : 'Área';
-        }
+        // Apenas simulados completos.
+        blockType = 'SIMULADO_COMPLETO';
       }
 
       const isSimulado = blockType === 'SIMULADO_AREA' || blockType === 'SIMULADO_COMPLETO';
