@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clearClientStoreKeys } from '@/hooks/useLocalStorage';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -148,6 +149,11 @@ function SubjectsPageContent() {
   const [dailyLimits] = useLocalStorage<Record<string, number>>('nexora_daily_limits', {});
   const [importPresetError, setImportPresetError] = useState<string | null>(null);
   const [pendingDeleteSubject, setPendingDeleteSubject] = useState<Subject | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Mostrar preset selector automaticamente quando não há disciplinas
   useEffect(() => {
@@ -940,75 +946,81 @@ function SubjectsPageContent() {
         </motion.div>
       )}
 
-      {/* Registro avulso de questões (#10) */}
-      <AnimatePresence>
-        {showQuestionLog && (
-          <QuestionLogModal
-            subjects={subjects}
-            initialSubjectId={questionLogSubject?.id}
-            onClose={() => {
-              setShowQuestionLog(false);
-              setQuestionLogSubject(null);
-            }}
-            onSave={handleSaveQuestionLog}
-          />
-        )}
-      </AnimatePresence>
+      {/* Modais centralizados fora do fluxo */}
+      {mounted && createPortal(
+        <>
+          {/* Registro avulso de questões (#10) */}
+          <AnimatePresence>
+            {showQuestionLog && (
+              <QuestionLogModal
+                subjects={subjects}
+                initialSubjectId={questionLogSubject?.id}
+                onClose={() => {
+                  setShowQuestionLog(false);
+                  setQuestionLogSubject(null);
+                }}
+                onSave={handleSaveQuestionLog}
+              />
+            )}
+          </AnimatePresence>
 
-      {/* Modal do Formulário de Disciplina */}
-      <AnimatePresence>
-        {showForm && (
-          <SubjectForm
-            subject={editingSubject}
-            onSubmit={handleFormSubmit}
-            onCancel={() => setShowForm(false)}
-            weeklyAvailableHours={weeklyGoalFromPrefs}
-            peerWeightSum={peerWeightSum}
-            validate={validateSubjectData}
-            peers={subjects.map((s) => ({
-              id: s.id,
-              priority: s.priority,
-              difficulty: s.difficulty,
-            }))}
-          />
-        )}
-      </AnimatePresence>
+          {/* Modal do Formulário de Disciplina */}
+          <AnimatePresence>
+            {showForm && (
+              <SubjectForm
+                subject={editingSubject}
+                onSubmit={handleFormSubmit}
+                onCancel={() => setShowForm(false)}
+                weeklyAvailableHours={weeklyGoalFromPrefs}
+                peerWeightSum={peerWeightSum}
+                validate={validateSubjectData}
+                peers={subjects.map((s) => ({
+                  id: s.id,
+                  priority: s.priority,
+                  difficulty: s.difficulty,
+                }))}
+              />
+            )}
+          </AnimatePresence>
 
-      <AnimatePresence>
-        {pendingDeleteSubject && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="app-modal-overlay"
-            onClick={() => setPendingDeleteSubject(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.96, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.96, opacity: 0 }}
-              className="app-modal-panel max-w-md"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <Card className="space-y-4 p-5">
-                <h3 className="text-lg font-semibold text-white">Excluir disciplina</h3>
-                <p className="text-sm text-text-secondary">
-                  Tem certeza que deseja excluir{' '}
-                  <span className="font-semibold text-white">{pendingDeleteSubject.name}</span>?
-                </p>
-                <div className="flex justify-end gap-2">
-                  <Button variant="secondary" onClick={() => setPendingDeleteSubject(null)}>
-                    Cancelar
-                  </Button>
-                  <Button variant="danger" onClick={confirmDeleteSubject}>
-                    Excluir
-                  </Button>
-                </div>
-              </Card>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          <AnimatePresence>
+            {pendingDeleteSubject && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="app-modal-overlay"
+                onClick={() => setPendingDeleteSubject(null)}
+              >
+                <motion.div
+                  initial={{ scale: 0.96, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.96, opacity: 0 }}
+                  className="app-modal-panel max-w-md"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <Card className="space-y-4 p-5">
+                    <h3 className="text-lg font-semibold text-white">Excluir disciplina</h3>
+                    <p className="text-sm text-text-secondary">
+                      Tem certeza que deseja excluir{' '}
+                      <span className="font-semibold text-white">{pendingDeleteSubject.name}</span>?
+                    </p>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="secondary" onClick={() => setPendingDeleteSubject(null)}>
+                        Cancelar
+                      </Button>
+                      <Button variant="danger" onClick={confirmDeleteSubject}>
+                        Excluir
+                      </Button>
+                    </div>
+                  </Card>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>,
+        document.body
+      )}
 
     </motion.div>
   );
