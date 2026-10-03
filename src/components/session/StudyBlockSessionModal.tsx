@@ -135,6 +135,49 @@ export default function StudyBlockSessionModal({
     return { mins: String(mins).padStart(2, '0'), secs: String(secs).padStart(2, '0') };
   };
 
+  // Media Session - Gambiarra para exibir o cronômetro na tela de bloqueio
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    // 1-second silent MP3 base64
+    const SILENT_MP3 = "data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gSWxpeWEgQmxhbmthAAAA//MUxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//MUxDSAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+    silentAudioRef.current = new Audio(SILENT_MP3);
+    silentAudioRef.current.loop = true;
+    return () => {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+        silentAudioRef.current.src = '';
+      }
+    };
+  }, []);
+
+  const updateMediaSession = useCallback((remaining: number, state: SessionState) => {
+    if (!('mediaSession' in navigator) || !block) return;
+    
+    const { mins, secs } = formatTimer(remaining);
+    const title = block.isBreak ? `Intervalo: ${mins}:${secs}` : `Estudando: ${mins}:${secs}`;
+    const artist = block.subject?.name || 'my cronograma';
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist,
+      album: 'Sessão Ativa',
+      artwork: [{ src: '/icon512_maskable.png', sizes: '512x512', type: 'image/png' }]
+    });
+
+    if (state === 'running') {
+      navigator.mediaSession.playbackState = 'playing';
+      silentAudioRef.current?.play().catch(() => {});
+    } else if (state === 'paused') {
+      navigator.mediaSession.playbackState = 'paused';
+      silentAudioRef.current?.pause();
+    } else {
+      navigator.mediaSession.playbackState = 'none';
+      silentAudioRef.current?.pause();
+    }
+  }, [block]);
+
+
   const ensureAudioContext = useCallback(() => {
     try {
       if (!audioRef.current) {
@@ -243,6 +286,7 @@ export default function StudyBlockSessionModal({
           : Math.max(1, Math.round(spentSeconds / 60));
       setCompletedOnce(true);
       setSessionState('completed');
+      updateMediaSession(0, 'completed');
       playAlarm();
       if (block && onComplete) {
         onComplete(block.id, minutesSpent, buildPerformancePayload());
@@ -258,13 +302,15 @@ export default function StudyBlockSessionModal({
     ensureAudioContext();
     runningUntilRef.current = Date.now() + (Math.max(0, timeRemaining) * 1000);
     setSessionState('running');
-  }, [ensureAudioContext, timeRemaining]);
+    updateMediaSession(timeRemaining, 'running');
+  }, [ensureAudioContext, timeRemaining, updateMediaSession]);
 
   const pauseOrResumeSession = useCallback(() => {
     if (sessionState === 'running') {
       if (runningUntilRef.current) {
         const liveRemaining = Math.max(0, Math.ceil((runningUntilRef.current - Date.now()) / 1000));
         setTimeRemaining(liveRemaining);
+        updateMediaSession(liveRemaining, 'paused');
       }
       runningUntilRef.current = null;
       setSessionState('paused');
@@ -274,8 +320,9 @@ export default function StudyBlockSessionModal({
     if (sessionState === 'paused') {
       runningUntilRef.current = Date.now() + (Math.max(0, timeRemaining) * 1000);
       setSessionState('running');
+      updateMediaSession(timeRemaining, 'running');
     }
-  }, [sessionState, timeRemaining]);
+  }, [sessionState, timeRemaining, updateMediaSession]);
 
   useEffect(() => {
     if (sessionState !== 'running') return;
@@ -288,6 +335,7 @@ export default function StudyBlockSessionModal({
       if (!runningUntilRef.current) return;
       const liveRemaining = Math.max(0, Math.ceil((runningUntilRef.current - Date.now()) / 1000));
       setTimeRemaining(liveRemaining);
+      updateMediaSession(liveRemaining, 'running');
       if (liveRemaining <= 0) {
         finishSession(initialTotalRef.current, 'auto');
       }
