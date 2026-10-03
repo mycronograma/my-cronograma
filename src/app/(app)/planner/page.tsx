@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2, AlertTriangle, GripVertical } from 'lucide-react';
 import { repairCompletedBlockTimesOnce, repairOverlappingDaysOnce } from '@/lib/blockTimes';
@@ -265,6 +266,9 @@ const Tooltip = ({ children, content, position = 'top' }: {
 };
 
 export default function PlannerPage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const [subjects, setSubjects] = useLocalStorage<Subject[]>('nexora_subjects', []);
   const [studyPrefs] = useLocalStorage<StudyPreferences>('nexora_study_prefs', {
     hoursPerDay: 2,
@@ -1734,91 +1738,96 @@ export default function PlannerPage() {
           </div>
           </div>
 
-        <MapModal />
-        <RoadmapModal />
-        <AddBlockModal />
+        {mounted && createPortal(
+          <>
+            <MapModal />
+            <RoadmapModal />
+            <AddBlockModal />
 
-        {/* Confirmação do "Gerar com IA" quando já há progresso.
-            O app diz o que preserva antes de refazer o plano. */}
-        <AnimatePresence>
-          {regenConfirm && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              ref={regenDialog.dialogRef}
-              {...regenDialog.dialogProps}
-              className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-              onClick={() => setRegenConfirm(null)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 30 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 30 }}
-                className="bg-card-bg rounded-3xl border border-card-border p-6 w-full max-w-md shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="h-10 w-10 rounded-xl bg-warning/15 border border-warning/20 flex items-center justify-center">
-                    <RefreshCw className="h-5 w-5 text-warning" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading text-lg font-bold text-text-primary">
-                      Refazer o cronograma?
-                    </h3>
-                    <p className="text-xs text-text-muted">
-                      O que já foi estudado continua valendo.
+            {/* Confirmação do "Gerar com IA" quando já há progresso.
+                O app diz o que preserva antes de refazer o plano. */}
+            <AnimatePresence>
+              {regenConfirm && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  ref={regenDialog.dialogRef}
+                  {...regenDialog.dialogProps}
+                  className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+                  onClick={() => setRegenConfirm(null)}
+                >
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 30 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 30 }}
+                    className="bg-card-bg rounded-3xl border border-card-border p-6 w-full max-w-md shadow-2xl"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="h-10 w-10 rounded-xl bg-warning/15 border border-warning/20 flex items-center justify-center">
+                        <RefreshCw className="h-5 w-5 text-warning" />
+                      </div>
+                      <div>
+                        <h3 className="font-heading text-lg font-bold text-text-primary">
+                          Refazer o cronograma?
+                        </h3>
+                        <p className="text-xs text-text-muted">
+                          O que já foi estudado continua valendo.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 mb-6">
+                      <div className="flex items-center justify-between rounded-xl border border-card-border bg-background-light px-3 py-2.5">
+                        <span className="text-sm text-text-secondary">Blocos já estudados</span>
+                        <span className="text-sm font-bold text-text-primary">
+                          {regenConfirm.concluidos} · {formatHoursDuration(regenConfirm.horasEstudadas / 60)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-card-border bg-background-light px-3 py-2.5">
+                        <span className="text-sm text-text-secondary">Blocos pendentes a refazer</span>
+                        <span className="text-sm font-bold text-text-primary">
+                          {regenConfirm.pendentes}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-text-muted mb-6">
+                      Os {regenConfirm.concluidos} blocos estudados ficam exatamente como estão, com as
+                      horas já contadas. O app remonta só o que ainda está pendente, começando depois
+                      do que você já fez em cada dia.
                     </p>
-                  </div>
-                </div>
 
-                <div className="space-y-2 mb-6">
-                  <div className="flex items-center justify-between rounded-xl border border-card-border bg-background-light px-3 py-2.5">
-                    <span className="text-sm text-text-secondary">Blocos já estudados</span>
-                    <span className="text-sm font-bold text-text-primary">
-                      {regenConfirm.concluidos} · {formatHoursDuration(regenConfirm.horasEstudadas / 60)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl border border-card-border bg-background-light px-3 py-2.5">
-                    <span className="text-sm text-text-secondary">Blocos pendentes a refazer</span>
-                    <span className="text-sm font-bold text-text-primary">
-                      {regenConfirm.pendentes}
-                    </span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-text-muted mb-6">
-                  Os {regenConfirm.concluidos} blocos estudados ficam exatamente como estão, com as
-                  horas já contadas. O app remonta só o que ainda está pendente, começando depois
-                  do que você já fez em cada dia.
-                </p>
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setRegenConfirm(null)}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => {
-                      setRegenConfirm(null);
-                      void gerarCronograma();
-                    }}
-                  >
-                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                    Refazer
-                  </Button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setRegenConfirm(null)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          setRegenConfirm(null);
+                          void gerarCronograma();
+                        }}
+                      >
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                        Refazer
+                      </Button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>,
+          document.body
+        )}
       </div>
     </div>
     );
