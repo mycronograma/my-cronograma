@@ -663,7 +663,7 @@ export default function SetupWizard({
                   <span className="block text-sm font-medium text-text-secondary">
                     Intervalo entre blocos
                   </span>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {INTERVALOS.map((opcao) => (
                       <button
                         key={opcao.minutos}

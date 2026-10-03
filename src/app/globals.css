@@ -267,7 +267,6 @@ h1, h2, h3, h4, h5, h6 {
   .app-modal-panel {
     width: min(360px, calc(100vw - 32px));
     max-width: calc(100vw - 32px);
-    margin-inline: 16px;
     max-height: calc(100dvh - 1.5rem - var(--safe-area-top) - var(--safe-area-bottom));
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -291,7 +290,6 @@ h1, h2, h3, h4, h5, h6 {
   .app-mobile-safe-surface {
     width: min(360px, calc(100vw - 32px));
     max-width: calc(100vw - 32px);
-    margin-inline: 16px;
     overflow-x: clip;
   }
 
