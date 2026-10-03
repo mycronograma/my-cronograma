@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Calendar,
   Award,
+  Target,
 } from 'lucide-react';
 import { StatsCard, Card, Button } from '@/components/ui';
 import { useLocalStorage } from '@/hooks';
@@ -191,6 +192,18 @@ export default function AnalyticsPage() {
     () => computeIntelligentAnalyticsSummary({ analytics: analyticsForSummary, subjects, now: now ?? new Date() }),
     [analyticsForSummary, subjects, now]
   );
+  const performanceStats = useMemo(() => {
+    let total = 0;
+    let correct = 0;
+    if (analytics.performance?.subjects) {
+      Object.values(analytics.performance.subjects).forEach(sub => {
+        total += sub.questionsTotal || 0;
+        correct += sub.questionsCorrect || 0;
+      });
+    }
+    const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+    return { total, correct, accuracy };
+  }, [analytics.performance?.subjects]);
   const studiedDays = productivityData.filter((item) => item.hours > 0);
   const avgProductivity =
     intelligentSummary.avgProductivityScore ||
@@ -266,6 +279,15 @@ export default function AnalyticsPage() {
           subtitle="Esta semana"
           icon={Award}
           color="orange"
+          variant="mobile"
+        />
+        <StatsCard
+          title="Taxa de Acertos"
+          titleShort="Acertos"
+          value={`${performanceStats.accuracy}%`}
+          subtitle={`${performanceStats.correct} / ${performanceStats.total} questões`}
+          icon={Target}
+          color="emerald"
           variant="mobile"
         />
       </motion.div>
