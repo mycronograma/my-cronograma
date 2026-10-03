@@ -95,15 +95,20 @@ const NIVEIS = [
 ] as const;
 
 const BLOCOS: { minutos: FocusDuration; titulo: string; descricao: string }[] = [
-  { minutos: 25, titulo: '25 minutos', descricao: 'Blocos curtos, pausas frequentes.' },
+  { minutos: 25, titulo: '25 minutos', descricao: 'Pomodoro clássico, foco rápido.' },
+  { minutos: 30, titulo: '30 minutos', descricao: 'Blocos curtos, pausas frequentes.' },
+  { minutos: 45, titulo: '45 minutos', descricao: 'Tempo padrão de uma aula.' },
   { minutos: 50, titulo: '50 minutos', descricao: 'O equilíbrio que funciona para a maioria.' },
-  { minutos: 90, titulo: '90 minutos', descricao: 'Imersão longa, para quem já tem o hábito.' },
+  { minutos: 60, titulo: '60 minutos', descricao: 'Foco profundo de uma hora inteira.' },
+  { minutos: 90, titulo: '90 minutos', descricao: 'Imersão longa, para quem tem o hábito.' },
+  { minutos: 120, titulo: '120 minutos', descricao: 'Resistência extrema para provas.' },
 ];
 
 const INTERVALOS: { minutos: BreakDuration; titulo: string }[] = [
-  { minutos: 5, titulo: '5 minutos' },
-  { minutos: 10, titulo: '10 minutos' },
-  { minutos: 15, titulo: '15 minutos' },
+  { minutos: 5, titulo: '5 min' },
+  { minutos: 10, titulo: '10 min' },
+  { minutos: 15, titulo: '15 min' },
+  { minutos: 20, titulo: '20 min' },
 ];
 
 const TOTAL_TELAS = 5;
