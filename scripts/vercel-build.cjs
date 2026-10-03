@@ -47,8 +47,8 @@ if (process.env.DATABASE_URL) {
       console.log('[vercel-build] Normalized CockroachDB sslmode to require.');
     }
   }
-  console.log('[vercel-build] Running prisma migrate deploy...');
-  const migrateOk = runNpx(['prisma', 'migrate', 'deploy'], {
+  console.log('[vercel-build] Running prisma db push...');
+  const migrateOk = runNpx(['prisma', 'db', 'push', '--accept-data-loss'], {
     allowFailure: process.env.VERCEL_ENV !== 'production',
   });
   if (!migrateOk) {
