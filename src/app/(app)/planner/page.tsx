@@ -340,7 +340,7 @@ export default function PlannerPage() {
     blocks,
     setBlocks,
     allowedDays: allowedStudyDays,
-    dailyLimitByDate: dailyLimits,
+    dailyLimitByDate: {}, // Permite reagendar ultrapassando o limite configurado
     breakMinutes: userSettings?.breakMinutes,
     // Dias além do fim do cronograma gerado não têm limite nem blocos: sem esta
     // carga por dia da semana, o motor os tratava como "capacidade zero" e o
@@ -357,7 +357,7 @@ export default function PlannerPage() {
         : analyzeBacklogCapacity({
             blocks,
             today: new Date(),
-            dailyLimitByDate: dailyLimits,
+            dailyLimitByDate: {}, // Permite ultrapassar o limite configurado
             fallbackDayMinutesByWeekday,
             allowedDays: allowedStudyDays,
           }),
@@ -503,7 +503,7 @@ export default function PlannerPage() {
       durationMinutes: configuredBlockMinutes,
       breakMinutes: configuredBreakMinutes,
       window: dailyTimeWindowsByDate[dayKey],
-      dayLimitMinutes: dailyLimitsByDate[dayKey],
+      dayLimitMinutes: undefined, // Removida a trava: o usuário pode adicionar além do limite diário
       usedStudyMinutes: dayBlocks
         .filter((b) => !b.isBreak)
         .reduce((sum, b) => sum + b.durationMinutes, 0),
@@ -1119,9 +1119,7 @@ export default function PlannerPage() {
                   </p>
                 ) : (
                   <p className="rounded-xl border border-warning bg-warning-soft p-3 text-xs text-warning-strong">
-                    {`Este dia já está cheio com as ${Math.round(
-                      (dailyLimitsByDate[addBlockModal.date ? toLocalDateKey(addBlockModal.date) : ''] ?? 0) / 60
-                    )}h de estudo que você configurou. Escolha outro dia.`}
+                    Este dia está fora da sua janela de disponibilidade.
                   </p>
                 )
               )}
