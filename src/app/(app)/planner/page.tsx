@@ -1407,7 +1407,7 @@ export default function PlannerPage() {
               {plannerNotice && (
                 <div className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-900/30 border border-emerald-500/30 text-emerald-300 text-xs lg:text-sm">
                   <Check className="h-4 w-4 flex-shrink-0" />
-                  <span className="truncate max-w-[200px]">{plannerNotice}</span>
+                  <span className="truncate max-w-[420px]" title={plannerNotice ?? ''}>{plannerNotice}</span>
                 </div>
               )}
               <button
