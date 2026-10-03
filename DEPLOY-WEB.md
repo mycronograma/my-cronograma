@@ -126,7 +126,70 @@ npm run db:seed
 
 ---
 
-## Parte 4 — Testar antes de divulgar (checklist)
+## Parte 4 — Como o banco é atualizado nos deploys
+
+O build da Vercel sincroniza o schema no banco antes de compilar. A regra
+que não pode voltar atrás:
+
+> **A sincronização nunca aceita perda de dados.** Se a mudança no schema
+> apagaria dado que já existe, o build **falha de propósito** e explica.
+
+Antes era diferente: o build rodava `prisma db push --accept-data-loss`, que
+aplica a mudança **mesmo apagando** — o deploy "passa" e o banco já foi
+destruído. Refazer deploy é fácil; dado de usuário não volta.
+
+**O que esperar quando o build recusar:**
+
+```
+[vercel-build] ==================================================
+[vercel-build]  A sincronização do banco foi RECUSADA.
+[vercel-build] ==================================================
+
+  A mudança no schema apagaria dados que já existem no banco.
+  O build parou de propósito: refazer um deploy é fácil,
+  dado de usuário perdido não volta.
+
+  NÃO passe --accept-data-loss para "resolver".
+  O caminho certo é migração versionada:
+    1. npx prisma migrate dev --name descreva_a_mudanca
+    2. commite a pasta prisma/migrations/
+    3. faça o deploy de novo
+```
+
+Se a mensagem falar de `DATABASE_URL` em vez de perda de dado, o problema é
+a conexão — confira a variável na Vercel.
+
+### Indo para migrações versionadas (quando houver dado de verdade)
+
+Enquanto o banco é novo, sincronizar direto funciona. Quando houver gente
+usando, o certo é migração versionada, que exige confirmação explícita a cada
+mudança. A troca tem **uma única etapa manual**, feita no seu PC:
+
+1. Com a `DATABASE_URL` da nuvem no `.env.local` da pasta do projeto, gere a
+   migração inicial que descreve o banco como ele é hoje:
+
+   ```
+   npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > prisma/migrations/0_init/migration.sql
+   ```
+
+2. Marque essa migração como **já aplicada** — sem isso o deploy tentaria
+   criar tabelas que já existem e falharia:
+
+   ```
+   npx prisma migrate resolve --applied 0_init
+   ```
+
+3. Commite a pasta `prisma/migrations/` e me avise. Eu troco o
+   `scripts/vercel-build.cjs` para rodar `prisma migrate deploy` no lugar da
+   sincronização direta, e aí cada mudança de schema passa a exigir uma
+   migração nova commitada.
+
+> **A ordem importa:** os passos 1 e 2 vêm **antes** da troca do build. Se a
+> troca acontecer primeiro, o deploy quebra e o site sai do ar.
+
+---
+
+## Parte 5 — Testar antes de divulgar (checklist)
 
 Marque cada item com o site já no ar:
 
@@ -149,6 +212,7 @@ Marque cada item com o site já no ar:
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|
 | Tela branca com "Application error" | `DATABASE_URL` errada ou tabelas não criadas | rever a Parte 1 e rodar `npx prisma db push` de novo |
+| O **deploy falha** dizendo que a sincronização do banco foi recusada | a mudança no schema apagaria dados — o build parou de propósito | ver a Parte 4; **não** use `--accept-data-loss` |
 | Login não entra, volta sempre para `/login` | `NEXTAUTH_URL` diferente do endereço real | acertar a variável e fazer **Redeploy** |
 | "Invalid `prisma.xxx.create()`" | banco vazio | `npm run db:seed` ou `npx prisma db push` |
 | E-mail de recuperação não chega | `EMAIL_SERVER`/`EMAIL_FROM` não configurados | cadastrar as variáveis (ex.: SMTP do Gmail, Resend, SendGrid) |

@@ -39,7 +39,8 @@
     "test:load": "tsx scripts/study-load.test.ts",
     "test:cadastros": "tsx scripts/cadastros-reativados.test.ts",
     "test:login-demo": "tsx scripts/login-demo-credenciais.test.ts",
-    "test:teste-real": "tsx scripts/teste-real-env.test.ts"
+    "test:teste-real": "tsx scripts/teste-real-env.test.ts",
+    "test:vercel-build": "node scripts/vercel-build-sem-perda.test.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
