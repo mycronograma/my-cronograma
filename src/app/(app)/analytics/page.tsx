@@ -287,7 +287,7 @@ export default function AnalyticsPage() {
           value={`${performanceStats.accuracy}%`}
           subtitle={`${performanceStats.correct} / ${performanceStats.total} questões`}
           icon={Target}
-          color="emerald"
+          color="purple"
           variant="mobile"
         />
       </motion.div>
