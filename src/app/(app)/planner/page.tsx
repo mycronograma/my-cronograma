@@ -1390,7 +1390,7 @@ export default function PlannerPage() {
   );
 
   return (
-    <div className="w-full min-w-0 bg-background text-text-primary pb-20 lg:pb-0 overflow-x-hidden">
+    <div className="w-full min-w-0 bg-background text-text-primary pb-[calc(var(--bottom-nav-safe-height)+16px)] lg:pb-0 overflow-x-hidden">
       <div className="w-full min-w-0 max-w-[1600px] mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6">
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1403,7 +1403,7 @@ export default function PlannerPage() {
                 <p className="text-xs sm:text-sm text-text-secondary truncate">Visualize, organize e otimize seus blocos de estudo</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+            <div className="flex items-center gap-2 flex-wrap flex-shrink-0 max-[479px]:w-full">
               {plannerNotice && (
                 <div className="hidden lg:flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-900/30 border border-emerald-500/30 text-emerald-300 text-xs lg:text-sm">
                   <Check className="h-4 w-4 flex-shrink-0" />
@@ -1452,7 +1452,7 @@ export default function PlannerPage() {
                     {scheduleRange ? `Período gerado: ${(() => { const f = (k: string) => { const d = parseLocalKey(k); return d ? d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }) : k; }; return `${f(scheduleRange.startDate)} — ${f(scheduleRange.endDate)}`; })()}` : 'Distribuição dos blocos e horários ao longo da semana'}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0 self-start lg:self-center">
+                <div className="flex items-center gap-2 flex-shrink-0 self-start lg:self-center flex-wrap max-[479px]:w-full">
                   <button
                     onClick={handleRecalculateBacklog}
                     disabled={pendingCount === 0}
@@ -1466,8 +1466,8 @@ export default function PlannerPage() {
                     <RefreshCw className={cn('w-3.5 h-3.5', pendingCount > 0 && 'text-amber-400')} />
                     Recalcular atrasados{pendingCount > 0 ? ` (${pendingCount})` : ''}
                   </button>
-                  <button onClick={handleResetPlanner} className="h-9 px-4 rounded-xl bg-card-bg border border-card-border text-text-secondary hover:text-text-primary hover:border-card-border text-sm font-medium transition-colors">Limpar tudo</button>
-                  <button onClick={handleGenerateSchedule} disabled={isGenerating} className="h-9 px-5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-50 flex items-center gap-2">{isGenerating ? 'Gerando...' : 'Gerar com IA'}</button>
+                  <button onClick={handleResetPlanner} className="h-9 px-3 sm:px-4 rounded-xl bg-card-bg border border-card-border text-text-secondary hover:text-text-primary hover:border-card-border text-xs sm:text-sm font-medium transition-colors whitespace-nowrap">Limpar tudo</button>
+                  <button onClick={handleGenerateSchedule} disabled={isGenerating} className="h-9 px-3 sm:px-5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap max-[479px]:flex-1">{isGenerating ? 'Gerando...' : 'Gerar com IA'}</button>
                 </div>
               </div>
 
@@ -1567,9 +1567,9 @@ export default function PlannerPage() {
             </div>
           </div>
 
-          <div className="px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6 overflow-x-auto">
+          <div className="px-3 sm:px-4 lg:px-6 pb-3 sm:pb-4 lg:pb-6 overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-4 lg:px-6">
             <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <div className="grid grid-cols-7 gap-1.5 lg:gap-2 min-w-[840px] items-start">
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5 lg:gap-2 min-w-[700px] sm:min-w-[840px] items-start">
                 {weekDays.map(({ date, key }) => {
                   const dateKey = toLocalKey(date);
                   const dayBlocks = blocksForMap.filter((block) => block.displayDate === dateKey);
@@ -1695,7 +1695,7 @@ export default function PlannerPage() {
           </div>
 
           {/* Rodapé de métricas - igual à referência */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 px-1 pt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 px-1 pt-1">
             {(() => {
               const all = blocks.length;
               const done = blocks.filter(b => b.status === 'completed').length;

@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Nexora - Estudo Inteligente',
-    short_name: 'Nexora',
+    name: 'my cronograma - Estudo Inteligente',
+    short_name: 'my cronograma',
     description: 'Planejamento de estudos com IA, cronogramas e progresso inteligente.',
     start_url: '/',
     scope: '/',

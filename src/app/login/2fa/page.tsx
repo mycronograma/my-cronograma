@@ -66,7 +66,11 @@ export default function TwoFactorVerifyPage() {
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-neon-blue to-neon-purple flex items-center justify-center">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
-          <span className="text-2xl font-heading font-bold gradient-text">Nexora</span>
+          <div className="flex items-center gap-1.5 leading-tight">
+            <span className="text-2xl font-heading font-extrabold tracking-tight text-violet-400">my</span>
+            <span className="text-2xl font-heading font-extrabold tracking-tight text-text-primary">cronograma</span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-400 ml-0.5" />
+          </div>
         </div>
 
         <div className="glass-card p-8 space-y-6">
@@ -127,7 +131,7 @@ export default function TwoFactorVerifyPage() {
 
           <p className="text-center text-xs text-text-muted">
             Perdeu o acesso ao seu app autenticador?{' '}
-            <a href="mailto:suporte@nexora.com.br" className="text-neon-blue hover:underline">
+            <a href="mailto:suporte@mycronograma.com.br" className="text-neon-blue hover:underline">
               Contate o suporte
             </a>
           </p>

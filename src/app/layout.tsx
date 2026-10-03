@@ -10,11 +10,11 @@ import ThemeBootstrap from '@/components/providers/ThemeBootstrap';
 import PWARegister from '@/components/PWARegister';
 
 export const metadata: Metadata = {
-  title: 'Nexora - Estudo Inteligente',
+  title: 'my cronograma - Estudo Inteligente',
   description: 'Planejamento de estudos com cronogramas inteligentes, sessões guiadas e progresso gamificado.',
   keywords: ['estudo', 'aprendizado', 'IA', 'produtividade', 'educação', 'planejamento', 'ENEM'],
-  authors: [{ name: 'Nexora' }],
-  applicationName: 'Nexora',
+  authors: [{ name: 'my cronograma' }],
+  applicationName: 'my cronograma',
   icons: {
     icon: [
       { url: '/icon-32.png', sizes: '32x32', type: 'image/png' },
@@ -73,7 +73,7 @@ export default function RootLayout({
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-title" content="Nexora" />
+        <meta name="apple-mobile-web-app-title" content="my cronograma" />
       </head>
       <body className="font-body antialiased">
         <ThemeBootstrap />

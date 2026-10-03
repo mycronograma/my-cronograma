@@ -345,7 +345,11 @@ export default function LoginPage() {
               </div>
               <div className="absolute inset-0 w-16 h-16 rounded-2xl bg-gradient-to-br from-neon-blue to-neon-purple blur-xl opacity-50" />
             </div>
-            <span className="text-4xl font-heading font-bold gradient-text">Nexora</span>
+            <div className="flex items-center gap-1.5 leading-tight">
+              <span className="text-4xl font-heading font-extrabold tracking-tight text-violet-400">my</span>
+              <span className="text-4xl font-heading font-extrabold tracking-tight text-text-primary">cronograma</span>
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-violet-400 ml-0.5" />
+            </div>
           </motion.div>
 
           <motion.h1
@@ -382,7 +386,11 @@ export default function LoginPage() {
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-neon-blue to-neon-purple flex items-center justify-center">
               <Sparkles className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-heading font-bold gradient-text">Nexora</span>
+            <div className="flex items-center gap-1.5 leading-tight">
+              <span className="text-2xl font-heading font-extrabold tracking-tight text-violet-400">my</span>
+              <span className="text-2xl font-heading font-extrabold tracking-tight text-text-primary">cronograma</span>
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-400 ml-0.5" />
+            </div>
           </div>
 
           <div className="glass-card min-w-0 p-6 sm:p-8">

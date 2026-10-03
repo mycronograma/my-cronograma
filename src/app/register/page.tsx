@@ -148,7 +148,11 @@ export default function RegisterPage() {
             </div>
             <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-neon-blue to-neon-purple blur-lg opacity-40" />
           </div>
-          <span className="text-2xl font-heading font-bold gradient-text">Nexora</span>
+          <div className="flex items-center gap-1.5 leading-tight">
+            <span className="text-2xl font-heading font-extrabold tracking-tight text-violet-400">my</span>
+            <span className="text-2xl font-heading font-extrabold tracking-tight text-text-primary">cronograma</span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-400 ml-0.5" />
+          </div>
         </div>
 
         <div className="glass-card p-6 sm:p-8">
@@ -159,7 +163,7 @@ export default function RegisterPage() {
             <p className="mt-1 text-text-secondary">
               {cadastroAberto
                 ? 'Nome, e-mail e senha para começar'
-                : 'O Nexora ainda não está aceitando novas contas'}
+                : 'O my cronograma ainda não está aceitando novas contas'}
             </p>
           </div>
 

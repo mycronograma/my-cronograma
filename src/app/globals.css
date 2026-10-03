@@ -163,6 +163,12 @@ canvas {
   padding-bottom: calc(var(--bottom-nav-safe-height) + 16px);
 }
 
+/* Páginas que gerenciam o próprio padding-bottom (ex.: planner com pb-20)
+   precisam descontar o nav; esta classe é aplicada via Tailwind. */
+.app-main-content:has(> .app-container > [data-page-owns-pb]) {
+  padding-bottom: 0;
+}
+
 .app-container,
 .app-container-x {
   width: 100%;
@@ -579,6 +585,25 @@ h1, h2, h3, h4, h5, h6 {
   
   .glass-card {
     border-radius: 12px;
+  }
+}
+
+/* iOS date/time input: sem o visual nativo gigante */
+@supports (-webkit-touch-callout: none) {
+  input[type='date'],
+  input[type='time'] {
+    min-height: 0;
+    line-height: 1.2;
+  }
+}
+
+/* No mobile estreito (< 375px, ex.: iPhone SE) impedir que flex-rows
+   forcem scroll horizontal por falta de shrink. */
+@media (max-width: 374px) {
+  .app-container,
+  .app-container-x {
+    padding-left: calc(12px + var(--safe-area-left));
+    padding-right: calc(12px + var(--safe-area-right));
   }
 }
 

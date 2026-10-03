@@ -156,7 +156,7 @@ export default function TodayPlan({
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: Math.min(index, 6) * 0.04 }}
                   className={cn(
-                    'group relative flex items-stretch gap-3 rounded-xl border p-3 max-[479px]:p-2.5 transition-all duration-300',
+                    'group relative flex items-stretch gap-3 max-[479px]:flex-wrap rounded-xl border p-3 max-[479px]:p-2.5 transition-all duration-300',
                     block.isBreak
                       ? 'border-border-subtle bg-transparent'
                       : 'border-card-border bg-card-bg hover:border-neon-blue/30',
@@ -235,7 +235,7 @@ export default function TodayPlan({
                   </div>
 
                   {/* Status + ações */}
-                  <div className="flex shrink-0 flex-col items-end justify-center gap-1.5">
+                  <div className="flex shrink-0 flex-col items-end justify-center gap-1.5 max-[479px]:w-full">
                     <Badge
                       variant={config.badge as 'default' | 'success' | 'warning' | 'danger'}
                       size="sm"
@@ -245,7 +245,7 @@ export default function TodayPlan({
                       {config.label}
                     </Badge>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 max-[479px]:w-full max-[479px]:justify-stretch">
                       {/* "Iniciar" para o que ainda vai ser estudado. Some em
                           bloco concluído (já foi) e em bloco em andamento (já
                           começou) — antes aparecia nos dois, e o app convidava

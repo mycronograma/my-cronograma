@@ -72,7 +72,7 @@ const resolveRouteTitle = (pathname: string) => {
   if (matched) return matched.label;
 
   const [firstSegment] = pathname.split('/').filter(Boolean);
-  if (!firstSegment) return 'Nexora';
+  if (!firstSegment) return 'my cronograma';
   return toTitleCase(decodeURIComponent(firstSegment));
 };
 
@@ -88,12 +88,12 @@ function TopBarMobile({
   const ThemeIcon = theme === 'light' ? Moon : Sun;
 
   return (
-    <AppContainer className="flex h-14 min-w-0 items-center justify-between gap-3 lg:hidden">
+    <AppContainer className="flex h-14 min-w-0 items-center justify-between gap-2 sm:gap-3 lg:hidden">
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-base font-heading font-semibold text-text-primary">{routeTitle}</h1>
+        <h1 className="truncate text-base max-[374px]:text-sm font-heading font-semibold text-text-primary">{routeTitle}</h1>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <motion.button
           ref={notificationButtonRef}
           whileTap={{ scale: 0.94 }}

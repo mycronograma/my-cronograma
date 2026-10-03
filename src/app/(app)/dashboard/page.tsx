@@ -514,24 +514,25 @@ const handleCompleteBlock = (
                   transition={{ delay: 0.2 }}
                   className="relative overflow-hidden rounded-2xl border border-neon-purple/20 bg-gradient-to-br from-neon-purple/10 to-transparent p-5 sm:p-7 backdrop-blur-glass shadow-lg"
                 >
-                  <div className="absolute top-0 right-0 rounded-bl-2xl bg-neon-purple/20 px-3 py-1.5 backdrop-blur-sm border-b border-l border-neon-purple/20">
-                    <span className="text-[10px] font-bold tracking-widest text-neon-purple uppercase flex items-center gap-1.5">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Zap className="w-4 h-4 text-neon-purple flex-shrink-0" />
+                      <span className="text-xs font-bold tracking-widest text-neon-purple uppercase truncate">
+                        {recommendedBlock.isBreak ? 'INTERVALO' : 'SESSÃO RECOMENDADA'}
+                      </span>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-neon-purple/20 px-2.5 py-1 text-[10px] font-bold tracking-widest text-neon-purple uppercase flex items-center gap-1.5 border-b border-l border-neon-purple/20 backdrop-blur-sm">
                       <div className="w-1.5 h-1.5 rounded-full bg-neon-purple animate-pulse-slow" />
-                      Recomendado Agora
+                      Agora
                     </span>
                   </div>
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between">
+
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2 pr-28 sm:pr-0">
-                        <Zap className="w-4 h-4 text-neon-purple flex-shrink-0" />
-                        <span className="text-xs font-bold tracking-widest text-neon-purple uppercase truncate">
-                          {recommendedBlock.isBreak ? 'INTERVALO RECOMENDADO AGORA' : 'SESSÃO RECOMENDADA AGORA'}
-                        </span>
-                      </div>
-                      <h2 className="text-xl font-heading font-bold text-text-primary mb-2 pr-24 sm:pr-0">
+                      <h2 className="text-xl font-heading font-bold text-text-primary mb-2">
                         {getStudyBlockDisplayTitle(recommendedBlock)}
                       </h2>
-                      <p className="text-text-secondary mb-4 line-clamp-2 pr-0 sm:pr-0">
+                      <p className="text-sm text-text-secondary mb-4 line-clamp-2">
                         {recommendedBlock.isBreak
                           ? 'Descanse agora: o intervalo faz o próximo bloco render mais. Ele já está reservado no seu plano.'
                           : 'Reforço de prioridade alta baseado no seu ritmo de estudo recente'}
@@ -553,7 +554,7 @@ const handleCompleteBlock = (
                           </span>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-4">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2">
                         <div className="flex items-center gap-2">
                           <Clock className="w-4 h-4 text-text-muted" />
                           <span className="text-lg font-bold text-text-primary">
@@ -576,7 +577,7 @@ const handleCompleteBlock = (
                         </div>
                       </div>
                     </div>
-                    <div className="ml-0 mt-6 sm:mt-0 sm:ml-6 flex flex-col gap-3 w-full sm:w-auto flex-shrink-0 justify-center">
+                    <div className="flex flex-col gap-3 w-full sm:w-auto flex-shrink-0 sm:self-center">
                       <Button
                         variant="primary"
                         size="lg"
