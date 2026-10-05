@@ -20,7 +20,11 @@ import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { isEnemGoal, upgradeSubjectsToOfficialEnemStructure } from '@/lib/enemCatalog';
 import { generateChronologicalSchedule, getPhaseForDate } from '@/services/roadmapEngine';
 import { resolveScheduleConstraints } from '@/services/scheduleConstraints';
-import { buildSubjectPerformanceProfiles, inferUserLearningLevel } from '@/services/adaptiveStudyIntelligence';
+import {
+  buildSubjectPerformanceProfiles,
+  computeAdaptivePriorityScore,
+  inferUserLearningLevel,
+} from '@/services/adaptiveStudyIntelligence';
 import { useLocalStorage } from '@/hooks';
 import { useBacklogRescheduler } from '@/hooks/useBacklogRescheduler';
 import { analyzeBacklogCapacity, formatMinutesAsHours } from '@/services/backlogCapacity';
@@ -53,6 +57,61 @@ import type {
 import { defaultSettings } from '@/lib/defaultSettings';
 
 const weekDayKeys: WeekdayKey[] = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Smart Suggestion: ranking de matérias para Realocar / Adiantar
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface RankedSubject {
+  subject: Subject;
+  score: number;
+  urgency: 'alta' | 'media' | 'baixa';
+  reason: string;
+}
+
+function rankSubjectsForSuggestion(
+  subjects: Subject[],
+  analytics: AnalyticsStore | undefined,
+  studyPrefs: StudyPreferences,
+  now: Date
+): RankedSubject[] {
+  const profiles = buildSubjectPerformanceProfiles(subjects, analytics, now);
+  const userLevel = inferUserLearningLevel(studyPrefs, subjects, analytics);
+
+  return subjects
+    .map((subject) => {
+      const profile = profiles[subject.id];
+      const score = computeAdaptivePriorityScore({
+        subject,
+        profile,
+        now,
+        examDate: studyPrefs?.examDate || undefined,
+        userLevel,
+      });
+
+      // Monta justificativa legível
+      const reasons: string[] = [];
+      const daysWithout = profile?.daysWithoutStudy;
+      if (typeof daysWithout === 'number' && daysWithout >= 3) {
+        reasons.push(`${daysWithout}d sem estudar`);
+      }
+      const errorRate = profile?.errorRate;
+      if (typeof errorRate === 'number' && errorRate > 0.5) {
+        reasons.push('taxa de erro alta');
+      } else if (typeof errorRate === 'number' && errorRate > 0.35) {
+        reasons.push('taxa de erro moderada');
+      }
+      if (subject.difficulty >= 8) reasons.push('matéria difícil');
+      if (subject.priority >= 8) reasons.push('alta prioridade');
+      if (reasons.length === 0) reasons.push('distribuição equilibrada');
+
+      const urgency: RankedSubject['urgency'] =
+        score >= 2.5 ? 'alta' : score >= 1.5 ? 'media' : 'baixa';
+
+      return { subject, score, urgency, reason: reasons.join(' · ') };
+    })
+    .sort((a, b) => b.score - a.score);
+}
 
 // Fonte única: defaultSettings.dailyHoursByWeekday. Antes o planner tinha o
 // próprio default (17h/semana) divergindo do restante do app (24h/semana), o que
@@ -1055,12 +1114,75 @@ export default function PlannerPage() {
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-2">
                   Matéria
+                  {blockModalMode !== 'novo' && (
+                    <span className="ml-2 text-[10px] font-normal text-neon-purple uppercase tracking-wider">✦ Sugestão IA</span>
+                  )}
                 </label>
                 {activeSubjects.length === 0 ? (
                   <p className="text-sm text-text-muted p-3 rounded-xl bg-surface-panel border border-card-border">
                     Nenhuma matéria ativa. Adicione matérias em Matérias.
                   </p>
+                ) : blockModalMode !== 'novo' ? (
+                  // ── Modo Realocar / Adiantar: ranking inteligente ──
+                  <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                    {rankSubjectsForSuggestion(activeSubjects, analytics, studyPrefs, new Date()).map(
+                      ({ subject: s, urgency, reason }, idx) => (
+                        <button
+                          key={s.id}
+                          onClick={() => setNewBlockSubjectId(s.id)}
+                          className={cn(
+                            'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all border text-left',
+                            newBlockSubjectId === s.id
+                              ? 'shadow-sm'
+                              : 'bg-surface-panel border-border-subtle hover:border-card-border'
+                          )}
+                          style={newBlockSubjectId === s.id ? {
+                            backgroundColor: `${s.color}18`,
+                            borderColor: `${s.color}55`,
+                          } : {}}
+                        >
+                          {/* Posição no ranking */}
+                          <span
+                            className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+                            style={{
+                              backgroundColor: idx === 0 ? '#a855f720' : '#ffffff10',
+                              color: idx === 0 ? '#a855f7' : 'var(--text-muted)',
+                            }}
+                          >
+                            {idx + 1}
+                          </span>
+
+                          {/* Cor + nome */}
+                          <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                          <div className="flex-1 min-w-0">
+                            <p
+                              className="font-semibold truncate leading-tight"
+                              style={{ color: newBlockSubjectId === s.id ? s.color : undefined }}
+                            >
+                              {s.name}
+                            </p>
+                            <p className="text-[10px] text-text-muted truncate mt-0.5">{reason}</p>
+                          </div>
+
+                          {/* Badge de urgência */}
+                          <span
+                            className={cn(
+                              'shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide',
+                              urgency === 'alta'
+                                ? 'bg-red-500/15 text-red-400'
+                                : urgency === 'media'
+                                ? 'bg-amber-500/15 text-amber-400'
+                                : 'bg-emerald-500/15 text-emerald-400'
+                            )}
+                          >
+                            {urgency === 'alta' ? '🔴 urgente' : urgency === 'media' ? '🟡 recomend.' : '🟢 ok'}
+                          </span>
+                        </button>
+                      )
+                    )}
+                  </div>
                 ) : (
+                  // ── Modo Novo: lista simples como antes ──
                   <div className="flex flex-wrap gap-2">
                     {activeSubjects.map((s) => (
                       <button
