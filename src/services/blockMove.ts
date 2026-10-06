@@ -19,7 +19,7 @@ import type { StudyBlock, Subject } from '@/types';
  * guardando a data original em `originalDate`.
  */
 
-export type MoveMode = 'realocar' | 'adiantar';
+export type MoveMode = 'puxar';
 
 export interface MovePlan {
   ok: boolean;
@@ -38,10 +38,10 @@ export interface MovePlan {
 
 const BREAK_FALLBACK = 10;
 
-const isMovable = (block: StudyBlock): boolean =>
+export const isMovable = (block: StudyBlock): boolean =>
   !block.isBreak && block.status !== 'completed' && block.status !== 'skipped';
 
-const dayKeyOf = (block: StudyBlock): string =>
+export const dayKeyOf = (block: StudyBlock): string =>
   toLocalDateKey(parseBlockDate(block.date) ?? new Date(block.date));
 
 /** Encaixa o bloco no dia sem colidir, sempre com intervalo entre blocos. */
@@ -75,65 +75,35 @@ function minutesToTime(total: number): string {
   return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
 }
 
-/** Escolhe qual bloco da matéria será movido. */
-function pickBlock(
-  blocks: StudyBlock[],
-  subjectId: string,
-  mode: MoveMode,
-  targetKey: string
-): StudyBlock | null {
-  const candidates = blocks
-    .filter((block) => block.subjectId === subjectId && isMovable(block))
-    .map((block) => ({ block, key: dayKeyOf(block) }))
-    .filter(({ key }) => (mode === 'adiantar' ? key > targetKey : key !== targetKey))
-    .sort((a, b) => {
-      if (mode === 'realocar') {
-        // Para realocar, a prioridade número 1 são os atrasados (passado)
-        // Então simplesmente ordenamos do mais antigo para o mais novo
-        if (a.key !== b.key) return a.key < b.key ? -1 : 1;
-        return a.block.startTime.localeCompare(b.block.startTime);
-      } else {
-        // adiantar (já filtrado para key > targetKey)
-        // pega o mais próximo (mais antigo do futuro)
-        if (a.key !== b.key) return a.key < b.key ? -1 : 1;
-        return a.block.startTime.localeCompare(b.block.startTime);
-      }
-    });
-
-  return candidates[0]?.block ?? null;
-}
-
 export function planBlockMove(params: {
   blocks: StudyBlock[];
   subjects: Subject[];
-  subjectId: string;
+  blockId: string;
   /** Dia de destino. */
   targetDate: Date;
-  mode: MoveMode;
   /** Horário preferido no dia de destino (HH:MM). */
   preferredStart?: string;
   breakMinutes?: number;
 }): MovePlan {
-  const { blocks, subjects, subjectId, targetDate, mode } = params;
-  const subject = subjects.find((item) => item.id === subjectId);
+  const { blocks, subjects, blockId, targetDate } = params;
+
+  const chosen = blocks.find((b) => b.id === blockId);
+  if (!chosen || !isMovable(chosen)) {
+    return { ok: false, reason: 'Bloco inválido ou não pode ser movido.' };
+  }
+
+  const subject = subjects.find((item) => item.id === chosen.subjectId);
   if (!subject) {
-    return { ok: false, reason: 'Escolha uma matéria.' };
+    return { ok: false, reason: 'Matéria não encontrada.' };
   }
 
   const targetKey = toLocalDateKey(targetDate);
-  const chosen = pickBlock(blocks, subjectId, mode, targetKey);
+  const fromKey = dayKeyOf(chosen);
 
-  if (!chosen) {
-    return {
-      ok: false,
-      reason:
-        mode === 'adiantar'
-          ? `${subject.name} não tem bloco em nenhum dia depois de ${targetKey} para adiantar.`
-          : `${subject.name} não tem bloco fora de ${targetKey} para realocar.`,
-    };
+  if (fromKey === targetKey) {
+    return { ok: false, reason: 'O bloco já está neste dia.' };
   }
 
-  const fromKey = dayKeyOf(chosen);
   const breakMinutes = params.breakMinutes ?? BREAK_FALLBACK;
   const preferred = params.preferredStart ?? chosen.startTime;
 

@@ -30,7 +30,7 @@ import {
 import { useLocalStorage } from '@/hooks';
 import { useBacklogRescheduler } from '@/hooks/useBacklogRescheduler';
 import { analyzeBacklogCapacity, formatMinutesAsHours } from '@/services/backlogCapacity';
-import { planBlockMove } from '@/services/blockMove';
+import { planBlockMove, isMovable, dayKeyOf } from '@/services/blockMove';
 import { findFreeSlot } from '@/services/freeSlot';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import Button from '@/components/ui/Button';
@@ -504,9 +504,9 @@ export default function PlannerPage() {
     date: null,
   });
   const [newBlockSubjectId, setNewBlockSubjectId] = useState('');
-  // #13: o modal passou a oferecer dois fluxos além de "novo bloco" — realocar
-  // (move o bloco que já existe) e adiantar (puxa o bloco de um dia futuro).
-  const [blockModalMode, setBlockModalMode] = useState<'novo' | 'realocar' | 'adiantar'>('novo');
+  // #13: o modal passou a oferecer dois fluxos: "novo bloco" e "puxar"
+  const [blockModalMode, setBlockModalMode] = useState<'novo' | 'puxar'>('novo');
+  const [selectedBlockIdToMove, setSelectedBlockIdToMove] = useState<string | null>(null);
   const [blockMovePreview, setBlockMovePreview] = useState<string | null>(null);
   const [newBlockType, setNewBlockType] = useState<StudyBlock['type']>('AULA');
   // Duração e intervalo vêm da predefinição (wizard/Configurações): o modal não
@@ -918,10 +918,24 @@ export default function PlannerPage() {
   const handleOpenAddBlock = (date: Date) => {
     setAddBlockModal({ open: true, date });
     setNewBlockSubjectId(activeSubjects[0]?.id || '');
+    setSelectedBlockIdToMove(null);
     setNewBlockType('AULA');
     setBlockModalMode('novo');
     setBlockMovePreview(null);
   };
+
+  const movableBlocks = useMemo(() => {
+    if (blockModalMode !== 'puxar' || !addBlockModal.date) return [];
+    const targetKey = toLocalDateKey(addBlockModal.date);
+    return blocks
+      .filter((b) => isMovable(b) && dayKeyOf(b) !== targetKey)
+      .sort((a, b) => {
+        const aKey = dayKeyOf(a);
+        const bKey = dayKeyOf(b);
+        if (aKey !== bKey) return aKey < bKey ? -1 : 1;
+        return a.startTime.localeCompare(b.startTime);
+      });
+  }, [blocks, addBlockModal.date, blockModalMode]);
 
   /**
    * #13: prévia do impacto — qual bloco vai sair de onde e para onde, antes de
@@ -929,14 +943,13 @@ export default function PlannerPage() {
    */
   const movePreviewText = useMemo(() => {
     if (blockModalMode === 'novo') return null;
-    if (!addBlockModal.date || !newBlockSubjectId) return null;
+    if (!addBlockModal.date || !selectedBlockIdToMove) return null;
 
     const plan = planBlockMove({
       blocks,
       subjects: activeSubjects,
-      subjectId: newBlockSubjectId,
+      blockId: selectedBlockIdToMove,
       targetDate: addBlockModal.date,
-      mode: blockModalMode === 'adiantar' ? 'adiantar' : 'realocar',
       preferredStart: newBlockStart,
       breakMinutes: userSettings?.breakMinutes ?? 10,
     });
@@ -947,7 +960,7 @@ export default function PlannerPage() {
       month: '2-digit',
     });
     return `sai de ${origem} → ${plan.placedStart} · bloco movido, não duplicado`;
-  }, [blockModalMode, addBlockModal.date, newBlockSubjectId, blocks, activeSubjects, newBlockStart, userSettings?.breakMinutes]);
+  }, [blockModalMode, addBlockModal.date, selectedBlockIdToMove, blocks, activeSubjects, newBlockStart, userSettings?.breakMinutes]);
 
   const rebuildDayWithBreaks = (currentBlocks: StudyBlock[], date: Date, breakLen: number): StudyBlock[] => {
     const dayKey = toLocalDateKey(date);
@@ -988,27 +1001,26 @@ export default function PlannerPage() {
   /** #13: realoca/adianta um bloco existente (nunca cria um novo). */
   const handleSaveBlockMove = () => {
     const date = addBlockModal.date;
-    if (!date || !newBlockSubjectId) return;
+    if (!date || !selectedBlockIdToMove) return;
 
     const plan = planBlockMove({
       blocks,
       subjects: activeSubjects,
-      subjectId: newBlockSubjectId,
+      blockId: selectedBlockIdToMove,
       targetDate: date,
-      mode: blockModalMode === 'adiantar' ? 'adiantar' : 'realocar',
       preferredStart: newBlockStart,
       breakMinutes: userSettings?.breakMinutes ?? 10,
     });
 
     if (!plan.ok || !plan.blocks) {
-      setPlannerNotice(`⚠️ ${plan.reason ?? 'Não foi possível mover o bloco.'}`);
+      setPlannerNotice(`⚠️ ${plan.reason ?? 'Não foi possível puxar o bloco.'}`);
       return;
     }
 
     const planBlocks = plan.blocks as StudyBlock[];
     setBlocks(() => rebuildDayWithBreaks(planBlocks, date, userSettings?.breakMinutes ?? 10));
     setPlannerNotice(
-      `✅ ${plan.subjectName} ${blockModalMode === 'adiantar' ? 'adiantado' : 'realocado'} para ${plan.toDateKey} às ${plan.placedStart}.`
+      `✅ Bloco de ${plan.subjectName} puxado para ${plan.toDateKey} às ${plan.placedStart}.`
     );
     setBlockMovePreview(null);
     setAddBlockModal({ open: false, date: null });
@@ -1111,11 +1123,7 @@ export default function PlannerPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-text-primary">
-                    {blockModalMode === 'novo'
-                      ? 'Novo Bloco de Estudo'
-                      : blockModalMode === 'adiantar'
-                        ? 'Adiantar matéria'
-                        : 'Realocar matéria'}
+                    {blockModalMode === 'novo' ? 'Novo Bloco de Estudo' : 'Puxar Bloco Existente'}
                   </h3>
                   <p className="text-xs text-text-muted">
                     {addBlockModal.date?.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
@@ -1133,12 +1141,11 @@ export default function PlannerPage() {
             </div>
 
             {/* #13: três formas de mexer no dia */}
-            <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl border border-card-border bg-row-soft p-1">
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-card-border bg-row-soft p-1">
               {(
                 [
-                  { id: 'novo', label: 'Novo' },
-                  { id: 'realocar', label: 'Realocar' },
-                  { id: 'adiantar', label: 'Adiantar' },
+                  { id: 'novo', label: 'Criar Novo' },
+                  { id: 'puxar', label: 'Puxar Existente' },
                 ] as const
               ).map((option) => (
                 <button
@@ -1160,84 +1167,64 @@ export default function PlannerPage() {
               ))}
             </div>
 
-            {blockModalMode !== 'novo' && (
+            {blockModalMode === 'puxar' && (
               <p className="mb-4 rounded-xl border border-warning bg-warning-soft p-3 text-xs text-warning-strong">
-                {blockModalMode === 'adiantar'
-                  ? 'Puxa para este dia um bloco que está em um dia seguinte. O bloco original muda de lugar — não é criada uma segunda matéria.'
-                  : 'Move para este dia um bloco que já existe em outro dia. Nada é duplicado.'}
+                Move um bloco atrasado ou futuro para este dia. O bloco original muda de lugar — nada é duplicado.
               </p>
             )}
 
             <div className="space-y-4">
-              {/* Subject */}
+              {/* Subject ou Block Selection */}
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-2">
-                  Matéria
-                  {blockModalMode !== 'novo' && (
-                    <span className="ml-2 text-[10px] font-normal text-neon-purple uppercase tracking-wider">✦ Sugestão IA</span>
-                  )}
+                  {blockModalMode === 'novo' ? 'Matéria' : 'Escolha o bloco a puxar'}
                 </label>
                 {activeSubjects.length === 0 ? (
                   <p className="text-sm text-text-muted p-3 rounded-xl bg-surface-panel border border-card-border">
                     Nenhuma matéria ativa. Adicione matérias em Matérias.
                   </p>
-                ) : blockModalMode !== 'novo' ? (
-                  // ── Modo Realocar / Adiantar: ranking inteligente ──
+                ) : blockModalMode === 'puxar' ? (
                   <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                    {rankSubjectsForSuggestion(activeSubjects, analytics, studyPrefs, new Date()).map(
-                      ({ subject: s, urgency, reason }, idx) => (
-                        <button
-                          key={s.id}
-                          onClick={() => setNewBlockSubjectId(s.id)}
-                          className={cn(
-                            'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all border text-left',
-                            newBlockSubjectId === s.id
-                              ? 'shadow-sm'
-                              : 'bg-surface-panel border-border-subtle hover:border-card-border'
-                          )}
-                          style={newBlockSubjectId === s.id ? {
-                            backgroundColor: `${s.color}18`,
-                            borderColor: `${s.color}55`,
-                          } : {}}
-                        >
-                          {/* Posição no ranking */}
-                          <span
-                            className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
-                            style={{
-                              backgroundColor: idx === 0 ? '#a855f720' : '#ffffff10',
-                              color: idx === 0 ? '#a855f7' : 'var(--text-muted)',
-                            }}
-                          >
-                            {idx + 1}
-                          </span>
+                    {movableBlocks.length === 0 ? (
+                      <p className="text-sm text-text-muted p-3 rounded-xl bg-surface-panel border border-card-border">
+                        Nenhum bloco disponível para puxar.
+                      </p>
+                    ) : (
+                      movableBlocks.map((b) => {
+                        const s = activeSubjects.find((sub) => sub.id === b.subjectId);
+                        if (!s) return null;
+                        const bKey = dayKeyOf(b);
+                        const targetKey = toLocalDateKey(addBlockModal.date!);
+                        const isPast = bKey < targetKey;
+                        const dateStr = parseBlockDate(b.date).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
 
-                          {/* Cor + nome */}
-                          <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                          <div className="flex-1 min-w-0">
-                            <p
-                              className="font-semibold truncate leading-tight"
-                              style={{ color: newBlockSubjectId === s.id ? s.color : undefined }}
-                            >
-                              {s.name}
-                            </p>
-                            <p className="text-[10px] text-text-muted truncate mt-0.5">{reason}</p>
-                          </div>
-
-                          {/* Badge de urgência */}
-                          <span
+                        return (
+                          <button
+                            key={b.id}
+                            onClick={() => setSelectedBlockIdToMove(b.id)}
                             className={cn(
-                              'shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide',
-                              urgency === 'alta'
-                                ? 'bg-red-500/15 text-red-400'
-                                : urgency === 'media'
-                                ? 'bg-amber-500/15 text-amber-400'
-                                : 'bg-emerald-500/15 text-emerald-400'
+                              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all border text-left',
+                              selectedBlockIdToMove === b.id
+                                ? 'shadow-sm'
+                                : 'bg-surface-panel border-border-subtle hover:border-card-border'
                             )}
+                            style={selectedBlockIdToMove === b.id ? {
+                              backgroundColor: `${s.color}18`,
+                              borderColor: `${s.color}55`,
+                            } : {}}
                           >
-                            {urgency === 'alta' ? '🔴 urgente' : urgency === 'media' ? '🟡 recomend.' : '🟢 ok'}
-                          </span>
-                        </button>
-                      )
+                            <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold truncate leading-tight" style={{ color: selectedBlockIdToMove === b.id ? s.color : undefined }}>
+                                {s.name} - <span className="opacity-75 font-normal">{getStudyBlockTypeLabel(b.type)}</span>
+                              </p>
+                              <p className="text-[10px] text-text-muted truncate mt-0.5">
+                                {isPast ? '🔴 Atrasado' : '🔵 Agendado'} de {dateStr}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })
                     )}
                   </div>
                 ) : (
@@ -1267,34 +1254,36 @@ export default function PlannerPage() {
                 )}
               </div>
 
-              {/* Type */}
-              <div>
-                <label className="block text-sm font-semibold text-text-primary mb-2">
-                  Tipo de Sessão
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {([
-                    { value: 'AULA', label: 'Aula' },
-                    { value: 'EXERCICIOS', label: 'Exercícios' },
-                    { value: 'REVISAO', label: 'Revisão' },
-                    { value: 'SIMULADO_AREA', label: 'Simulado' },
-                    { value: 'ANALISE', label: 'Análise' },
-                  ] as const).map(({ value, label }) => (
-                    <button
-                      key={value}
-                      onClick={() => setNewBlockType(value)}
-                      className={cn(
-                        'px-3 py-1.5 rounded-xl text-sm font-medium transition-all border',
-                        newBlockType === value
-                          ? 'bg-neon-blue/15 text-neon-blue border-neon-blue/40'
-                          : 'bg-surface-panel border-border-subtle text-text-secondary hover:border-card-border'
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
+              {/* Type (Só aparece no modo Novo) */}
+              {blockModalMode === 'novo' && (
+                <div>
+                  <label className="block text-sm font-semibold text-text-primary mb-2">
+                    Tipo de Sessão
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { value: 'AULA', label: 'Aula' },
+                      { value: 'EXERCICIOS', label: 'Exercícios' },
+                      { value: 'REVISAO', label: 'Revisão' },
+                      { value: 'SIMULADO_AREA', label: 'Simulado' },
+                      { value: 'ANALISE', label: 'Análise' },
+                    ] as const).map(({ value, label }) => (
+                      <button
+                        key={value}
+                        onClick={() => setNewBlockType(value)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-xl text-sm font-medium transition-all border',
+                          newBlockType === value
+                            ? 'bg-neon-blue/15 text-neon-blue border-neon-blue/40'
+                            : 'bg-surface-panel border-border-subtle text-text-secondary hover:border-card-border'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* #19: nada de escolher hora nem duração — só mostramos onde vai
                   entrar, com os números que o usuário já definiu na predefinição. */}
@@ -1326,7 +1315,7 @@ export default function PlannerPage() {
               </button>
               <button
                 onClick={blockModalMode === 'novo' ? handleSaveNewBlock : handleSaveBlockMove}
-                disabled={!newBlockSubjectId}
+                disabled={blockModalMode === 'novo' ? !newBlockSubjectId : !selectedBlockIdToMove}
                 className="flex-1 h-11 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
               >
                 {blockModalMode === 'novo' ? (
@@ -1334,10 +1323,8 @@ export default function PlannerPage() {
                     <Plus className="h-4 w-4" />
                     Adicionar Bloco
                   </>
-                ) : blockModalMode === 'adiantar' ? (
-                  'Adiantar para este dia'
                 ) : (
-                  'Mover para este dia'
+                  'Puxar para este dia'
                 )}
               </button>
             </div>
