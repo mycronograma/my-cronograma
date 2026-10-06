@@ -693,7 +693,7 @@ export default function PlannerPage() {
     return { blocos: estudados.length, minutos };
   }, [blocosPreservados]);
 
-  const gerarCronograma = useCallback(async () => {
+  const gerarCronograma = useCallback(async (overridePrefs?: StudyPreferences) => {
     const diffDays = Math.ceil(((plannerEndDate ?? new Date(displayedWeekStart.getTime() + 6*86400000)).getTime() - displayedWeekStart.getTime()) / 86400000) + 1;
     if (diffDays > 730) {
       setPlannerNotice('Período muito longo (máximo 2 anos / 730 dias).');
@@ -702,13 +702,11 @@ export default function PlannerPage() {
     setIsGenerating(true);
     setPlannerNotice(null);
 
+    const activePrefs = overridePrefs || studyPrefs;
+
     try {
       const weekStart = displayedWeekStart;
       const weekEnd = plannerEndDate ?? (() => { const d = new Date(displayedWeekStart); d.setDate(d.getDate() + 6); return d; })();
-      // As mesmas restrições que o Mapa de Carga exibe e que a API
-      // /api/planner/generate aplica. Antes o botão gerava sem restDays,
-      // dailyLimitByDate, janelas de disponibilidade e regras de simulado:
-      // para 3h seg-sex + 2h sab o botão produzia 22,8h/semana contra 17h da API.
       const constraints = resolveScheduleConstraints({
         userSettings: {
           ...userSettings,
@@ -717,7 +715,7 @@ export default function PlannerPage() {
           dailyAvailabilityByWeekday:
             userSettings.dailyAvailabilityByWeekday ?? DEFAULT_DAILY_AVAILABILITY_BY_WEEKDAY,
         },
-        studyPrefs,
+        studyPrefs: activePrefs,
         startDate: weekStart,
         endDate: weekEnd,
         dailyLimitsOverride: dailyLimits,
@@ -744,7 +742,7 @@ export default function PlannerPage() {
 
       const scheduleComJanelas = await generateChronologicalSchedule({
         subjects,
-        preferences: studyPrefs,
+        preferences: activePrefs,
         startDate: weekStart,
         endDate: weekEnd,
         preferredStart: constraints.preferredStart,
@@ -858,7 +856,7 @@ export default function PlannerPage() {
     ]);
   };
 
-  const handleGenerateSchedule = useCallback(async () => {
+  const handleGenerateSchedule = useCallback(async (overridePrefs?: StudyPreferences) => {
     if (subjects.length === 0) {
       setPlannerNotice('Adicione pelo menos uma matéria para gerar um cronograma.');
       return;
@@ -877,7 +875,7 @@ export default function PlannerPage() {
       });
       return;
     }
-    await gerarCronograma();
+    await gerarCronograma(overridePrefs);
   }, [
     subjects,
     plannerEndDate,
@@ -1620,10 +1618,11 @@ export default function PlannerPage() {
           subjects={subjects}
           studyPrefs={studyPrefs}
           userSettings={userSettings}
-          onSave={(prefs) => {
+          onSave={async (prefs) => {
             setStudyPrefs(prefs);
             setShowFixedScheduleModal(false);
-            setPlannerNotice('✅ Estratégia do cronograma salva! Gere um novo cronograma para aplicar.');
+            setPlannerNotice('✅ Estratégia salva! Gerando cronograma...');
+            await handleGenerateSchedule(prefs);
           }}
         />
 
@@ -1654,7 +1653,6 @@ export default function PlannerPage() {
                     Recalcular atrasados{pendingCount > 0 ? ` (${pendingCount})` : ''}
                   </button>
                   <button onClick={handleResetPlanner} className="h-9 px-3 sm:px-4 rounded-xl bg-card-bg border border-card-border text-text-secondary hover:text-text-primary hover:border-card-border text-xs sm:text-sm font-medium transition-colors whitespace-nowrap">Limpar tudo</button>
-                  <button onClick={handleGenerateSchedule} disabled={isGenerating} className="h-9 px-3 sm:px-5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap max-[479px]:flex-1">{isGenerating ? 'Gerando...' : 'Gerar com IA'}</button>
                 </div>
               </div>
 
