@@ -1254,36 +1254,6 @@ export default function PlannerPage() {
                 )}
               </div>
 
-              {/* Type (Só aparece no modo Novo) */}
-              {blockModalMode === 'novo' && (
-                <div>
-                  <label className="block text-sm font-semibold text-text-primary mb-2">
-                    Tipo de Sessão
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {([
-                      { value: 'AULA', label: 'Aula' },
-                      { value: 'EXERCICIOS', label: 'Exercícios' },
-                      { value: 'REVISAO', label: 'Revisão' },
-                      { value: 'SIMULADO_AREA', label: 'Simulado' },
-                      { value: 'ANALISE', label: 'Análise' },
-                    ] as const).map(({ value, label }) => (
-                      <button
-                        key={value}
-                        onClick={() => setNewBlockType(value)}
-                        className={cn(
-                          'px-3 py-1.5 rounded-xl text-sm font-medium transition-all border',
-                          newBlockType === value
-                            ? 'bg-neon-blue/15 text-neon-blue border-neon-blue/40'
-                            : 'bg-surface-panel border-border-subtle text-text-secondary hover:border-card-border'
-                        )}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* #19: nada de escolher hora nem duração — só mostramos onde vai
                   entrar, com os números que o usuário já definiu na predefinição. */}
