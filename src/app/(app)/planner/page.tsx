@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2, AlertTriangle, GripVertical } from 'lucide-react';
+import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2, AlertTriangle, GripVertical, Trash2 } from 'lucide-react';
 import { repairCompletedBlockTimesOnce, repairOverlappingDaysOnce } from '@/lib/blockTimes';
 import {
   cn,
@@ -46,6 +46,8 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { FixedScheduleModal } from './FixedScheduleModal';
+
 import type {
   AnalyticsStore,
   StudyBlock,
@@ -170,10 +172,12 @@ function SortableStudyBlock({
   block,
   subject,
   displayName,
+  onDelete,
 }: {
   block: StudyBlock;
   subject: Subject | undefined;
   displayName: string;
+  onDelete?: (blockId: string, date: Date) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.id,
@@ -204,9 +208,25 @@ function SortableStudyBlock({
           : 'Arraste para reordenar as matérias do dia'
       }
     >
-      {/* Alça visível só no hover: quem nunca vai arrastar não vê ruído. */}
-      <div className="absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-60 transition-opacity">
-        <GripVertical className="h-3 w-3 text-text-muted" />
+      {/* Ações visíveis só no hover: quem nunca vai mexer não vê ruído. */}
+      <div className="absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+        {onDelete && !isPreservado(block) && (
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(block.id, (parseBlockDate(block.date) ?? block.date) as Date);
+            }}
+            className="p-1 rounded hover:bg-black/5 text-text-muted hover:text-red-500 transition-colors"
+            title="Excluir bloco"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+        <div className="p-1 text-text-muted opacity-60">
+          <GripVertical className="h-3 w-3" />
+        </div>
       </div>
 
       {/* Top accent line */}
@@ -330,7 +350,7 @@ export default function PlannerPage() {
   useEffect(() => setMounted(true), []);
 
   const [subjects, setSubjects] = useLocalStorage<Subject[]>('nexora_subjects', []);
-  const [studyPrefs] = useLocalStorage<StudyPreferences>('nexora_study_prefs', {
+  const [studyPrefs, setStudyPrefs] = useLocalStorage<StudyPreferences>('nexora_study_prefs', {
     hoursPerDay: 2,
     daysOfWeek: [1, 2, 3, 4, 5],
     mode: 'random',
@@ -468,6 +488,7 @@ export default function PlannerPage() {
   );
 
   const [showMapFilter, setShowMapFilter] = useState(false);
+  const [showFixedScheduleModal, setShowFixedScheduleModal] = useState(false);
   const [mapFilterSubject, setMapFilterSubject] = useState<string | null>(null);
   const [mapFilterPhase, setMapFilterPhase] = useState<string | null>(null);
   const [mapFilterStatus, setMapFilterStatus] = useState<string | null>(null);
@@ -1020,6 +1041,21 @@ export default function PlannerPage() {
     setPlannerNotice(`✅ Bloco de ${subject?.name || 'estudo'} adicionado com intervalo automático!`);
   };
 
+  const handleDeleteBlock = useCallback((blockId: string, date: Date) => {
+    setBlocks((prev) => {
+      const dayKey = toLocalDateKey(date);
+      const isSameDay = (b: StudyBlock) => toLocalDateKey(parseBlockDate(b.date) ?? b.date) === dayKey;
+      
+      const dayStudy = prev
+        .filter((b) => isSameDay(b) && !b.isBreak && b.id !== blockId)
+        .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+
+      const breakLen = userSettings?.breakMinutes ?? 10;
+      return rebuildDayWithBreaks([...prev.filter((b) => !isSameDay(b)), ...dayStudy], date, breakLen);
+    });
+    setPlannerNotice('🗑️ Bloco excluído e dia reorganizado.');
+  }, [setBlocks, userSettings?.breakMinutes]);
+
   const getBlockStatusInfo = (block: StudyBlock) => {
     if (block.pedagogicalStepIndex !== undefined && block.pedagogicalStepTotal) {
       return { icon: BookOpen, label: `Fase ${block.pedagogicalStepIndex}/${block.pedagogicalStepTotal}`, variant: 'scheduled' as const };
@@ -1542,6 +1578,13 @@ export default function PlannerPage() {
                 </div>
               )}
               <button
+                onClick={() => setShowFixedScheduleModal(true)}
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-surface-panel hover:bg-card-border border border-card-border text-text-secondary hover:text-text-primary transition-all text-xs sm:text-sm font-medium"
+              >
+                <Layers className="h-4 w-4" />
+                <span className="hidden sm:inline">Estratégia</span>
+              </button>
+              <button
                 onClick={() => setShowMapFilter(true)}
                 className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-surface-panel hover:bg-card-border border border-card-border text-text-secondary hover:text-text-primary transition-all text-xs sm:text-sm font-medium"
               >
@@ -1570,6 +1613,19 @@ export default function PlannerPage() {
             <span>{plannerNotice}</span>
           </motion.div>
         )}
+
+        <FixedScheduleModal
+          open={showFixedScheduleModal}
+          onClose={() => setShowFixedScheduleModal(false)}
+          subjects={subjects}
+          studyPrefs={studyPrefs}
+          userSettings={userSettings}
+          onSave={(prefs) => {
+            setStudyPrefs(prefs);
+            setShowFixedScheduleModal(false);
+            setPlannerNotice('✅ Estratégia do cronograma salva! Gere um novo cronograma para aplicar.');
+          }}
+        />
 
         <div className="bg-card-bg rounded-3xl border border-card-border shadow-xl overflow-hidden">
           {/* Header organizado: título + controles */}
@@ -1870,6 +1926,7 @@ export default function PlannerPage() {
                               block={block}
                               subject={subject}
                               displayName={displayName}
+                              onDelete={handleDeleteBlock}
                             />
                           );
                         })}

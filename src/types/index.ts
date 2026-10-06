@@ -101,6 +101,8 @@ export interface StudyPreferences {
   studyContentPreference?: StudyContentPreference;
   intensity?: StudyIntensityLevel;
   dailyAvailabilityByWeekday?: DailyAvailabilityByWeekday;
+  scheduleMode?: 'dynamic' | 'fixed_weekly';
+  weeklyTemplate?: Record<string, string[]>;
 }
 
 // ============================================
