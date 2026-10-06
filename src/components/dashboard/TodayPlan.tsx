@@ -247,13 +247,11 @@ export default function TodayPlan({
 
                     <div className="flex flex-wrap items-center justify-end gap-1.5 max-[479px]:w-full max-[479px]:justify-stretch">
                       {/* "Iniciar" para o que ainda vai ser estudado. Some em
-                          bloco concluído (já foi) e em bloco em andamento (já
-                          começou) — antes aparecia nos dois, e o app convidava
-                          a estudar de novo o que já estava estudado. Pulado
-                          continua podendo iniciar: pular não é descarte. */}
+                          bloco concluído (já foi). "Continuar" para bloco em
+                          andamento. Pulado continua podendo iniciar: pular não 
+                          é descarte. */}
                       {onStartBlock &&
-                        block.status !== 'completed' &&
-                        block.status !== 'in-progress' && (
+                        block.status !== 'completed' && (
                         <Button
                           variant={block.isBreak ? 'secondary' : 'primary'}
                           size="sm"
@@ -264,10 +262,10 @@ export default function TodayPlan({
                           )}
                         >
                           <Play className="w-3.5 h-3.5 mr-1" />
-                          Iniciar
+                          {block.status === 'in-progress' ? 'Continuar' : 'Iniciar'}
                         </Button>
                       )}
-                      {onCompleteBlock && block.status !== 'completed' && !block.isBreak && (
+                      {onCompleteBlock && block.status !== 'completed' && block.status !== 'in-progress' && !block.isBreak && (
                         <Button
                           variant="secondary"
                           size="sm"
