@@ -21,6 +21,7 @@ import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { isEnemGoal, upgradeSubjectsToOfficialEnemStructure } from '@/lib/enemCatalog';
 import { generateChronologicalSchedule, getPhaseForDate } from '@/services/roadmapEngine';
 import { resolveScheduleConstraints } from '@/services/scheduleConstraints';
+import { deriveEndDateFromHours, parseKey } from '@/lib/studyLoad';
 import {
   buildSubjectPerformanceProfiles,
   computeAdaptivePriorityScore,
@@ -706,7 +707,29 @@ export default function PlannerPage() {
 
     try {
       const weekStart = displayedWeekStart;
-      const weekEnd = plannerEndDate ?? (() => { const d = new Date(displayedWeekStart); d.setDate(d.getDate() + 6); return d; })();
+
+      let computedEndDate = plannerEndDate;
+      if (!computedEndDate) {
+        if (activePrefs.examDate) {
+          const d = parseKey(activePrefs.examDate);
+          if (!Number.isNaN(d.getTime())) computedEndDate = d;
+        } else if (userSettings?.examDate) {
+          const d = parseKey(userSettings.examDate);
+          if (!Number.isNaN(d.getTime())) computedEndDate = d;
+        } else {
+          const totalHours = userSettings?.totalHours;
+          if (totalHours) {
+             const startKey = toLocalDateKey(displayedWeekStart);
+             const dailyHours = (userSettings?.dailyHoursByWeekday ?? DEFAULT_DAILY_HOURS_BY_WEEKDAY) as Record<string, number>;
+             const endKey = deriveEndDateFromHours(startKey, totalHours, dailyHours as any);
+             const d = parseKey(endKey);
+             if (!Number.isNaN(d.getTime())) computedEndDate = d;
+          }
+        }
+      }
+
+      const weekEnd = computedEndDate ?? (() => { const d = new Date(displayedWeekStart); d.setDate(d.getDate() + 6); return d; })();
+
       const constraints = resolveScheduleConstraints({
         userSettings: {
           ...userSettings,
@@ -780,6 +803,7 @@ export default function PlannerPage() {
         startDate: toLocalKey(weekStart),
         endDate: toLocalKey(weekEnd),
       });
+      setPlannerEndDate(weekEnd); // Atualiza a UI para refletir a data longa
     } catch (error) {
       console.error('Erro ao gerar cronograma:', error);
       setPlannerNotice('❌ Erro ao gerar cronograma.');
