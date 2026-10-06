@@ -418,61 +418,24 @@ export default function PlannerPage() {
     onClose: () => setRegenConfirm(null),
     ariaLabel: 'Confirmar novo cronograma',
   });
-  // #6d/#6c: blocos não cumpridos são empurrados para o próximo dia com horário
-  // livre e a semana é recalculada. Roda 1x por dia sozinho; o botão abaixo
-  // permite disparar na hora.
-  const { pendingCount, runNow: runBacklogNow } = useBacklogRescheduler({
-    blocks,
-    setBlocks,
-    allowedDays: allowedStudyDays,
-    dailyLimitByDate: {}, // Permite reagendar ultrapassando o limite configurado
-    breakMinutes: userSettings?.breakMinutes,
-    // Dias além do fim do cronograma gerado não têm limite nem blocos: sem esta
-    // carga por dia da semana, o motor os tratava como "capacidade zero" e o
-    // reagendamento ficava impossível justamente quando a pessoa precisa.
-    fallbackDayMinutesByWeekday: fallbackDayMinutesByWeekday,
-  });
-
-  // #21: quanto espaço resta de verdade para reagendar. Quando não cabe, a tela
-  // explica com números em vez de dizer apenas "não havia espaço".
-  const backlogCapacity = useMemo(
-    () =>
-      pendingCount === 0
-        ? null
-        : analyzeBacklogCapacity({
-            blocks,
-            today: new Date(),
-            dailyLimitByDate: {}, // Permite ultrapassar o limite configurado
-            fallbackDayMinutesByWeekday,
-            allowedDays: allowedStudyDays,
-          }),
-    [pendingCount, blocks, dailyLimits, fallbackDayMinutesByWeekday, allowedStudyDays]
-  );
+  // Conta apenas quantos blocos ficaram atrasados (no passado)
+  const pendingCount = useMemo(() => {
+    const todayKey = toLocalDateKey(new Date());
+    return blocks.filter((b) => {
+      if (b.status === 'completed' || b.status === 'skipped') return false;
+      const key = toLocalDateKey(parseBlockDate(b.date));
+      return key < todayKey;
+    }).length;
+  }, [blocks]);
   const [backlogFeedback, setBacklogFeedback] = useState<string | null>(null);
   // Sucesso (verde) ou aviso (âmbar) — antes tudo aparecia com ícone de "ok".
   const [backlogFeedbackTone, setBacklogFeedbackTone] = useState<'ok' | 'erro'>('ok');
 
-  const handleRecalculateBacklog = () => {
-    const result = runBacklogNow();
-    if (result.movedCount === 0) {
-      setBacklogFeedbackTone('erro');
-      if (pendingCount === 0) {
-        setBacklogFeedback('Nenhum bloco atrasado.');
-        setBacklogFeedbackTone('ok');
-      } else if (result.pendingCount > 0) {
-        setBacklogFeedback(
-          `Não foi possível remarcar ${result.pendingCount === 1 ? '1 bloco' : `${result.pendingCount} blocos`}: não há espaço nos próximos dias.`
-        );
-      } else {
-        setBacklogFeedback('Não havia espaço nos próximos dias.');
-      }
-      return;
-    }
+  const handleRecalculateBacklog = async () => {
     setBacklogFeedbackTone('ok');
-    const restante = result.pendingCount > 0 ? ` Ainda restam ${result.pendingCount} sem espaço.` : '';
-    setBacklogFeedback(
-      `${result.movedCount} ${result.movedCount === 1 ? 'bloco remarcado' : 'blocos remarcados'} para os próximos dias.${restante}`
-    );
+    setBacklogFeedback('Recalculando cronograma e empurrando datas...');
+    await gerarCronograma({ forceRecomputeDate: true });
+    setBacklogFeedback('✅ Atrasos absorvidos! O cronograma foi reajustado.');
   };
 
   const [firstCycleAllSubjects, setFirstCycleAllSubjects] = useLocalStorage<boolean>(
@@ -694,7 +657,8 @@ export default function PlannerPage() {
     return { blocos: estudados.length, minutos };
   }, [blocosPreservados]);
 
-  const gerarCronograma = useCallback(async (overridePrefs?: StudyPreferences) => {
+  const gerarCronograma = useCallback(async (options?: { overridePrefs?: StudyPreferences; forceRecomputeDate?: boolean }) => {
+    const overridePrefs = options?.overridePrefs;
     const diffDays = Math.ceil(((plannerEndDate ?? new Date(displayedWeekStart.getTime() + 6*86400000)).getTime() - displayedWeekStart.getTime()) / 86400000) + 1;
     if (diffDays > 730) {
       setPlannerNotice('Período muito longo (máximo 2 anos / 730 dias).');
@@ -708,7 +672,7 @@ export default function PlannerPage() {
     try {
       const weekStart = displayedWeekStart;
 
-      let computedEndDate = plannerEndDate;
+      let computedEndDate = options?.forceRecomputeDate ? null : plannerEndDate;
       if (!computedEndDate) {
         if (activePrefs.examDate) {
           const d = parseKey(activePrefs.examDate);
@@ -719,9 +683,10 @@ export default function PlannerPage() {
         } else {
           const totalHours = userSettings?.totalHours;
           if (totalHours) {
+             const remainingHours = Math.max(0, totalHours - (progressoAtual.minutos / 60));
              const startKey = toLocalDateKey(displayedWeekStart);
              const dailyHours = (userSettings?.dailyHoursByWeekday ?? DEFAULT_DAILY_HOURS_BY_WEEKDAY) as Record<string, number>;
-             const endKey = deriveEndDateFromHours(startKey, totalHours, dailyHours as any);
+             const endKey = deriveEndDateFromHours(startKey, remainingHours, dailyHours as any);
              const d = parseKey(endKey);
              if (!Number.isNaN(d.getTime())) computedEndDate = d;
           }
@@ -899,7 +864,7 @@ export default function PlannerPage() {
       });
       return;
     }
-    await gerarCronograma(overridePrefs);
+    await gerarCronograma({ overridePrefs });
   }, [
     subjects,
     plannerEndDate,
@@ -1653,34 +1618,7 @@ export default function PlannerPage() {
                 </p>
               )}
 
-              {/* #21: quando não há espaço para reagendar, explicar com números
-                  e dizer o que fazer — antes a tela só avisava "não havia
-                  espaço nos próximos dias" e a pessoa ficava sem saída. */}
-              {backlogCapacity && backlogCapacity.missingMinutes > 0 && (
-                <div className="rounded-xl border border-warning bg-warning-soft p-3">
-                  <p className="text-xs font-semibold text-warning-strong flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    Não há espaço para reagendar {backlogCapacity.pendingCount === 1 ? '1 bloco pendente' : `${backlogCapacity.pendingCount} blocos pendentes`}
-                    {backlogCapacity.pendingMinutes > 0 &&
-                      ` (${formatMinutesAsHours(backlogCapacity.pendingMinutes)} de estudo)`}
-                    .
-                  </p>
-                  <p className="mt-1 text-xs text-warning-strong">
-                    {backlogCapacity.noSpace
-                      ? scheduleEndDate
-                        ? `Seus próximos ${backlogCapacity.daysChecked} dias já estão cheios até ${scheduleEndDate.toLocaleDateString('pt-BR')}.`
-                        : `Seus próximos ${backlogCapacity.daysChecked} dias já estão cheios.`
-                      : `Dos ${formatMinutesAsHours(backlogCapacity.pendingMinutes)} pendentes, só cabem ${formatMinutesAsHours(backlogCapacity.usableMinutes)} nos próximos ${backlogCapacity.daysChecked} dias.`}{' '}
-                    Para reagendar você precisa estudar além do que está planejado:{' '}
-                    <strong>
-                      aumente as horas por dia em Ajustes
-                      {backlogCapacity.extraMinutesPerDay > 0 &&
-                        ` (faltam ${formatMinutesAsHours(backlogCapacity.extraMinutesPerDay)} por dia)`}
-                    </strong>{' '}
-                    ou gere o cronograma com uma data final mais distante.
-                  </p>
-                </div>
-              )}
+
 
               {/* Linha 2: Controles de período - layout idêntico à referência */}
               <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-background-light border border-card-border px-3 py-2.5">
