@@ -12,6 +12,7 @@ import {
   parseBlockDate,
   parseLocalDateKey,
   studiedMinutes,
+  plannedMinutes,
   timeToMinutes,
   formatHoursDuration,
   toLocalDateKey,
@@ -1703,12 +1704,29 @@ export default function PlannerPage() {
                 {weekDays.map(({ date, key }) => {
                   const dateKey = toLocalKey(date);
                   const dayBlocks = blocksForMap.filter((block) => block.displayDate === dateKey);
-                  const isToday = date.toDateString() === new Date().toDateString();
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const dayDate = new Date(date);
+                  dayDate.setHours(0, 0, 0, 0);
+                  const isToday = dayDate.getTime() === today.getTime();
+                  const isPast = dayDate < today;
+
+                  // Mini-resumo para dias passados
+                  const pastStudyBlocks = isPast ? dayBlocks.filter((b) => !b.isBreak) : [];
+                  const pastDone = pastStudyBlocks.filter((b) => b.status === 'completed').length;
+                  const pastTotal = pastStudyBlocks.length;
+                  const pastStudiedMins = pastStudyBlocks
+                    .filter((b) => b.status === 'completed')
+                    .reduce((sum, b) => sum + studiedMinutes(b), 0);
+                  const pastStudiedHours = (pastStudiedMins / 60).toFixed(1);
+
                   return (
                     <div key={key} className={cn(
-                      "flex flex-col rounded-2xl border p-2 gap-1 min-w-0 transition-colors",
+                      "flex flex-col rounded-2xl border p-2 gap-1 min-w-0 transition-all duration-300",
                       isToday
                         ? "bg-neon-purple/5 border-neon-purple/25"
+                        : isPast
+                        ? "bg-white/[0.015] border-white/[0.04]"
                         : "bg-transparent border-transparent"
                     )}>
                       {/* Day Header */}
@@ -1718,16 +1736,21 @@ export default function PlannerPage() {
                       )}>
                         <span className={cn(
                           "text-[10px] font-black tracking-widest uppercase",
-                          isToday ? "text-white/80" : "text-text-muted"
+                          isToday ? "text-white/80" : isPast ? "text-text-muted/50" : "text-text-muted"
                         )}>{key}</span>
                         <span className={cn(
                           "text-lg font-extrabold leading-none mt-0.5",
-                          isToday ? "text-white" : "text-text-secondary"
+                          isToday ? "text-white" : isPast ? "text-text-muted/60" : "text-text-secondary"
                         )}>{date.getDate()}</span>
                         <span className={cn(
                           "text-[9px] font-medium",
-                          isToday ? "text-white/70" : "text-text-muted"
+                          isToday ? "text-white/70" : isPast ? "text-text-muted/40" : "text-text-muted"
                         )}>{date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}</span>
+                        {isPast && (
+                          <span className="text-[8px] text-text-muted/40 uppercase tracking-widest mt-0.5 font-medium">
+                            passado
+                          </span>
+                        )}
                       </div>
 
                       {/* Blocks */}
@@ -1735,15 +1758,15 @@ export default function PlannerPage() {
                         items={dayBlocks.filter((b) => !b.isBreak && !isPreservado(b)).map((b) => b.id)}
                         strategy={verticalListSortingStrategy}
                       >
-                      <div className="space-y-1.5 min-h-[80px]">
+                      <div className={cn("space-y-1.5 min-h-[80px]", isPast && "opacity-70")}>
                         {dayBlocks.map((block) => {
                           const subject = activeSubjects.find((s) => s.id === block.subjectId);
                           const displayName = subject?.name || block.subject?.name || block.type || 'Bloco';
                           const isBreak = block.isBreak;
                           const subjectColor = subject?.color || '#6366F1';
+                          const isMissed = isPast && !isBreak && (block.status === 'scheduled' || block.status === 'rescheduled');
 
                           if (isBreak) {
-                            // Breaks: subtle separator, much less visual weight
                             return (
                               <div key={block.id} className="flex items-center gap-1.5 px-1 py-0.5 my-0.5">
                                 <div className="flex-1 h-px bg-border-subtle" />
@@ -1755,39 +1778,86 @@ export default function PlannerPage() {
                             );
                           }
 
-                          // Study blocks: premium card with color integration
-                          if (isPreservado(block)) {
-                            // Já estudado / pulado / em andamento: mesmo visual,
-                            // mas sem arrastar — progresso não se reordena.
+                          // Bloco não feito em dia passado
+                          if (isMissed) {
                             return (
                               <div
                                 key={block.id}
-                                className="relative rounded-xl overflow-hidden cursor-default group transition-shadow duration-200 hover:shadow-md"
+                                className="relative rounded-xl overflow-hidden cursor-default opacity-50"
                                 style={{
-                                  background: `linear-gradient(135deg, ${subjectColor}18 0%, ${subjectColor}08 100%)`,
+                                  background: 'rgba(255,255,255,0.02)',
                                   borderWidth: '1px',
                                   borderStyle: 'solid',
-                                  borderColor: `${subjectColor}35`,
+                                  borderColor: 'rgba(255,255,255,0.07)',
                                 }}
-                                title="Este bloco já foi estudado e fica onde está."
+                                title="Bloco não realizado neste dia."
+                              >
+                                <div className="h-[2px] w-full" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }} />
+                                <div className="p-2 pt-1.5">
+                                  <div className="flex items-start justify-between gap-1">
+                                    <p
+                                      className="font-bold truncate text-[11px] leading-snug text-text-muted line-through"
+                                      title={displayName}
+                                    >
+                                      {displayName}
+                                    </p>
+                                    <span className="shrink-0 text-[8px] font-bold px-1 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20 whitespace-nowrap">
+                                      Não feito
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-text-muted/50 font-medium">{block.startTime}</span>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // Bloco concluído em dia passado ou preservado
+                          if (isPreservado(block)) {
+                            const isDone = block.status === 'completed';
+                            const studied = isDone ? studiedMinutes(block) : 0;
+                            const planned = plannedMinutes(block);
+                            return (
+                              <div
+                                key={block.id}
+                                className="relative rounded-xl overflow-hidden cursor-default transition-shadow duration-200 hover:shadow-md"
+                                style={{
+                                  background: `linear-gradient(135deg, ${subjectColor}${isDone ? '15' : '10'} 0%, ${subjectColor}06 100%)`,
+                                  borderWidth: '1px',
+                                  borderStyle: 'solid',
+                                  borderColor: `${subjectColor}${isDone ? '30' : '18'}`,
+                                }}
+                                title={isDone ? 'Bloco concluído.' : 'Bloco em andamento ou pulado.'}
                               >
                                 <div className="h-[2px] w-full" style={{ backgroundColor: subjectColor }} />
                                 <div className="p-2 pt-1.5">
-                                  <p
-                                    className="font-bold truncate text-[11px] leading-snug"
-                                    title={displayName}
-                                    style={{ color: subjectColor }}
-                                  >
-                                    {displayName}
-                                  </p>
+                                  <div className="flex items-start justify-between gap-1">
+                                    <p
+                                      className="font-bold truncate text-[11px] leading-snug"
+                                      title={displayName}
+                                      style={{ color: subjectColor }}
+                                    >
+                                      {displayName}
+                                    </p>
+                                    {isDone && (
+                                      <span className="shrink-0 text-[10px]">✅</span>
+                                    )}
+                                  </div>
                                   <div className="flex items-center justify-between mt-1.5 gap-1">
                                     <span className="text-[10px] text-text-muted font-medium">{block.startTime}</span>
-                                    <span
-                                      className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                                      style={{ color: subjectColor, backgroundColor: `${subjectColor}20` }}
-                                    >
-                                      {block.durationMinutes}m
-                                    </span>
+                                    {isDone && studied !== planned ? (
+                                      <span
+                                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-emerald-400 bg-emerald-400/10"
+                                      >
+                                        {studied}m estudados
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                                        style={{ color: subjectColor, backgroundColor: `${subjectColor}20` }}
+                                      >
+                                        {block.durationMinutes}m
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -1805,16 +1875,37 @@ export default function PlannerPage() {
                         })}
 
                         {dayBlocks.length === 0 && (
-                          <div className="grid place-items-center py-8 text-text-muted text-[11px] border border-dashed border-border-subtle rounded-xl">
-                            <span className="opacity-50">—</span>
+                          <div className={cn(
+                            "grid place-items-center py-8 text-text-muted text-[11px] border border-dashed rounded-xl",
+                            isPast ? "border-white/[0.05] opacity-40" : "border-border-subtle"
+                          )}>
+                            <span className="opacity-50">{isPast ? '—' : '—'}</span>
                           </div>
                         )}
-                        <button
-                          onClick={() => handleOpenAddBlock(date)}
-                          className="w-full h-7 mt-0.5 rounded-xl border border-dashed border-border-subtle bg-transparent hover:bg-surface-panel text-[10px] font-medium text-text-muted hover:text-text-secondary flex items-center justify-center gap-1 transition-colors"
-                        >
-                          <Plus className="h-3 w-3" /> Adicionar
-                        </button>
+
+                        {/* Mini-resumo do dia passado */}
+                        {isPast && pastTotal > 0 && (
+                          <div className="mt-1.5 px-1.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-0.5">
+                            <span className="text-[9px] font-bold text-text-muted/70">
+                              {pastDone}/{pastTotal} concluídos
+                            </span>
+                            {pastStudiedMins > 0 && (
+                              <span className="text-[9px] text-text-muted/50 font-medium">
+                                {pastStudiedHours}h estudadas
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Botão Adicionar — escondido em dias passados */}
+                        {!isPast && (
+                          <button
+                            onClick={() => handleOpenAddBlock(date)}
+                            className="w-full h-7 mt-0.5 rounded-xl border border-dashed border-border-subtle bg-transparent hover:bg-surface-panel text-[10px] font-medium text-text-muted hover:text-text-secondary flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <Plus className="h-3 w-3" /> Adicionar
+                          </button>
+                        )}
                       </div>
                       </SortableContext>
                     </div>
