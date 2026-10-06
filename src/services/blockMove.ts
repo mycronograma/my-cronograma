@@ -86,13 +86,18 @@ function pickBlock(
     .filter((block) => block.subjectId === subjectId && isMovable(block))
     .map((block) => ({ block, key: dayKeyOf(block) }))
     .filter(({ key }) => (mode === 'adiantar' ? key > targetKey : key !== targetKey))
-    // primeiro o mais próximo do alvo (futuro antes do passado), depois pelo horário
     .sort((a, b) => {
-      const aFuture = a.key > targetKey ? 0 : 1;
-      const bFuture = b.key > targetKey ? 0 : 1;
-      if (aFuture !== bFuture) return aFuture - bFuture;
-      if (a.key !== b.key) return a.key < b.key ? -1 : 1;
-      return a.block.startTime.localeCompare(b.block.startTime);
+      if (mode === 'realocar') {
+        // Para realocar, a prioridade número 1 são os atrasados (passado)
+        // Então simplesmente ordenamos do mais antigo para o mais novo
+        if (a.key !== b.key) return a.key < b.key ? -1 : 1;
+        return a.block.startTime.localeCompare(b.block.startTime);
+      } else {
+        // adiantar (já filtrado para key > targetKey)
+        // pega o mais próximo (mais antigo do futuro)
+        if (a.key !== b.key) return a.key < b.key ? -1 : 1;
+        return a.block.startTime.localeCompare(b.block.startTime);
+      }
     });
 
   return candidates[0]?.block ?? null;
