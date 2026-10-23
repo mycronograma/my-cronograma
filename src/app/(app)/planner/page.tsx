@@ -418,15 +418,6 @@ export default function PlannerPage() {
     onClose: () => setRegenConfirm(null),
     ariaLabel: 'Confirmar novo cronograma',
   });
-  // Conta apenas quantos blocos ficaram atrasados (no passado)
-  const pendingCount = useMemo(() => {
-    const todayKey = toLocalDateKey(new Date());
-    return blocks.filter((b) => {
-      if (b.status === 'completed' || b.status === 'skipped') return false;
-      const key = toLocalDateKey(parseBlockDate(b.date));
-      return key < todayKey;
-    }).length;
-  }, [blocks]);
   const [backlogFeedback, setBacklogFeedback] = useState<string | null>(null);
   // Sucesso (verde) ou aviso (âmbar) — antes tudo aparecia com ícone de "ok".
   const [backlogFeedbackTone, setBacklogFeedbackTone] = useState<'ok' | 'erro'>('ok');
@@ -434,8 +425,18 @@ export default function PlannerPage() {
   const handleRecalculateBacklog = async () => {
     setBacklogFeedbackTone('ok');
     setBacklogFeedback('Recalculando cronograma e empurrando datas...');
-    await gerarCronograma({ forceRecomputeDate: true });
-    setBacklogFeedback('✅ Atrasos absorvidos! O cronograma foi reajustado.');
+    
+    // setTimeout para dar tempo da UI renderizar o feedback
+    setTimeout(() => {
+      const result = runBacklogRescheduler();
+      
+      if (result.applied) {
+        setBacklogFeedback('✅ Atrasos absorvidos! O cronograma foi reajustado.');
+      } else {
+        setBacklogFeedbackTone('erro');
+        setBacklogFeedback('Nenhuma matéria foi reajustada. Talvez não haja espaço livre nos próximos dias.');
+      }
+    }, 10);
   };
 
   const [firstCycleAllSubjects, setFirstCycleAllSubjects] = useLocalStorage<boolean>(
@@ -541,6 +542,16 @@ export default function PlannerPage() {
     if (!scheduleStartDate || !scheduleEndDate) return {};
     return buildDailyTimeWindowByDate(scheduleStartDate, scheduleEndDate, safeDailyAvailabilityByWeekday);
   }, [scheduleStartDate, scheduleEndDate, safeDailyAvailabilityByWeekday]);
+
+  const { pendingCount, runNow: runBacklogRescheduler } = useBacklogRescheduler({
+    blocks,
+    setBlocks,
+    allowedDays: allowedStudyDays,
+    dailyLimitByDate: dailyLimitsByDate,
+    fallbackDayMinutesByWeekday,
+    breakMinutes: breakMinutos,
+    enabled: true,
+  });
 
   const autoSlot = useMemo(() => {
     const date = addBlockModal.date;

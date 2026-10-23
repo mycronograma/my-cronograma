@@ -7,10 +7,17 @@
  *  - assets estáticos com stale-while-revalidate;
  *  - `/api/**` nunca vai para cache (dados sempre frescos);
  *  - caches versionados com limpeza no activate.
+ *
+ * Notificação persistente de sessão:
+ *  - quando o app manda SESSION_STARTED, exibe notificação "Estudando: X min"
+ *    que permanece na central mesmo com o app fechado;
+ *  - atualiza a cada 30 s para mostrar o tempo restante;
+ *  - remove ao receber SESSION_ENDED ou SESSION_PAUSED.
  */
 
 const STATIC_CACHE = 'nexora-static-v2';
 const RUNTIME_CACHE = 'nexora-runtime-v2';
+const SESSION_NOTIF_TAG = 'nexora-session-timer';
 
 const APP_SHELL = [
   '/',
@@ -24,6 +31,10 @@ const APP_SHELL = [
   '/icon-maskable-512.png',
   '/apple-touch-icon.png',
 ];
+
+// Estado da sessão ativa (em memória no SW)
+let activeSession = null; // { subjectName, isBreak, runningUntil, blockId }
+let sessionTimerInterval = null;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -125,6 +136,90 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// ─── Notificação persistente de sessão ──────────────────────────────────────
+
+function formatSessionTime(ms) {
+  const totalSecs = Math.max(0, Math.ceil(ms / 1000));
+  const mins = Math.floor(totalSecs / 60);
+  const secs = totalSecs % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function stopSessionTimer() {
+  if (sessionTimerInterval !== null) {
+    clearInterval(sessionTimerInterval);
+    sessionTimerInterval = null;
+  }
+}
+
+async function updateSessionNotification() {
+  if (!activeSession) return;
+
+  const remaining = activeSession.runningUntil - Date.now();
+  const timeStr = formatSessionTime(remaining);
+  const emoji = activeSession.isBreak ? '☕' : '📚';
+  const label = activeSession.isBreak ? 'Intervalo' : 'Estudando';
+  const subject = activeSession.subjectName;
+
+  if (remaining <= 0) {
+    // Sessão terminou — notifica e limpa
+    await self.registration.showNotification('✅ Sessão concluída!', {
+      body: `${subject} — tempo esgotado. Abra o app para registrar.`,
+      icon: '/icon-192.png',
+      badge: '/icon-32.png',
+      tag: SESSION_NOTIF_TAG,
+      requireInteraction: true,
+      data: { url: '/dashboard' },
+    });
+    stopSessionTimer();
+    activeSession = null;
+    return;
+  }
+
+  await self.registration.showNotification(`${emoji} ${label}: ${timeStr}`, {
+    body: `${subject} • Toque para voltar ao app`,
+    icon: '/icon-192.png',
+    badge: '/icon-32.png',
+    tag: SESSION_NOTIF_TAG,
+    silent: true,
+    renotify: false,
+    data: { url: '/dashboard' },
+  });
+}
+
+async function dismissSessionNotification() {
+  stopSessionTimer();
+  activeSession = null;
+  const notifs = await self.registration.getNotifications({ tag: SESSION_NOTIF_TAG });
+  notifs.forEach((n) => n.close());
+}
+
+// Mensagens recebidas do app
+self.addEventListener('message', (event) => {
+  const { type, subjectName, isBreak, runningUntil, blockId } = event.data || {};
+
+  if (type === 'SESSION_STARTED') {
+    activeSession = { subjectName, isBreak, runningUntil, blockId };
+    stopSessionTimer();
+    // Mostra imediatamente e depois a cada 30 s
+    event.waitUntil(
+      updateSessionNotification().then(() => {
+        sessionTimerInterval = setInterval(() => {
+          if (activeSession) updateSessionNotification();
+          else stopSessionTimer();
+        }, 30_000);
+      })
+    );
+    return;
+  }
+
+  if (type === 'SESSION_PAUSED' || type === 'SESSION_ENDED') {
+    event.waitUntil(dismissSessionNotification());
+  }
+});
+
+// ─── Push notifications (servidor → app) ─────────────────────────────────────
+
 self.addEventListener('push', (event) => {
   let payload = {};
 
@@ -178,3 +273,5 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+
