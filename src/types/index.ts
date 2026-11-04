@@ -96,6 +96,8 @@ export interface StudyPreferences {
   blockDurationMinutes?: number;
   focusBlockMinutes?: number;
   breakDurationMinutes?: number;
+  /** Modo adaptativo: a duração varia em torno de blockDurationMinutes/focusBlockMinutes. */
+  adaptiveBlocks?: boolean;
   hardSubjectsPeriodPreference?: HardSubjectsPeriodPreference;
   studyStyle?: StudyStylePreference;
   studyContentPreference?: StudyContentPreference;
@@ -503,6 +505,8 @@ export interface PresetWizardAnswers {
   focusMinutes: FocusDuration;
   focusBlockMinutes?: number;
   breakMinutes: BreakDuration;
+  /** Modo adaptativo ligado no assistente: focusMinutes vira a duração base. */
+  adaptiveBlocks?: boolean;
   firstCycleAllSubjects?: boolean;
   aiDifficulty?: AIDifficulty;
   focusMode?: boolean;
@@ -549,6 +553,8 @@ export interface UserSettings {
   focusMode: boolean;
   autoSchedule: boolean;
   smartBreaks: boolean;
+  /** Modo adaptativo: o motor varia a duração dos blocos em torno da base. */
+  adaptiveBlocks?: boolean;
   dailyReminder: boolean;
   streakReminder: boolean;
   achievementAlerts: boolean;

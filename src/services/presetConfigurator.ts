@@ -247,6 +247,7 @@ export function computeStudyPreferences(
     goal: answers.goal,
     blockDurationMinutes: blockMinutes,
     focusBlockMinutes,
+    adaptiveBlocks: answers.adaptiveBlocks ?? false,
     breakDurationMinutes: breakMinutes,
     hardSubjectsPeriodPreference,
     studyStyle,

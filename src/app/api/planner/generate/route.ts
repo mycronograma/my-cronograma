@@ -107,6 +107,7 @@ export async function POST(request: Request) {
       preferredEnd: constraints.preferredEnd,
       maxBlockMinutes: constraints.maxBlockMinutes,
       breakMinutes: constraints.breakMinutes,
+      adaptiveBlocks: constraints.adaptiveBlocks,
       restDays: constraints.restDays,
       dailyLimitByDate: constraints.dailyLimitByDate,
       dailyTimeWindowByDate: constraints.dailyTimeWindowByDate,

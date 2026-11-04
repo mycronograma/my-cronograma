@@ -157,6 +157,7 @@ export default function SetupWizard({
   const [cargaTotal, setCargaTotal] = useState('');
   const [bloco, setBloco] = useState<FocusDuration>(50);
   const [intervalo, setIntervalo] = useState<BreakDuration>(10);
+  const [adaptativo, setAdaptativo] = useState(false);
 
   const goal = useMemo(() => resolveGoal(presetId, presetName), [presetId, presetName]);
 
@@ -254,6 +255,7 @@ export default function SetupWizard({
       focusMinutes: bloco,
       focusBlockMinutes: bloco,
       breakMinutes: intervalo,
+      adaptiveBlocks: adaptativo,
       firstCycleAllSubjects: true,
       aiDifficulty: baseSettings.aiDifficulty ?? 'adaptive',
       focusMode: false,
@@ -628,8 +630,40 @@ export default function SetupWizard({
                 </div>
 
                 <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setAdaptativo((v) => !v)}
+                    aria-pressed={adaptativo}
+                    className={`w-full rounded-2xl border p-3 text-left transition-all ${
+                      adaptativo
+                        ? 'border-violet-500 bg-violet-500/10'
+                        : 'border-card-border hover:border-violet-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <Sparkles
+                          className={`h-5 w-5 flex-shrink-0 ${adaptativo ? 'text-violet-600' : 'text-text-muted'}`}
+                        />
+                        <div>
+                          <span className="block text-sm font-semibold text-text-primary">
+                            Modo adaptativo
+                          </span>
+                          <span className="mt-0.5 block text-xs text-text-secondary">
+                            {adaptativo
+                              ? `Os blocos vão variar em torno de ${bloco} min, ajustados pelo app.`
+                              : 'O app ajusta a duração de cada bloco para você.'}
+                          </span>
+                        </div>
+                      </div>
+                      {adaptativo && <Check className="h-5 w-5 flex-shrink-0 text-violet-600" />}
+                    </div>
+                  </button>
+                </div>
+
+                <div className="space-y-3">
                   <span className="block text-sm font-medium text-text-secondary">
-                    Duração de cada bloco
+                    {adaptativo ? 'Duração base de cada bloco' : 'Duração de cada bloco'}
                   </span>
                   {BLOCOS.map((opcao) => (
                     <button
@@ -735,7 +769,9 @@ export default function SetupWizard({
                   <div className="flex items-center justify-between px-4 py-3">
                     <span className="text-sm text-text-secondary">Blocos</span>
                     <span className="text-sm font-semibold text-text-primary">
-                      {bloco} min com {intervalo} min de intervalo
+                      {adaptativo
+                        ? `Modo adaptativo (base ${bloco} min) com ${intervalo} min de intervalo`
+                        : `${bloco} min com ${intervalo} min de intervalo`}
                     </span>
                   </div>
                 </div>

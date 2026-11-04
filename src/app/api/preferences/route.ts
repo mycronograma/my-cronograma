@@ -93,6 +93,7 @@ export async function POST(request: Request) {
       studyPrefs?.blockDurationMinutes ??
       120;
     const persistedBreak = settings.breakMinutes ?? studyPrefs?.breakDurationMinutes ?? 15;
+    const persistedAdaptiveBlocks = studyPrefs?.adaptiveBlocks ?? settings.adaptiveBlocks ?? false;
 
     const notificationMinutesBefore = Number.isFinite(settings.notificationMinutesBefore)
       ? Math.min(180, Math.max(1, Math.round(settings.notificationMinutesBefore)))
@@ -134,6 +135,7 @@ export async function POST(request: Request) {
           preferredEnd: settings.preferredEnd,
           maxBlockMinutes: persistedMaxBlock,
           breakMinutes: persistedBreak,
+          adaptiveBlocks: persistedAdaptiveBlocks,
           alarmSound: settings.alarmSound ?? 'pulse',
           dailyReminder: settings.dailyReminder ?? true,
           streakReminder: settings.streakReminder ?? true,
@@ -154,6 +156,7 @@ export async function POST(request: Request) {
           preferredEnd: settings.preferredEnd,
           maxBlockMinutes: persistedMaxBlock,
           breakMinutes: persistedBreak,
+          adaptiveBlocks: persistedAdaptiveBlocks,
           alarmSound: settings.alarmSound ?? 'pulse',
           dailyReminder: settings.dailyReminder ?? true,
           streakReminder: settings.streakReminder ?? true,

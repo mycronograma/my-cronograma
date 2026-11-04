@@ -48,6 +48,7 @@ export interface ChronologicalScheduleConfig {
   preferredEnd: string;
   maxBlockMinutes: number;
   breakMinutes: number;
+  adaptiveBlocks?: boolean;
   restDays?: number[];
   dailyLimitByDate?: Record<string, number>;
   dailyTimeWindowByDate?: Record<string, { start: string; end: string }>;
@@ -362,9 +363,10 @@ function computeBlockMinutes(
   meta: SubjectMeta,
   baseMax: number,
   sessionType: SessionType,
-  adaptivePriorityScore?: number
+  adaptivePriorityScore?: number,
+  adaptiveBlocks?: boolean,
+  performanceProfile?: SubjectPerformanceProfile
 ) {
-  void subject;
   void meta;
   void adaptivePriorityScore;
   let duration = Math.max(25, baseMax);
@@ -373,6 +375,22 @@ function computeBlockMinutes(
   }
   if (sessionType === 'simulado') {
     duration = Math.max(baseMax, 90);
+  }
+  // Modo adaptativo: varia a duração em torno da base de forma determinística
+  // (hash do id da matéria), para blocos de uma mesma matéria ficarem estáveis.
+  // Revisões e simulados mantêm a regra própria.
+  if (adaptiveBlocks && sessionType !== 'revisao' && sessionType !== 'simulado') {
+    const hash = Array.from(subject.id).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    let delta = (hash % 3 - 1) * 15; // -15, 0 ou +15
+    // Aprendizado real: com dados suficientes da matéria, pior rendimento
+    // (foco/produtividade baixos) encurta o bloco; ótimo rendimento alonga.
+    if (performanceProfile && performanceProfile.totalSessions >= 3) {
+      const rendimento =
+        (performanceProfile.averageFocusScore + performanceProfile.averageProductivityScore) / 2;
+      if (rendimento < 50) delta -= 15;
+      else if (rendimento >= 75) delta += 15;
+    }
+    duration = Math.min(120, Math.max(25, duration + delta));
   }
   return Math.max(25, duration);
 }
@@ -507,6 +525,7 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
         preferredEnd: config.preferredEnd,
         maxBlockMinutes: config.maxBlockMinutes,
         breakMinutes: config.breakMinutes,
+        adaptiveBlocks: config.adaptiveBlocks ?? false,
         restDays: config.restDays,
         dailyLimitByDate: config.dailyLimitByDate,
         dailyTimeWindowByDate: config.dailyTimeWindowByDate,
@@ -916,7 +935,9 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
         blockMeta,
         baseMax,
         sessionType,
-        chosenAdaptivePriority
+        chosenAdaptivePriority,
+        config.adaptiveBlocks ?? false,
+        performanceMetricsBySubject[blockSubject.id]
       );
       blockMinutes = Math.min(blockMinutes, availableMinutes);
       if (blockMinutes < 25) break;

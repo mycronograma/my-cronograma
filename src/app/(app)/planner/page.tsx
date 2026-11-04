@@ -174,11 +174,14 @@ function SortableStudyBlock({
   subject,
   displayName,
   onDelete,
+  adaptiveBase,
 }: {
   block: StudyBlock;
   subject: Subject | undefined;
   displayName: string;
   onDelete?: (blockId: string, date: Date) => void;
+  /** Base do modo adaptativo; quando definida e o bloco difere dela, mostramos a marca. */
+  adaptiveBase?: number | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.id,
@@ -247,6 +250,16 @@ function SortableStudyBlock({
             style={{ color: subjectColor, backgroundColor: `${subjectColor}20` }}
           >
             {block.durationMinutes}m
+            {adaptiveBase != null &&
+              !block.isBreak &&
+              block.durationMinutes !== adaptiveBase && (
+                <span
+                  className="ml-1 font-semibold opacity-70"
+                  title={`Modo adaptativo: ajustado de ${adaptiveBase} para ${block.durationMinutes} min`}
+                >
+                  adapt.
+                </span>
+              )}
           </span>
         </div>
       </div>
@@ -748,6 +761,7 @@ export default function PlannerPage() {
         preferredEnd: constraints.preferredEnd,
         maxBlockMinutes: constraints.maxBlockMinutes,
         breakMinutes: constraints.breakMinutes,
+        adaptiveBlocks: constraints.adaptiveBlocks,
         restDays: constraints.restDays,
         dailyLimitByDate: constraints.dailyLimitByDate,
         dailyTimeWindowByDate: {
@@ -1855,6 +1869,9 @@ export default function PlannerPage() {
                               subject={subject}
                               displayName={displayName}
                               onDelete={handleDeleteBlock}
+                              adaptiveBase={
+                                studyPrefs?.adaptiveBlocks ? configuredBlockMinutes : null
+                              }
                             />
                           );
                         })}
