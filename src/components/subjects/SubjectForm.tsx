@@ -17,6 +17,11 @@ import { X, Info, RotateCcw, Pin } from 'lucide-react';
 import { cn, subjectColors, formatHoursDuration } from '@/lib/utils';
 import { Button, Card, Badge } from '@/components/ui';
 import { buildPeerItems, computeAutoTargetHours, describeAutoTarget } from '@/services/weeklyTarget';
+import {
+  SUBJECT_ICON_OPTIONS,
+  autoIconForSubjectName,
+  getSubjectIconComponent,
+} from '@/lib/subjectIcons';
 import type { Subject } from '@/types';
 
 interface SubjectFormProps {
@@ -84,6 +89,7 @@ export default function SubjectForm({
 }: SubjectFormProps) {
   const [name, setName] = useState(subject?.name || '');
   const [color, setColor] = useState(subject?.color || subjectColors[0]);
+  const [icon, setIcon] = useState(subject?.icon || 'book-open');
   // Um controle só. Matéria antiga com prioridade diferente de dificuldade
   // entra com a média: a tela não tem mais dois sliders para escolher entre.
   const [weight, setWeight] = useState(() => pesoUnico(subject));
@@ -154,6 +160,7 @@ export default function SubjectForm({
     onSubmit({
       name: trimmedName,
       color,
+      icon,
       priority: weight,
       difficulty: weight,
     });
@@ -225,6 +232,43 @@ export default function SubjectForm({
                     style={{ backgroundColor: c }}
                   />
                 ))}
+              </div>
+            </div>
+
+            {/* Ícone da matéria — sugere automaticamente pelo nome ao criar */}
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <label className="text-sm font-medium text-text-secondary">Ícone</label>
+                <button
+                  type="button"
+                  onClick={() => setIcon(autoIconForSubjectName(name))}
+                  className="text-xs font-medium text-violet-600 hover:underline"
+                  title="Sugerir ícone pelo nome da matéria"
+                >
+                  Sugerir pelo nome
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {SUBJECT_ICON_OPTIONS.map((opt) => {
+                  const IconCmp = getSubjectIconComponent(opt.key);
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setIcon(opt.key)}
+                      aria-label={opt.label}
+                      title={opt.label}
+                      className={cn(
+                        'flex h-8 w-8 items-center justify-center rounded-lg border transition-all',
+                        icon === opt.key
+                          ? 'border-violet-500 bg-violet-500/10 text-violet-600'
+                          : 'border-card-border text-text-muted hover:border-violet-400'
+                      )}
+                    >
+                      <IconCmp className="h-4 w-4" />
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

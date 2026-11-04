@@ -5,8 +5,8 @@
  * Exibe uma disciplina com estatisticas e acoes
  */
 
+import { SubjectIcon } from '@/lib/subjectIcons';
 import {
-  BookOpen,
   ClipboardList,
   Clock,
   Target,
@@ -85,7 +85,7 @@ export default function SubjectCard({
                 border: `1px solid ${subject.color}30`,
               }}
             >
-              <BookOpen className="h-5 w-5" style={{ color: subject.color }} />
+              <SubjectIcon iconKey={subject.icon} className="h-5 w-5" style={{ color: subject.color }} />
             </div>
 
             <div className="min-w-0 flex flex-col justify-center">
@@ -235,7 +235,7 @@ export default function SubjectCard({
                           border: `1px solid ${subject.color}30`,
                         }}
                       >
-                        <BookOpen className="h-7 w-7" style={{ color: subject.color }} />
+                        <SubjectIcon iconKey={subject.icon} className="h-7 w-7" style={{ color: subject.color }} />
                       </div>
                       <div>
                         <h2 className="text-xl font-bold text-text-primary mb-1">{subject.name}</h2>

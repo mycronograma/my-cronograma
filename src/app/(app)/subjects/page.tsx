@@ -31,6 +31,7 @@ import {
   upgradeSubjectsToOfficialEnemStructure,
 } from '@/lib/enemCatalog';
 import { getCanonicalSubjectName, getCuratedPresetById } from '@/lib/presetCatalog';
+import { autoIconForSubjectName } from '@/lib/subjectIcons';
 import type {
   PresetWizardAnswers,
   StudyBlock,
@@ -487,7 +488,7 @@ function SubjectsPageContent() {
               userId: 'user1',
               name: s.name,
               color: subjectColors[index % subjectColors.length],
-              icon: 'book',
+              icon: autoIconForSubjectName(s.name),
               priority: Math.min(10, Math.max(1, s.priority * 2)),
               difficulty: Math.min(10, Math.max(1, s.difficulty * 2)),
               targetHours: adjustPresetTargetHours(s.recommendedWeeklyHours, options?.weeklyLoad),
@@ -513,7 +514,7 @@ function SubjectsPageContent() {
               userId: 'user1',
               name: s.name,
               color: subjectColors[(importedSubjects.length + index) % subjectColors.length],
-              icon: 'book',
+              icon: autoIconForSubjectName(s.name),
               priority: Math.min(10, Math.max(1, s.priority * 2)),
               difficulty: Math.min(10, Math.max(1, s.difficulty * 2)),
               targetHours: adjustPresetTargetHours(s.recommendedWeeklyHours, options?.weeklyLoad),
@@ -667,7 +668,7 @@ function SubjectsPageContent() {
         userId: 'user1',
         name: (data.name || '').trim(),
         color: data.color || '#00B4FF',
-        icon: 'book',
+        icon: data.icon || autoIconForSubjectName((data.name || '').trim()),
         priority: data.priority ?? 5,
         difficulty: data.difficulty ?? 5,
         targetHours: 0,
