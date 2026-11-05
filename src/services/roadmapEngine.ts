@@ -670,6 +670,20 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
     return dailyMinutes;
   };
   const slotSize = Math.max(25, config.maxBlockMinutes);
+  // Teto semanal por matéria: no máximo ceil(meta semanal / slot) blocos por
+  // semana (mínimo 1), para o cronograma não passar da meta exibida no card.
+  const weekKeyOf = (d: Date) => {
+    const copy = new Date(d);
+    const dow = (copy.getDay() + 6) % 7; // segunda = início da semana
+    copy.setDate(copy.getDate() - dow);
+    return toLocalDateKey(copy);
+  };
+  const weeklyCapSlots = (s: Subject) => {
+    const minutes = (s.targetHours || 0) * 60;
+    if (minutes <= 0) return Number.POSITIVE_INFINITY;
+    return Math.max(1, Math.ceil(minutes / slotSize));
+  };
+  const weeklyPlannedSlots = new Map<string, Map<string, number>>();
   const totalSlots = Math.max(
     1,
     dates
@@ -728,6 +742,7 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
     if (excludeDays.includes(date.getDay())) continue;
     const phase = getPhaseForDate(date, config.startDate);
     const dayKey = toLocalDateKey(date);
+    const weekKey = weekKeyOf(date);
     phaseByDate[dayKey] = phase.label;
 
     let lastSubjectId = globalLastSubjectId;
@@ -774,7 +789,10 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
 
         let candidatePool = config.subjects.filter((subject) => {
           const count = dailyCount.get(subject.id) || 0;
-          return count < maxDailyRepeatsPerSubject;
+          if (count >= maxDailyRepeatsPerSubject) return false;
+          // Teto semanal da meta: matéria já cumpriu a meta da semana não entra.
+          const weekPlanned = weeklyPlannedSlots.get(weekKey)?.get(subject.id) || 0;
+          return weekPlanned < weeklyCapSlots(subject);
         });
 
         if (candidatePool.length === 0) break;
@@ -975,6 +993,9 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
       if (!isSimulado) {
         dailyCount.set(chosenSubject.id, (dailyCount.get(chosenSubject.id) || 0) + 1);
         remainingSlots.set(chosenSubject.id, Math.max(0, (remainingSlots.get(chosenSubject.id) || 0) - 1));
+        const weekMap = weeklyPlannedSlots.get(weekKey) ?? new Map<string, number>();
+        weekMap.set(chosenSubject.id, (weekMap.get(chosenSubject.id) || 0) + 1);
+        weeklyPlannedSlots.set(weekKey, weekMap);
         globalUsage.set(chosenSubject.id, (globalUsage.get(chosenSubject.id) || 0) + 1);
         daySubjects.add(chosenSubject.id);
         recentSubjects.push(chosenSubject.id);

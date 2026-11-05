@@ -67,6 +67,8 @@ export interface Subject {
   priority: number;          // 1-10 (alias de examWeight visual)
   difficulty: number;        // 1-10
   targetHours: number;       // Weekly target
+  /** true quando a pessoa definiu targetHours manualmente (meta fixa; o resto segue o peso). */
+  targetHoursIsManual?: boolean;
   completedHours: number;
   
   // Proficiência (Motor de Aprovação)

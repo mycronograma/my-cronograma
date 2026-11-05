@@ -676,3 +676,46 @@ assert.ok(
 );
 
 console.log('adaptive edge-case and learned tests passed');
+
+// --- Teto semanal por matéria (meta semanal vira limite de blocos/semana) ---
+const cappedSubjects = subjects.map((s, i) =>
+  i === 0 ? { ...s, targetHours: 0.5 } : { ...s, targetHours: 10 } // 30min -> 1 bloco de 60 por semana
+);
+// Início numa segunda-feira: 14 dias = exatamente 2 semanas.
+const capStart = new Date();
+capStart.setHours(0, 0, 0, 0);
+capStart.setDate(capStart.getDate() + ((8 - capStart.getDay()) % 7)); // próxima segunda
+const capEnd = new Date(capStart);
+capEnd.setDate(capStart.getDate() + 13); // buildDateRange é inclusivo: 14 dias = 2 semanas exatas
+const cappedSchedule = generateChronologicalSchedule({
+  subjects: cappedSubjects,
+  preferences,
+  startDate: capStart,
+  endDate: capEnd, // 14 dias = 2 semanas
+  preferredStart: '09:00',
+  preferredEnd: '18:00',
+  maxBlockMinutes: 60,
+  breakMinutes: 10,
+  restDays: [0, 6],
+  firstCycleAllSubjects: false,
+  completedLessonsTotal: 0,
+  completedLessonsBySubject: {},
+  simuladoRules: {
+    minLessonsBeforeSimulated: 20,
+    minLessonsPerSubject: 2,
+    minDaysBeforeSimulated: 14,
+    frequencyDays: 7,
+    minLessonsBeforeAreaSimulated: 6,
+    minDaysBeforeAreaSimulated: 7,
+  },
+  debug: false,
+});
+const cappedId = cappedSubjects[0].id;
+const cappedBlocks = cappedSchedule.blocks.filter((b) => !b.isBreak && b.subjectId === cappedId);
+// 14 dias com 2 semanas (dom e sab descansam): no máximo 1 bloco/semana = 2 blocos no período
+assert.ok(
+  cappedBlocks.length <= 2,
+  `subject with 30min weekly target should get at most 1 block/week (got ${cappedBlocks.length} in 14 days)`
+);
+
+console.log('weekly target cap tests passed');

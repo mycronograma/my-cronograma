@@ -140,6 +140,7 @@ model Subject {
   priority       Int   @default(5) // 1-10 scale
   difficulty     Int   @default(5) // 1-10 scale
   targetHours    Float @default(10.0) // Weekly target
+  targetHoursIsManual Boolean @default(false) // meta definida manualmente (fixa) vs automática por peso
   completedHours Float @default(0.0) // This week
 
   // Progress tracking

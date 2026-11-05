@@ -90,6 +90,11 @@ export default function SubjectForm({
   const [name, setName] = useState(subject?.name || '');
   const [color, setColor] = useState(subject?.color || subjectColors[0]);
   const [icon, setIcon] = useState(subject?.icon || 'book-open');
+  // Meta semanal: automática (regra do peso) ou definida manualmente.
+  const [manualTarget, setManualTarget] = useState(subject?.targetHoursIsManual ?? false);
+  const [manualHours, setManualHours] = useState(() =>
+    subject?.targetHoursIsManual && subject.targetHours > 0 ? subject.targetHours : 1
+  );
   // Um controle só. Matéria antiga com prioridade diferente de dificuldade
   // entra com a média: a tela não tem mais dois sliders para escolher entre.
   const [weight, setWeight] = useState(() => pesoUnico(subject));
@@ -163,6 +168,8 @@ export default function SubjectForm({
       icon,
       priority: weight,
       difficulty: weight,
+      targetHoursIsManual: manualTarget,
+      ...(manualTarget ? { targetHours: Math.max(0.5, manualHours) } : {}),
     });
   };
 
@@ -300,6 +307,60 @@ export default function SubjectForm({
                 Junta o quanto a matéria vale e o quanto ela te trava. Peso 10 recebe 4× as
                 horas de peso 5.
               </p>
+            </div>
+
+            {/* Meta semanal — duas formas: automática por peso ou horas manuais */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-text-secondary">
+                Meta semanal de horas
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setManualTarget(false)}
+                  className={cn(
+                    'rounded-xl border p-2.5 text-left text-xs font-semibold transition-all',
+                    !manualTarget
+                      ? 'border-violet-500 bg-violet-500/10 text-text-primary'
+                      : 'border-card-border text-text-secondary hover:border-violet-400'
+                  )}
+                >
+                  Automática (por peso)
+                  <span className="mt-0.5 block text-[11px] font-normal text-text-muted">
+                    {formatHoursDuration(autoTarget)}/semana pela regra do peso
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualTarget(true)}
+                  className={cn(
+                    'rounded-xl border p-2.5 text-left text-xs font-semibold transition-all',
+                    manualTarget
+                      ? 'border-violet-500 bg-violet-500/10 text-text-primary'
+                      : 'border-card-border text-text-secondary hover:border-violet-400'
+                  )}
+                >
+                  Definir horas manualmente
+                  <span className="mt-0.5 block text-[11px] font-normal text-text-muted">
+                    Você fixa a meta; as outras seguem o peso
+                  </span>
+                </button>
+              </div>
+              {manualTarget && (
+                <div className="mt-2 flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="40"
+                    step="0.5"
+                    value={manualHours}
+                    onChange={(e) => setManualHours(Number(e.target.value))}
+                    className="input-field w-28"
+                    aria-label="Horas por semana (manual)"
+                  />
+                  <span className="text-sm text-text-muted">horas/semana</span>
+                </div>
+              )}
             </div>
 
             {error && <p className="text-sm text-danger">{error}</p>}

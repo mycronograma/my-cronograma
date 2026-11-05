@@ -230,10 +230,9 @@ export function computeAutoTargetHours(params: {
 /**
  * Converte as outras matérias no formato do serviço.
  *
- * Nenhuma matéria é marcada como fixa: existe uma regra só e todas passam
- * por ela. `targetHours`/`targetHoursIsManual` continuam aceitos por
- * compatibilidade com quem chama, mas são ignorados — deixar de reservar
- * horas foi o que fez o peso voltar a importar.
+ * Só é marcada como fixa a meta que a pessoa definiu manualmente
+ * (`targetHoursIsManual`) — ela reserva horas da semana. As automáticas
+ * seguem pela regra única de peso.
  */
 export function buildPeerItems(
   peers: Array<{
@@ -251,7 +250,10 @@ export function buildPeerItems(
       id: peer.id,
       priority: peer.priority,
       difficulty: peer.difficulty,
-      fixedHours: null,
+      fixedHours:
+        peer.targetHoursIsManual && typeof peer.targetHours === 'number' && peer.targetHours > 0
+          ? peer.targetHours
+          : null,
     }));
 }
 
@@ -261,10 +263,38 @@ export function buildPeerItems(
  * Ajustes — para o número gravado nunca divergir da regra.
  */
 export function recalculateAllTargets(
-  subjects: Array<{ id: string; priority: number; difficulty: number }>,
+  subjects: Array<{
+    id: string;
+    priority: number;
+    difficulty: number;
+    targetHours?: number | null;
+    targetHoursIsManual?: boolean;
+  }>,
   capacityHours: number
 ): Record<string, number> {
-  return allocateWeeklyTargets(subjects, { capacityHours }).byId;
+  // Metas manuais ficam fixas; as automáticas dividem o resto pelo peso.
+  const items: WeeklyTargetItem[] = subjects.map((s) => ({
+    id: s.id,
+    priority: s.priority,
+    difficulty: s.difficulty,
+    fixedHours:
+      s.targetHoursIsManual && typeof s.targetHours === 'number' && s.targetHours > 0
+        ? s.targetHours
+        : null,
+  }));
+  return allocateWeeklyTargets(items, { capacityHours }).byId;
+}
+
+/**
+ * Meta semanal efetiva em horas, arredondada para cima em múltiplos do
+ * tamanho do bloco — é isso que o cronograma consegue agendar de fato
+ * (blocos são inteiros). Usar esse valor no card deixa card == planner.
+ */
+export function effectiveWeeklyTargetHours(targetHours: number, slotMinutes: number): number {
+  const slot = Math.max(25, Math.round(slotMinutes || 50));
+  const minutes = Math.max(0, targetHours * 60);
+  if (minutes <= 0) return 0;
+  return (Math.ceil(minutes / slot) * slot) / 60;
 }
 
 /**

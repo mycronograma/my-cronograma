@@ -677,7 +677,8 @@ function SubjectsPageContent() {
         icon: data.icon || autoIconForSubjectName((data.name || '').trim()),
         priority: data.priority ?? 5,
         difficulty: data.difficulty ?? 5,
-        targetHours: 0,
+        targetHours: data.targetHours ?? 0,
+        targetHoursIsManual: data.targetHoursIsManual ?? false,
         completedHours: 0,
         totalHours: 0,
         sessionsCount: 0,
@@ -726,13 +727,22 @@ function SubjectsPageContent() {
   const aplicarRegraDeMetas = useCallback(
     (lista: Subject[]): Subject[] => {
       const alvos = recalculateAllTargets(
-        lista.map((s) => ({ id: s.id, priority: s.priority, difficulty: s.difficulty })),
+        lista.map((s) => ({
+          id: s.id,
+          priority: s.priority,
+          difficulty: s.difficulty,
+          targetHours: s.targetHours,
+          targetHoursIsManual: s.targetHoursIsManual,
+        })),
         weeklyGoalFromPrefs
       );
       return lista.map((s) =>
-        typeof alvos[s.id] === 'number'
-          ? { ...s, targetHours: alvos[s.id], updatedAt: new Date() }
-          : s
+        // Metas manuais são fixas: a regra só recalcula as automáticas.
+        s.targetHoursIsManual
+          ? s
+          : typeof alvos[s.id] === 'number'
+            ? { ...s, targetHours: alvos[s.id], updatedAt: new Date() }
+            : s
       );
     },
     [weeklyGoalFromPrefs]
@@ -942,6 +952,9 @@ function SubjectsPageContent() {
             <motion.div key={subject.id} variants={itemVariants} className="min-w-0">
               <SubjectCard
                 subject={subject}
+                blockMinutes={
+                  studyPrefs?.focusBlockMinutes ?? studyPrefs?.blockDurationMinutes ?? 50
+                }
                 onEdit={handleEditSubject}
                 onLogQuestions={(sub) => {
                 setQuestionLogSubject(sub);
