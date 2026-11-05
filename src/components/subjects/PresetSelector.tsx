@@ -242,6 +242,16 @@ export default function PresetSelector({
     [presets, selectedPreset]
   );
 
+  // Soma estimada das metas das matérias da predefinição (com a carga de partida
+  // aplicada) — o resumo do wizard usa para avisar se estoura a capacidade semanal.
+  const estimatedTargetHours = useMemo(() => {
+    if (!selectedPresetData || selectedPreset === 'custom') return null;
+    return selectedPresetData.subjects.reduce(
+      (sum, s) => sum + adjustWeeklyHours(s.recommendedWeeklyHours, weeklyLoad),
+      0
+    );
+  }, [selectedPresetData, selectedPreset, weeklyLoad]);
+
   const handleImport = async (wizardAnswers?: PresetWizardAnswers) => {
     if (!selectedPreset) return;
 
@@ -653,6 +663,7 @@ export default function PresetSelector({
         isOpen={showWizard && !!selectedPreset}
         presetId={selectedPreset || ''}
         weeklyLoad={weeklyLoad}
+        estimatedTargetHours={estimatedTargetHours}
         presetName={
           presets.find((preset) => preset.id === selectedPreset)?.name ||
           (selectedPreset === 'custom' ? 'Personalizado' : 'Modelo')

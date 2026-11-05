@@ -59,6 +59,8 @@ interface SetupWizardProps {
   baseSettings: UserSettings;
   /** Carga de partida escolhida no seletor de predefinição — vira sugestão de horas/dia. */
   weeklyLoad?: 'leve' | 'normal' | 'intensivo';
+  /** Soma estimada das metas das matérias da predefinição (para o resumo checar overflow). */
+  estimatedTargetHours?: number | null;
   onClose: () => void;
   onApply: (
     settings: UserSettings,
@@ -161,6 +163,7 @@ export default function SetupWizard({
   presetName,
   baseSettings,
   weeklyLoad,
+  estimatedTargetHours,
   onClose,
   onApply,
 }: SetupWizardProps) {
@@ -778,26 +781,56 @@ export default function SetupWizard({
 
                 <div className="divide-y divide-card-border rounded-2xl border border-card-border">
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Objetivo</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Objetivo
+                    </span>
                     <span className="flex items-center gap-2 text-sm font-semibold text-text-primary">
                       <GraduationCap className="h-4 w-4 text-violet-600" />
                       {presetName}
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Nível</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Nível
+                    </span>
                     <span className="text-sm font-semibold text-text-primary">
                       {NIVEIS.find((opcao) => opcao.id === nivel)?.titulo}
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Tempo por semana</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Tempo por semana
+                    </span>
                     <span className="text-sm font-semibold text-text-primary">
                       {formatarHoras(plano.horasPorSemana)} em {diasAtivos} dia(s)
                     </span>
                   </div>
+                  {typeof estimatedTargetHours === 'number' && estimatedTargetHours > 0 && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <span className="flex items-center gap-2 text-sm text-text-secondary">
+                        {estimatedTargetHours <= plano.horasPorSemana + 1e-9 ? (
+                          <Check className="h-4 w-4 text-emerald-500" />
+                        ) : (
+                          <AlertTriangle className="h-4 w-4 text-amber-500" />
+                        )}
+                        Metas das matérias
+                      </span>
+                      <span
+                        className={`text-sm font-semibold ${
+                          estimatedTargetHours <= plano.horasPorSemana + 1e-9
+                            ? 'text-text-primary'
+                            : 'text-amber-500'
+                        }`}
+                      >
+                        {formatarHoras(estimatedTargetHours)} / {formatarHoras(plano.horasPorSemana)}
+                        {estimatedTargetHours > plano.horasPorSemana + 1e-9 && ' — acima da capacidade'}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Horário do dia</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Horário do dia
+                    </span>
                     <span className="text-sm font-semibold text-text-primary">
                       {baseSettings.preferredStart || '09:00'} às{' '}
                       {baseSettings.preferredEnd || '21:00'}{' '}
@@ -805,21 +838,26 @@ export default function SetupWizard({
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Começa em</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Começa em
+                    </span>
                     <span className="text-sm font-semibold text-text-primary">
                       {formatarDataLonga(dataInicioEfetiva)}
                     </span>
                   </div>
                   {plano.horasCobertasAteProva !== null && (
                     <div className="flex items-center justify-between px-4 py-3">
-                      <span className="text-sm text-text-secondary">Total até a prova</span>
+                      <span className="flex items-center gap-2 text-sm text-text-secondary">
+                        <Check className="h-4 w-4 text-emerald-500" /> Total até a prova
+                      </span>
                       <span className="text-sm font-semibold text-text-primary">
                         {formatarHoras(plano.horasCobertasAteProva)}
                       </span>
                     </div>
                   )}
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" />
                       {plano.origemDataFim === 'prova' ? 'Prova' : 'Termina em'}
                     </span>
                     <span className="text-sm font-semibold text-text-primary">
@@ -829,7 +867,9 @@ export default function SetupWizard({
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Blocos</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Blocos
+                    </span>
                     <span className="text-sm font-semibold text-text-primary">
                       {adaptativo
                         ? `Modo adaptativo (base ${bloco} min) com ${intervalo} min de intervalo`
