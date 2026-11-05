@@ -191,6 +191,9 @@ export default function SetupWizard({
   const [bloco, setBloco] = useState<FocusDuration>(50);
   const [intervalo, setIntervalo] = useState<BreakDuration>(10);
   const [adaptativo, setAdaptativo] = useState(false);
+  // Janela de horário do dia (alimenta preferredStart/preferredEnd do motor).
+  const [horarioInicio, setHorarioInicio] = useState(baseSettings.preferredStart || '09:00');
+  const [horarioFim, setHorarioFim] = useState(baseSettings.preferredEnd || '21:00');
 
   const goal = useMemo(() => resolveGoal(presetId, presetName), [presetId, presetName]);
 
@@ -306,6 +309,8 @@ export default function SetupWizard({
       endDate,
       periodMode: 'date',
       examDate: temProva && examDate ? examDate : '',
+      preferredStart: horarioInicio,
+      preferredEnd: horarioFim,
     };
 
     const resumo = computeStudyPreferences(baseSettings, answers);
@@ -472,6 +477,33 @@ export default function SetupWizard({
                       usar sugestão ({weeklyLoad === 'leve' ? 'Leve' : weeklyLoad === 'normal' ? 'Normal' : 'Intensivo'})
                     </button>
                   )}
+                </div>
+
+                {/* Janela de horário do dia */}
+                <div className="space-y-2">
+                  <span className="block text-sm font-medium text-text-secondary">
+                    Em que horário você costuma estudar?
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="time"
+                      value={horarioInicio}
+                      onChange={(e) => setHorarioInicio(e.target.value)}
+                      className="input-field w-32"
+                      aria-label="Horário de início"
+                    />
+                    <span className="text-text-muted">até</span>
+                    <input
+                      type="time"
+                      value={horarioFim}
+                      onChange={(e) => setHorarioFim(e.target.value)}
+                      className="input-field w-32"
+                      aria-label="Horário de término"
+                    />
+                  </div>
+                  <p className="text-xs text-text-muted">
+                    O cronograma só usa blocos dentro dessa janela.
+                  </p>
                 </div>
               </div>
             )}
@@ -671,37 +703,39 @@ export default function SetupWizard({
                   </p>
                 </div>
 
-                <div className="space-y-3">
-                  <button
-                    type="button"
-                    onClick={() => setAdaptativo((v) => !v)}
-                    aria-pressed={adaptativo}
-                    className={`w-full rounded-2xl border p-3 text-left transition-all ${
-                      adaptativo
-                        ? 'border-violet-500 bg-violet-500/10'
-                        : 'border-card-border hover:border-violet-400'
+                <button
+                  type="button"
+                  onClick={() => setAdaptativo((v) => !v)}
+                  aria-pressed={adaptativo}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-card-border bg-card-bg p-3 text-left transition-all hover:border-violet-400"
+                >
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Sparkles
+                      className={`h-4 w-4 flex-shrink-0 ${adaptativo ? 'text-violet-600' : 'text-text-muted'}`}
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-sm font-semibold text-text-primary">
+                        Ajustar blocos automaticamente
+                      </span>
+                      <span className="mt-0.5 block text-xs text-text-secondary">
+                        {adaptativo
+                          ? `Blocos variam em torno de ${bloco} min.`
+                          : 'Usa sempre a duração abaixo.'}
+                      </span>
+                    </div>
+                  </div>
+                  <span
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                      adaptativo ? 'bg-violet-500' : 'bg-card-border'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <Sparkles
-                          className={`h-5 w-5 flex-shrink-0 ${adaptativo ? 'text-violet-600' : 'text-text-muted'}`}
-                        />
-                        <div>
-                          <span className="block text-sm font-semibold text-text-primary">
-                            Modo adaptativo
-                          </span>
-                          <span className="mt-0.5 block text-xs text-text-secondary">
-                            {adaptativo
-                              ? `Os blocos vão variar em torno de ${bloco} min, ajustados pelo app.`
-                              : 'O app ajusta a duração de cada bloco para você.'}
-                          </span>
-                        </div>
-                      </div>
-                      {adaptativo && <Check className="h-5 w-5 flex-shrink-0 text-violet-600" />}
-                    </div>
-                  </button>
-                </div>
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white transition-transform duration-200 ${
+                        adaptativo ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </span>
+                </button>
 
                 <div className="space-y-3">
                   <span className="block text-sm font-medium text-text-secondary">
@@ -790,6 +824,12 @@ export default function SetupWizard({
                     <span className="text-sm text-text-secondary">Tempo por semana</span>
                     <span className="text-sm font-semibold text-text-primary">
                       {formatarHoras(plano.horasPorSemana)} em {diasAtivos} dia(s)
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm text-text-secondary">Horário do dia</span>
+                    <span className="text-sm font-semibold text-text-primary">
+                      {horarioInicio} às {horarioFim}
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">

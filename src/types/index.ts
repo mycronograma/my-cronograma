@@ -522,6 +522,9 @@ export interface PresetWizardAnswers {
   examDate?: string;
   startDate?: string;
   endDate?: string;
+  /** Janela de horário do dia escolhida no assistente (alimenta preferredStart/End). */
+  preferredStart?: string;
+  preferredEnd?: string;
   /** Como o fim do estudo foi definido: data final explícita ou carga horária total. */
   periodMode?: 'date' | 'hours';
   /** Carga horária total (horas) quando periodMode === 'hours'. */
