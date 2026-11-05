@@ -694,7 +694,14 @@ export default function PlannerPage() {
     const activePrefs = overridePrefs || studyPrefs;
 
     try {
-      const weekStart = displayedWeekStart;
+      // O cronograma sempre começa no dia de início do plano (configurado no
+      // assistente), não na semana que está aberta na tela — senão aplicar a
+      // estratégia em outra semana deixaria a semana inicial vazia.
+      const inicioPlano =
+        plannerStartDate ??
+        (studyPrefs?.startDate ? parseKey(studyPrefs.startDate) : null);
+      const weekStart =
+        inicioPlano && !Number.isNaN(inicioPlano.getTime()) ? inicioPlano : displayedWeekStart;
 
       let computedEndDate = options?.forceRecomputeDate ? null : plannerEndDate;
       if (!computedEndDate) {
@@ -800,7 +807,7 @@ export default function PlannerPage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [subjects, studyPrefs, userSettings, dailyLimits, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate]);
+  }, [subjects, studyPrefs, userSettings, dailyLimits, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate, plannerStartDate]);
 
   // Sensores do arrastar. O ponteiro exige 6px antes de virar arrasto, para
   // que um toque comum (ou a rolagem no celular) não reordene nada por acidente.
