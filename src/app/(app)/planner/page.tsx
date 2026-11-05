@@ -698,7 +698,7 @@ export default function PlannerPage() {
       // assistente), não na semana que está aberta na tela — senão aplicar a
       // estratégia em outra semana deixaria a semana inicial vazia.
       const inicioPlano =
-        plannerStartDate ??
+        scheduleStartDate ??
         (studyPrefs?.startDate ? parseKey(studyPrefs.startDate) : null);
       const weekStart =
         inicioPlano && !Number.isNaN(inicioPlano.getTime()) ? inicioPlano : displayedWeekStart;
@@ -807,7 +807,7 @@ export default function PlannerPage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [subjects, studyPrefs, userSettings, dailyLimits, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate, plannerStartDate]);
+  }, [subjects, studyPrefs, userSettings, dailyLimits, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate, scheduleStartDate]);
 
   // Sensores do arrastar. O ponteiro exige 6px antes de virar arrasto, para
   // que um toque comum (ou a rolagem no celular) não reordene nada por acidente.
