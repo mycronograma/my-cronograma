@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
+// Usa sessão (headers), então não pode ser prerenderizada estaticamente.
+export const dynamic = 'force-dynamic';
+
 /** GET /api/billing/subscription — status atual da assinatura do usuário logado. */
 export async function GET() {
   try {

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getPaymentProvider } from '@/lib/billing';
 
+// Recebe chamadas externas do provedor; nunca deve ser cacheada/prerenderizada.
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/billing/webhook
  * Webhook do Mercado Pago (topic=preapproval). Atualiza a tabela Subscription

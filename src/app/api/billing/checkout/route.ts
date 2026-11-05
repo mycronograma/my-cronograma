@@ -4,6 +4,9 @@ import { authOptions } from '@/lib/auth';
 import { getPaymentProvider } from '@/lib/billing';
 import { getPlan } from '@/lib/billing/plans';
 
+// Usa sessão (headers), então não pode ser prerenderizada estaticamente.
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/billing/checkout { planId }
  * Cria a assinatura no provedor (Mercado Pago) e devolve a URL de checkout.
