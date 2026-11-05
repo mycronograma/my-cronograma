@@ -57,6 +57,8 @@ interface PresetSelectorProps {
     options?: { source: 'api' | 'local'; wizardAnswers?: PresetWizardAnswers; weeklyLoad?: WeeklyLoadLevel; selectedModules?: string[] }
   ) => Promise<void>;
   onSkip: () => void;
+  /** Chamado ao concluir o wizard no modo Personalizado: fecha o seletor e abre o formulário de disciplina. */
+  onCustomComplete?: () => void;
   userId: string;
   baseSettings: UserSettings;
   onApplyPreferences: (
@@ -182,6 +184,7 @@ function resolvePresetVisualKey(name: string): string {
 export default function PresetSelector({
   onImport,
   onSkip,
+  onCustomComplete,
   userId,
   baseSettings,
   onApplyPreferences,
@@ -661,7 +664,8 @@ export default function PresetSelector({
             // 'custom' não tem predefinição para importar: aplica as preferências
             // do wizard e cai na tela de disciplinas para criar manualmente.
             if (selectedPreset === 'custom') {
-              onSkip();
+              if (onCustomComplete) onCustomComplete();
+              else onSkip();
             } else {
               await handleImport(answers);
             }

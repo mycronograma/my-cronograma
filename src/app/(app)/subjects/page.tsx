@@ -588,6 +588,12 @@ function SubjectsPageContent() {
     setShowPresetSelector(false);
   };
 
+  // Modo Personalizado: depois do wizard, abre direto o formulário de nova disciplina.
+  const handleCustomComplete = () => {
+    setShowPresetSelector(false);
+    handleAddSubject();
+  };
+
 
   // Filtrar disciplinas
   const filteredSubjects = subjects.filter((s) =>
@@ -905,6 +911,7 @@ function SubjectsPageContent() {
           <PresetSelector
             onImport={handleImportPreset}
             onSkip={handleSkipPreset}
+            onCustomComplete={handleCustomComplete}
             userId="user1" // Mock - em produção viria do contexto
             baseSettings={userSettings}
             onApplyPreferences={handleApplyPreferences}
