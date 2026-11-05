@@ -191,9 +191,6 @@ export default function SetupWizard({
   const [bloco, setBloco] = useState<FocusDuration>(50);
   const [intervalo, setIntervalo] = useState<BreakDuration>(10);
   const [adaptativo, setAdaptativo] = useState(false);
-  // Janela de horário do dia (alimenta preferredStart/preferredEnd do motor).
-  const [horarioInicio, setHorarioInicio] = useState(baseSettings.preferredStart || '09:00');
-  const [horarioFim, setHorarioFim] = useState(baseSettings.preferredEnd || '21:00');
 
   const goal = useMemo(() => resolveGoal(presetId, presetName), [presetId, presetName]);
 
@@ -309,8 +306,6 @@ export default function SetupWizard({
       endDate,
       periodMode: 'date',
       examDate: temProva && examDate ? examDate : '',
-      preferredStart: horarioInicio,
-      preferredEnd: horarioFim,
     };
 
     const resumo = computeStudyPreferences(baseSettings, answers);
@@ -479,32 +474,7 @@ export default function SetupWizard({
                   )}
                 </div>
 
-                {/* Janela de horário do dia */}
-                <div className="space-y-2">
-                  <span className="block text-sm font-medium text-text-secondary">
-                    Em que horário você costuma estudar?
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="time"
-                      value={horarioInicio}
-                      onChange={(e) => setHorarioInicio(e.target.value)}
-                      className="input-field w-32"
-                      aria-label="Horário de início"
-                    />
-                    <span className="text-text-muted">até</span>
-                    <input
-                      type="time"
-                      value={horarioFim}
-                      onChange={(e) => setHorarioFim(e.target.value)}
-                      className="input-field w-32"
-                      aria-label="Horário de término"
-                    />
-                  </div>
-                  <p className="text-xs text-text-muted">
-                    O cronograma só usa blocos dentro dessa janela.
-                  </p>
-                </div>
+                {/* Janela de horário do dia fica em Configurações (Perfil), não no assistente. */}
               </div>
             )}
 
@@ -829,7 +799,9 @@ export default function SetupWizard({
                   <div className="flex items-center justify-between px-4 py-3">
                     <span className="text-sm text-text-secondary">Horário do dia</span>
                     <span className="text-sm font-semibold text-text-primary">
-                      {horarioInicio} às {horarioFim}
+                      {baseSettings.preferredStart || '09:00'} às{' '}
+                      {baseSettings.preferredEnd || '21:00'}{' '}
+                      <span className="text-xs font-normal text-text-muted">(ajustável em Perfil)</span>
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">

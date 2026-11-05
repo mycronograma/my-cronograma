@@ -1384,6 +1384,34 @@ export default function SettingsPage() {
             </p>
           </div>
 
+          {/* Horário preferido do dia */}
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-2">
+              Horário preferido para estudar
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="time"
+                value={settings.preferredStart || '09:00'}
+                onChange={(e) => updateSetting('preferredStart', e.target.value)}
+                className="input-field w-32"
+                aria-label="Horário de início preferido"
+              />
+              <span className="text-text-muted text-sm">até</span>
+              <input
+                type="time"
+                value={settings.preferredEnd || '21:00'}
+                onChange={(e) => updateSetting('preferredEnd', e.target.value)}
+                className="input-field w-32"
+                aria-label="Horário de término preferido"
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-text-muted">
+              O cronograma só coloca blocos dentro dessa janela. Depois dá para ligar com Google
+              Calendar / Apple Calendar para considerar seus compromissos reais.
+            </p>
+          </div>
+
           <div className="rounded-xl border border-card-border bg-card-bg/50 p-4 overflow-hidden">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div>
