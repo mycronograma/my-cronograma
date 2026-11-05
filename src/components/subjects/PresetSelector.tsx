@@ -555,7 +555,7 @@ export default function PresetSelector({
             onClick={() => {
               setSelectedPreset('custom');
               setShowDetails(null);
-              setShowWizard(true);
+              setShowWizard(false);
             }}
           >
             <div className="flex min-w-0 items-start gap-4">
