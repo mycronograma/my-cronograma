@@ -552,7 +552,7 @@ export default function PresetSelector({
             onClick={() => {
               setSelectedPreset('custom');
               setShowDetails(null);
-              setShowWizard(false);
+              setShowWizard(true);
             }}
           >
             <div className="flex min-w-0 items-start gap-4">
@@ -628,7 +628,7 @@ export default function PresetSelector({
           Pular esta etapa
         </Button>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-          {selectedPreset && selectedPreset !== 'custom' && (
+          {selectedPreset && (
             <Button
               variant="primary"
               onClick={() => setShowWizard(true)}
@@ -636,27 +636,35 @@ export default function PresetSelector({
               className="w-full sm:w-auto"
               leftIcon={isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             >
-              {isImporting ? 'Importando...' : 'Configurar modelo'}
-            </Button>
-          )}
-          {selectedPreset === 'custom' && (
-            <Button variant="primary" onClick={onSkip} className="w-full sm:w-auto">
-              Criar disciplinas manualmente
+              {isImporting
+                ? 'Importando...'
+                : selectedPreset === 'custom'
+                  ? 'Responder perguntas'
+                  : 'Configurar modelo'}
             </Button>
           )}
         </div>
       </div>
 
       <SetupWizard
-        isOpen={showWizard && !!selectedPreset && selectedPreset !== 'custom'}
+        isOpen={showWizard && !!selectedPreset}
         presetId={selectedPreset || ''}
-        presetName={presets.find((preset) => preset.id === selectedPreset)?.name || 'Modelo'}
+        presetName={
+          presets.find((preset) => preset.id === selectedPreset)?.name ||
+          (selectedPreset === 'custom' ? 'Personalizado' : 'Modelo')
+        }
         baseSettings={baseSettings}
         onClose={() => setShowWizard(false)}
         onApply={(settings, studyPrefs, answers) => {
           void (async () => {
             await onApplyPreferences(settings, studyPrefs, answers);
-            await handleImport(answers);
+            // 'custom' não tem predefinição para importar: aplica as preferências
+            // do wizard e cai na tela de disciplinas para criar manualmente.
+            if (selectedPreset === 'custom') {
+              onSkip();
+            } else {
+              await handleImport(answers);
+            }
           })();
         }}
       />
