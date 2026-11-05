@@ -57,12 +57,34 @@ interface SetupWizardProps {
   presetId: string;
   presetName: string;
   baseSettings: UserSettings;
+  /** Carga de partida escolhida no seletor de predefinição — vira sugestão de horas/dia. */
+  weeklyLoad?: 'leve' | 'normal' | 'intensivo';
   onClose: () => void;
   onApply: (
     settings: UserSettings,
     studyPrefs: StudyPreferences,
     answers: PresetWizardAnswers
   ) => void;
+}
+
+/** Horas por dia sugeridas por carga de partida (seg–sex; intensiva inclui sábado). */
+const CARGA_HORAS_POR_DIA: Record<'leve' | 'normal' | 'intensivo', number> = {
+  leve: 2,
+  normal: 4,
+  intensivo: 6,
+};
+
+function dailyHoursFromLoad(load: 'leve' | 'normal' | 'intensivo'): Record<WeekdayKey, number> {
+  const horasDia = CARGA_HORAS_POR_DIA[load];
+  return {
+    seg: horasDia,
+    ter: horasDia,
+    qua: horasDia,
+    qui: horasDia,
+    sex: horasDia,
+    sab: load === 'intensivo' ? 3 : 0,
+    dom: 0,
+  };
 }
 
 /** Ordem de exibição: começa na segunda, como no app. */
@@ -138,6 +160,7 @@ export default function SetupWizard({
   presetId,
   presetName,
   baseSettings,
+  weeklyLoad,
   onClose,
   onApply,
 }: SetupWizardProps) {
@@ -152,6 +175,14 @@ export default function SetupWizard({
   const [horas, setHoras] = useState<Record<WeekdayKey, number>>(() =>
     defaultDailyHours(resolveGoal(presetId, presetName))
   );
+  // Se o usuário editou as horas manualmente, a sugestão da carga não sobrescreve.
+  const [horasEditadas, setHorasEditadas] = useState(false);
+
+  // A carga de partida do seletor vira sugestão de horas por dia (editável).
+  useEffect(() => {
+    if (!weeklyLoad || horasEditadas) return;
+    setHoras(dailyHoursFromLoad(weeklyLoad));
+  }, [weeklyLoad, horasEditadas]);
   const [temProva, setTemProva] = useState(false);
   const [examDate, setExamDate] = useState('');
   // Quando o plano começa: hoje (padrão), amanhã ou uma data escolhida.
@@ -187,6 +218,7 @@ export default function SetupWizard({
   );
 
   const ajustarHora = (key: WeekdayKey, delta: number) => {
+    setHorasEditadas(true);
     setHoras((prev) => {
       const atual = Number(prev[key]) || 0;
       const proximo = Math.min(14, Math.max(0, Math.round((atual + delta) * 2) / 2));
@@ -427,6 +459,19 @@ export default function SetupWizard({
                     {formatarHoras(plano.horasPorSemana)}
                   </span>
                   <span className="text-text-secondary"> em {diasAtivos} dia(s).</span>
+                  {weeklyLoad && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHoras(dailyHoursFromLoad(weeklyLoad));
+                        setHorasEditadas(true);
+                      }}
+                      className="ml-2 text-xs font-semibold text-violet-600 hover:underline"
+                      title="Aplicar a sugestão da carga de partida escolhida"
+                    >
+                      usar sugestão ({weeklyLoad === 'leve' ? 'Leve' : weeklyLoad === 'normal' ? 'Normal' : 'Intensivo'})
+                    </button>
+                  )}
                 </div>
               </div>
             )}

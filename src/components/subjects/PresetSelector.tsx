@@ -652,6 +652,7 @@ export default function PresetSelector({
       <SetupWizard
         isOpen={showWizard && !!selectedPreset}
         presetId={selectedPreset || ''}
+        weeklyLoad={weeklyLoad}
         presetName={
           presets.find((preset) => preset.id === selectedPreset)?.name ||
           (selectedPreset === 'custom' ? 'Personalizado' : 'Modelo')
