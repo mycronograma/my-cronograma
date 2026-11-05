@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 import { getPaymentProvider } from '@/lib/billing';
 import { getPlan } from '@/lib/billing/plans';
 
@@ -35,6 +36,25 @@ export async function POST(request: Request) {
       userEmail: session.user.email,
       planId,
       backUrl: `${baseUrl}/planos?status=success`,
+    });
+
+    // Grava a assinatura localmente como 'pending' — é essa linha que o
+    // webhook encontra pelo providerSubscriptionId para atualizar o status.
+    await prisma.subscription.upsert({
+      where: { userId: session.user.id },
+      update: {
+        provider: provider.id,
+        providerSubscriptionId: checkout.providerSubscriptionId,
+        planId,
+        status: 'pending',
+      },
+      create: {
+        userId: session.user.id,
+        provider: provider.id,
+        providerSubscriptionId: checkout.providerSubscriptionId,
+        planId,
+        status: 'pending',
+      },
     });
 
     return NextResponse.json({
