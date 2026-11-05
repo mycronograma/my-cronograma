@@ -154,7 +154,9 @@ export default function SetupWizard({
   );
   const [temProva, setTemProva] = useState(false);
   const [examDate, setExamDate] = useState('');
-  const [cargaTotal, setCargaTotal] = useState('');
+  // Quando o plano começa: hoje (padrão), amanhã ou uma data escolhida.
+  const [inicio, setInicio] = useState<'hoje' | 'amanha' | 'data'>('hoje');
+  const [dataInicio, setDataInicio] = useState('');
   const [bloco, setBloco] = useState<FocusDuration>(50);
   const [intervalo, setIntervalo] = useState<BreakDuration>(10);
   const [adaptativo, setAdaptativo] = useState(false);
@@ -192,23 +194,26 @@ export default function SetupWizard({
     });
   };
 
-  const cargaNumero = useMemo(() => {
-    const limpo = cargaTotal.replace(',', '.').trim();
-    if (!limpo) return null;
-    const valor = Number(limpo);
-    return Number.isFinite(valor) && valor > 0 ? valor : null;
-  }, [cargaTotal]);
+  /** Data de início efetiva do plano, conforme a escolha da tela 3. */
+  const dataInicioEfetiva = useMemo(() => {
+    if (inicio === 'amanha') {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      return toDateKey(d);
+    }
+    if (inicio === 'data' && dataInicio) return dataInicio;
+    return toDateKey(new Date());
+  }, [inicio, dataInicio]);
 
-  /** Cálculo ao vivo da tela 3 — depende das horas por dia da tela 2. */
+  /** Cálculo ao vivo da tela 3 — depende do início e das horas por dia da tela 2. */
   const plano = useMemo(
     () =>
       computeLoadPlan({
-        startKey: toDateKey(new Date()),
+        startKey: dataInicioEfetiva,
         examDate: temProva && examDate ? examDate : undefined,
-        totalHours: cargaNumero,
         daily: horas,
       }),
-    [temProva, examDate, cargaNumero, horas]
+    [temProva, examDate, dataInicioEfetiva, horas]
   );
 
   const podeAvancar = (): boolean => {
@@ -237,7 +242,7 @@ export default function SetupWizard({
   const concluir = () => {
     if (!podeAvancar()) return;
 
-    const startDate = toDateKey(new Date());
+    const startDate = dataInicioEfetiva;
     const endDate = plano.dataFim;
 
     const answers: PresetWizardAnswers = {
@@ -268,7 +273,6 @@ export default function SetupWizard({
       startDate,
       endDate,
       periodMode: 'date',
-      totalHours: cargaNumero ?? undefined,
       examDate: temProva && examDate ? examDate : '',
     };
 
@@ -432,7 +436,7 @@ export default function SetupWizard({
                 <div>
                   <h3 className="text-xl font-bold text-text-primary">Até quando?</h3>
                   <p className="mt-1 text-sm text-text-secondary">
-                    Os dois campos são opcionais. Com os dois, o app diz se o plano fecha.
+                    A data da prova é opcional — o app mostra quanto tempo você terá até ela.
                   </p>
                 </div>
 
@@ -503,32 +507,58 @@ export default function SetupWizard({
                   )}
                 </div>
 
-                {/* Carga horária total */}
-                <div className="space-y-2">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-text-secondary">
-                      Quanto tempo quer estudar no total?
-                    </span>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={cargaTotal}
-                        onChange={(event) => {
-                          setCargaTotal(event.target.value.replace(/[^\d.,]/g, ''));
+                {/* Quando começar */}
+                <div className="space-y-3">
+                  <span className="block text-sm font-medium text-text-secondary">
+                    Quando quer começar?
+                  </span>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {(
+                      [
+                        { id: 'hoje', titulo: 'Hoje', descricao: 'o plano começa agora' },
+                        { id: 'amanha', titulo: 'Amanhã', descricao: 'começa no próximo dia' },
+                        { id: 'data', titulo: 'Escolher data', descricao: 'você define o primeiro dia' },
+                      ] as const
+                    ).map((opcao) => (
+                      <button
+                        key={opcao.id}
+                        type="button"
+                        onClick={() => {
+                          setInicio(opcao.id);
                           setErro(null);
                         }}
-                        placeholder="ex.: 400"
-                        className="input-field pr-14"
-                      />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-text-muted">
-                        horas
+                        className={`rounded-2xl border p-3 text-left transition-all ${
+                          inicio === opcao.id
+                            ? 'border-violet-500 bg-violet-500/10'
+                            : 'border-card-border hover:border-violet-400'
+                        }`}
+                      >
+                        <span className="block text-sm font-semibold text-text-primary">
+                          {opcao.titulo}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-text-secondary">
+                          {opcao.descricao}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  {inicio === 'data' && (
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs text-text-secondary">
+                        Primeiro dia de estudo
                       </span>
-                    </div>
-                  </label>
-                  <p className="text-xs text-text-muted">
-                    Deixe vazio se não souber. É o total que você quer estudar até estar pronto.
-                  </p>
+                      <input
+                        type="date"
+                        value={dataInicio}
+                        min={toDateKey(new Date())}
+                        onChange={(event) => {
+                          setDataInicio(event.target.value);
+                          setErro(null);
+                        }}
+                        className="input-field"
+                      />
+                    </label>
+                  )}
                 </div>
 
                 {/* Cálculo ao vivo */}
@@ -556,15 +586,6 @@ export default function SetupWizard({
                       </div>
                     )}
 
-                    {cargaNumero !== null && plano.diasRestantes !== null && (
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-text-secondary">Precisa estudar</span>
-                        <span className="font-semibold text-text-primary">
-                          {formatarHoras(plano.horasPorDiaAtivoNecessarias ?? 0)} por dia
-                        </span>
-                      </div>
-                    )}
-
                     {plano.horasCobertasAteProva !== null && (
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-text-secondary">Vai cobrir</span>
@@ -576,11 +597,7 @@ export default function SetupWizard({
 
                     <div className="flex items-center justify-between gap-3 border-t border-card-border pt-2">
                       <span className="text-text-secondary">
-                        {plano.origemDataFim === 'prova'
-                          ? 'Plano termina em'
-                          : plano.origemDataFim === 'carga'
-                            ? 'Termina a carga em'
-                            : 'Plano cobre'}
+                        {plano.origemDataFim === 'prova' ? 'Plano termina em' : 'Plano cobre'}
                       </span>
                       <span className="font-bold text-violet-600">
                         {plano.origemDataFim === 'semana'
@@ -590,30 +607,10 @@ export default function SetupWizard({
                     </div>
                   </div>
 
-                  {plano.viavel === false && (
-                    <div className="mt-3 flex gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-                      <p className="text-xs text-amber-200">
-                        Com esse ritmo a carga <b>não fecha</b> até a prova — faltariam{' '}
-                        <b>{formatarHoras(plano.faltamHoras ?? 0)}</b>. Aumente as horas por dia,
-                        some mais dias à semana, ou diminua a carga total.
-                      </p>
-                    </div>
-                  )}
-
-                  {plano.viavel === true && cargaNumero !== null && plano.diasRestantes !== null && (
-                    <div className="mt-3 flex gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
-                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
-                      <p className="text-xs text-emerald-200">
-                        Fecha! Sobram <b>{formatarHoras(plano.sobramHoras ?? 0)}</b> de folga até a
-                        prova.
-                      </p>
-                    </div>
-                  )}
-
-                  {plano.origemDataFim === 'carga' && (
+                  {plano.diasRestantes !== null && plano.horasCobertasAteProva !== null && (
                     <p className="mt-3 text-xs text-text-muted">
-                      Sem data de prova, o plano termina quando a carga total estiver completa.
+                      Com esse ritmo, de <b>{formatarDataLonga(dataInicioEfetiva)}</b> até a prova você
+                      acumula <b>{formatarHoras(plano.horasCobertasAteProva)}</b> de estudo.
                     </p>
                   )}
                 </div>
@@ -751,11 +748,19 @@ export default function SetupWizard({
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Carga total</span>
+                    <span className="text-sm text-text-secondary">Começa em</span>
                     <span className="text-sm font-semibold text-text-primary">
-                      {cargaNumero !== null ? formatarHoras(cargaNumero) : 'não definida'}
+                      {formatarDataLonga(dataInicioEfetiva)}
                     </span>
                   </div>
+                  {plano.horasCobertasAteProva !== null && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <span className="text-sm text-text-secondary">Total até a prova</span>
+                      <span className="text-sm font-semibold text-text-primary">
+                        {formatarHoras(plano.horasCobertasAteProva)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between px-4 py-3">
                     <span className="text-sm text-text-secondary">
                       {plano.origemDataFim === 'prova' ? 'Prova' : 'Termina em'}
