@@ -1776,21 +1776,21 @@ export default function PlannerPage() {
                             );
                           }
 
-                          // Bloco não feito em dia passado
+                          // Bloco não feito em dia passado — visual discreto, sem parecer erro
                           if (isMissed) {
                             return (
                               <div
                                 key={block.id}
-                                className="relative rounded-xl overflow-hidden cursor-default opacity-50"
+                                className="relative rounded-xl overflow-hidden cursor-default opacity-45"
                                 style={{
                                   background: 'rgba(255,255,255,0.02)',
                                   borderWidth: '1px',
                                   borderStyle: 'solid',
-                                  borderColor: 'rgba(255,255,255,0.07)',
+                                  borderColor: 'rgba(255,255,255,0.06)',
                                 }}
-                                title="Bloco não realizado neste dia."
+                                title="Bloco não realizado neste dia — use 'Recalcular atrasados' para recuperá-lo."
                               >
-                                <div className="h-[2px] w-full" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }} />
+                                <div className="h-[2px] w-full" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }} />
                                 <div className="p-2 pt-1.5">
                                   <div className="flex items-start justify-between gap-1">
                                     <p
@@ -1799,8 +1799,8 @@ export default function PlannerPage() {
                                     >
                                       {displayName}
                                     </p>
-                                    <span className="shrink-0 text-[8px] font-bold px-1 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20 whitespace-nowrap">
-                                      Não feito
+                                    <span className="shrink-0 text-[9px] font-semibold text-text-muted/70 whitespace-nowrap">
+                                      não feito
                                     </span>
                                   </div>
                                   <span className="text-[10px] text-text-muted/50 font-medium">{block.startTime}</span>
@@ -1889,12 +1889,27 @@ export default function PlannerPage() {
                         {isPast && pastTotal > 0 && (
                           <div className="mt-1.5 px-1.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-0.5">
                             <span className="text-[9px] font-bold text-text-muted/70">
-                              {pastDone}/{pastTotal} concluídos
+                              {pastDone}/{pastTotal} feitos
+                              {pastTotal - pastDone > 0 && (
+                                <span className="font-medium text-text-muted/50">
+                                  {' '}· {pastTotal - pastDone} não feitos
+                                </span>
+                              )}
                             </span>
                             {pastStudiedMins > 0 && (
                               <span className="text-[9px] text-text-muted/50 font-medium">
                                 {pastStudiedHours}h estudadas
                               </span>
+                            )}
+                            {pastTotal - pastDone > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleRecalculateBacklog}
+                                className="mt-0.5 self-start text-[9px] font-semibold text-neon-blue/80 hover:text-neon-blue hover:underline"
+                                title="Reagendar os blocos não feitos deste dia"
+                              >
+                                Recuperar atrasados →
+                              </button>
                             )}
                           </div>
                         )}
