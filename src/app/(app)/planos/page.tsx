@@ -36,6 +36,13 @@ export default function PlanosPage() {
       });
       const json = await res.json();
       if (!res.ok || !json?.success) {
+        if (json?.notConfigured) {
+          setErro(
+            'Pagamentos ainda não estão habilitados neste ambiente (Mercado Pago não configurado).'
+          );
+          setLoadingPlanId(null);
+          return;
+        }
         throw new Error(json?.error ?? 'Falha ao iniciar pagamento.');
       }
       window.location.href = json.data.checkoutUrl;

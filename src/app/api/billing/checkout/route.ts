@@ -29,6 +29,17 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!process.env.MERCADO_PAGO_ACCESS_TOKEN) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Pagamentos ainda não estão habilitados neste ambiente.',
+          notConfigured: true,
+        },
+        { status: 503 }
+      );
+    }
+
     const baseUrl = process.env.NEXTAUTH_URL ?? 'http://localhost:3000';
     const provider = getPaymentProvider();
     const checkout = await provider.createSubscription({
