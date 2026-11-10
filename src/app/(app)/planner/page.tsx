@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2, AlertTriangle, GripVertical, Trash2 } from 'lucide-react';
+import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2, AlertTriangle, GripVertical, Trash2, Sparkles } from 'lucide-react';
 import { repairCompletedBlockTimesOnce, repairOverlappingDaysOnce } from '@/lib/blockTimes';
 import {
   cn,
@@ -253,12 +253,10 @@ function SortableStudyBlock({
             {adaptiveBase != null &&
               !block.isBreak &&
               block.durationMinutes !== adaptiveBase && (
-                <span
-                  className="ml-1 font-semibold opacity-70"
+                <Sparkles
+                  className="ml-0.5 inline h-3 w-3 opacity-70"
                   title={`Modo adaptativo: ajustado de ${adaptiveBase} para ${block.durationMinutes} min`}
-                >
-                  adapt.
-                </span>
+                />
               )}
           </span>
         </div>
