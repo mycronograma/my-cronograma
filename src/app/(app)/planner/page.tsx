@@ -1219,6 +1219,9 @@ export default function PlannerPage() {
                                 {isPast ? '🔴 Atrasado' : '🔵 Agendado'} de {dateStr}
                               </p>
                             </div>
+                            <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-black/20 text-text-secondary">
+                              {b.durationMinutes}m
+                            </span>
                           </button>
                         );
                       })
@@ -1273,6 +1276,12 @@ export default function PlannerPage() {
 
             </div>
 
+            {blockModalMode === 'puxar' && !selectedBlockIdToMove && movableBlocks.length > 0 && (
+              <p className="mt-4 text-xs text-center text-text-muted">
+                👆 Selecione um bloco na lista acima para puxar para este dia
+              </p>
+            )}
+
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setAddBlockModal({ open: false, date: null })}
@@ -1283,7 +1292,7 @@ export default function PlannerPage() {
               <button
                 onClick={blockModalMode === 'novo' ? handleSaveNewBlock : handleSaveBlockMove}
                 disabled={blockModalMode === 'novo' ? !newBlockSubjectId : !selectedBlockIdToMove}
-                className="flex-1 h-11 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                className="flex-1 h-11 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none transition-all flex items-center justify-center gap-2"
               >
                 {blockModalMode === 'novo' ? (
                   <>
@@ -1291,7 +1300,10 @@ export default function PlannerPage() {
                     Adicionar Bloco
                   </>
                 ) : (
-                  'Puxar para este dia'
+                  <>
+                    <Navigation className="h-4 w-4" />
+                    Puxar para este dia
+                  </>
                 )}
               </button>
             </div>
