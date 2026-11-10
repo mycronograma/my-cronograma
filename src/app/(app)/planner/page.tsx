@@ -253,10 +253,12 @@ function SortableStudyBlock({
             {adaptiveBase != null &&
               !block.isBreak &&
               block.durationMinutes !== adaptiveBase && (
-                <Sparkles
-                  className="ml-0.5 inline h-3 w-3 opacity-70"
+                <span
+                  className="ml-0.5 inline-flex"
                   title={`Modo adaptativo: ajustado de ${adaptiveBase} para ${block.durationMinutes} min`}
-                />
+                >
+                  <Sparkles className="h-3 w-3 opacity-70" />
+                </span>
               )}
           </span>
         </div>
