@@ -72,6 +72,7 @@ export function useOnboarding() {
     shouldShowWelcome,
     shouldShowTutorial,
     hasCompletedWelcome: state.hasCompletedWelcome,
+    hasCompletedTutorial: state.hasCompletedTutorial,
     hasAddedFirstSubject: state.hasAddedFirstSubject,
     completeWelcome,
     completeTutorial,
