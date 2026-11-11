@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2, AlertTriangle, GripVertical } from 'lucide-react';
+import { Map as MapIcon, X, Filter, Calendar, Clock, TrendingUp, Target, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Layers, RotateCw, Navigation, Check, Plus, RefreshCw, CheckCircle2, AlertTriangle, GripVertical, Trash2, Sparkles } from 'lucide-react';
 import { repairCompletedBlockTimesOnce, repairOverlappingDaysOnce } from '@/lib/blockTimes';
 import {
   cn,
@@ -11,6 +12,7 @@ import {
   parseBlockDate,
   parseLocalDateKey,
   studiedMinutes,
+  plannedMinutes,
   timeToMinutes,
   formatHoursDuration,
   toLocalDateKey,
@@ -19,11 +21,16 @@ import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
 import { isEnemGoal, upgradeSubjectsToOfficialEnemStructure } from '@/lib/enemCatalog';
 import { generateChronologicalSchedule, getPhaseForDate } from '@/services/roadmapEngine';
 import { resolveScheduleConstraints } from '@/services/scheduleConstraints';
-import { buildSubjectPerformanceProfiles, inferUserLearningLevel } from '@/services/adaptiveStudyIntelligence';
+import { deriveEndDateFromHours, parseKey } from '@/lib/studyLoad';
+import {
+  buildSubjectPerformanceProfiles,
+  computeAdaptivePriorityScore,
+  inferUserLearningLevel,
+} from '@/services/adaptiveStudyIntelligence';
 import { useLocalStorage } from '@/hooks';
 import { useBacklogRescheduler } from '@/hooks/useBacklogRescheduler';
 import { analyzeBacklogCapacity, formatMinutesAsHours } from '@/services/backlogCapacity';
-import { planBlockMove } from '@/services/blockMove';
+import { planBlockMove, isMovable, dayKeyOf } from '@/services/blockMove';
 import { findFreeSlot } from '@/services/freeSlot';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import Button from '@/components/ui/Button';
@@ -40,6 +47,8 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { FixedScheduleModal } from './FixedScheduleModal';
+
 import type {
   AnalyticsStore,
   StudyBlock,
@@ -52,6 +61,61 @@ import type {
 import { defaultSettings } from '@/lib/defaultSettings';
 
 const weekDayKeys: WeekdayKey[] = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Smart Suggestion: ranking de matérias para Realocar / Adiantar
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface RankedSubject {
+  subject: Subject;
+  score: number;
+  urgency: 'alta' | 'media' | 'baixa';
+  reason: string;
+}
+
+function rankSubjectsForSuggestion(
+  subjects: Subject[],
+  analytics: AnalyticsStore | undefined,
+  studyPrefs: StudyPreferences,
+  now: Date
+): RankedSubject[] {
+  const profiles = buildSubjectPerformanceProfiles(subjects, analytics, now);
+  const userLevel = inferUserLearningLevel(studyPrefs, subjects, analytics);
+
+  return subjects
+    .map((subject) => {
+      const profile = profiles[subject.id];
+      const score = computeAdaptivePriorityScore({
+        subject,
+        profile,
+        now,
+        examDate: studyPrefs?.examDate || undefined,
+        userLevel,
+      });
+
+      // Monta justificativa legível
+      const reasons: string[] = [];
+      const daysWithout = profile?.daysWithoutStudy;
+      if (typeof daysWithout === 'number' && daysWithout >= 3) {
+        reasons.push(`${daysWithout}d sem estudar`);
+      }
+      const errorRate = profile?.errorRate;
+      if (typeof errorRate === 'number' && errorRate > 0.5) {
+        reasons.push('taxa de erro alta');
+      } else if (typeof errorRate === 'number' && errorRate > 0.35) {
+        reasons.push('taxa de erro moderada');
+      }
+      if (subject.difficulty >= 8) reasons.push('matéria difícil');
+      if (subject.priority >= 8) reasons.push('alta prioridade');
+      if (reasons.length === 0) reasons.push('distribuição equilibrada');
+
+      const urgency: RankedSubject['urgency'] =
+        score >= 2.5 ? 'alta' : score >= 1.5 ? 'media' : 'baixa';
+
+      return { subject, score, urgency, reason: reasons.join(' · ') };
+    })
+    .sort((a, b) => b.score - a.score);
+}
 
 // Fonte única: defaultSettings.dailyHoursByWeekday. Antes o planner tinha o
 // próprio default (17h/semana) divergindo do restante do app (24h/semana), o que
@@ -109,10 +173,15 @@ function SortableStudyBlock({
   block,
   subject,
   displayName,
+  onDelete,
+  adaptiveBase,
 }: {
   block: StudyBlock;
   subject: Subject | undefined;
   displayName: string;
+  onDelete?: (blockId: string, date: Date) => void;
+  /** Base do modo adaptativo; quando definida e o bloco difere dela, mostramos a marca. */
+  adaptiveBase?: number | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.id,
@@ -143,9 +212,25 @@ function SortableStudyBlock({
           : 'Arraste para reordenar as matérias do dia'
       }
     >
-      {/* Alça visível só no hover: quem nunca vai arrastar não vê ruído. */}
-      <div className="absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-60 transition-opacity">
-        <GripVertical className="h-3 w-3 text-text-muted" />
+      {/* Ações visíveis só no hover: quem nunca vai mexer não vê ruído. */}
+      <div className="absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+        {onDelete && !isPreservado(block) && (
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(block.id, (parseBlockDate(block.date) ?? block.date) as Date);
+            }}
+            className="p-1 rounded hover:bg-black/5 text-text-muted hover:text-red-500 transition-colors"
+            title="Excluir bloco"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+        <div className="p-1 text-text-muted opacity-60">
+          <GripVertical className="h-3 w-3" />
+        </div>
       </div>
 
       {/* Top accent line */}
@@ -158,13 +243,22 @@ function SortableStudyBlock({
         >
           {displayName}
         </p>
-        <div className="flex items-center justify-between mt-1.5 gap-1">
-          <span className="text-[10px] text-text-muted font-medium">{block.startTime}</span>
+        <div className="flex items-center justify-end mt-1.5 gap-1">
           <span
             className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full whitespace-nowrap"
             style={{ color: subjectColor, backgroundColor: `${subjectColor}20` }}
           >
             {block.durationMinutes}m
+            {adaptiveBase != null &&
+              !block.isBreak &&
+              block.durationMinutes !== adaptiveBase && (
+                <span
+                  className="ml-0.5 inline-flex"
+                  title={`Modo adaptativo: ajustado de ${adaptiveBase} para ${block.durationMinutes} min`}
+                >
+                  <Sparkles className="h-3 w-3 opacity-70" />
+                </span>
+              )}
           </span>
         </div>
       </div>
@@ -265,8 +359,11 @@ const Tooltip = ({ children, content, position = 'top' }: {
 };
 
 export default function PlannerPage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const [subjects, setSubjects] = useLocalStorage<Subject[]>('nexora_subjects', []);
-  const [studyPrefs] = useLocalStorage<StudyPreferences>('nexora_study_prefs', {
+  const [studyPrefs, setStudyPrefs] = useLocalStorage<StudyPreferences>('nexora_study_prefs', {
     hoursPerDay: 2,
     daysOfWeek: [1, 2, 3, 4, 5],
     mode: 'random',
@@ -333,61 +430,25 @@ export default function PlannerPage() {
     onClose: () => setRegenConfirm(null),
     ariaLabel: 'Confirmar novo cronograma',
   });
-  // #6d/#6c: blocos não cumpridos são empurrados para o próximo dia com horário
-  // livre e a semana é recalculada. Roda 1x por dia sozinho; o botão abaixo
-  // permite disparar na hora.
-  const { pendingCount, runNow: runBacklogNow } = useBacklogRescheduler({
-    blocks,
-    setBlocks,
-    allowedDays: allowedStudyDays,
-    dailyLimitByDate: dailyLimits,
-    breakMinutes: userSettings?.breakMinutes,
-    // Dias além do fim do cronograma gerado não têm limite nem blocos: sem esta
-    // carga por dia da semana, o motor os tratava como "capacidade zero" e o
-    // reagendamento ficava impossível justamente quando a pessoa precisa.
-    fallbackDayMinutesByWeekday: fallbackDayMinutesByWeekday,
-  });
-
-  // #21: quanto espaço resta de verdade para reagendar. Quando não cabe, a tela
-  // explica com números em vez de dizer apenas "não havia espaço".
-  const backlogCapacity = useMemo(
-    () =>
-      pendingCount === 0
-        ? null
-        : analyzeBacklogCapacity({
-            blocks,
-            today: new Date(),
-            dailyLimitByDate: dailyLimits,
-            fallbackDayMinutesByWeekday,
-            allowedDays: allowedStudyDays,
-          }),
-    [pendingCount, blocks, dailyLimits, fallbackDayMinutesByWeekday, allowedStudyDays]
-  );
   const [backlogFeedback, setBacklogFeedback] = useState<string | null>(null);
   // Sucesso (verde) ou aviso (âmbar) — antes tudo aparecia com ícone de "ok".
   const [backlogFeedbackTone, setBacklogFeedbackTone] = useState<'ok' | 'erro'>('ok');
 
-  const handleRecalculateBacklog = () => {
-    const result = runBacklogNow();
-    if (result.movedCount === 0) {
-      setBacklogFeedbackTone('erro');
-      if (pendingCount === 0) {
-        setBacklogFeedback('Nenhum bloco atrasado.');
-        setBacklogFeedbackTone('ok');
-      } else if (result.pendingCount > 0) {
-        setBacklogFeedback(
-          `Não foi possível remarcar ${result.pendingCount === 1 ? '1 bloco' : `${result.pendingCount} blocos`}: não há espaço nos próximos dias.`
-        );
-      } else {
-        setBacklogFeedback('Não havia espaço nos próximos dias.');
-      }
-      return;
-    }
+  const handleRecalculateBacklog = async () => {
     setBacklogFeedbackTone('ok');
-    const restante = result.pendingCount > 0 ? ` Ainda restam ${result.pendingCount} sem espaço.` : '';
-    setBacklogFeedback(
-      `${result.movedCount} ${result.movedCount === 1 ? 'bloco remarcado' : 'blocos remarcados'} para os próximos dias.${restante}`
-    );
+    setBacklogFeedback('Recalculando cronograma e empurrando datas...');
+    
+    // setTimeout para dar tempo da UI renderizar o feedback
+    setTimeout(() => {
+      const result = runBacklogRescheduler();
+      
+      if (result.applied) {
+        setBacklogFeedback('✅ Atrasos absorvidos! O cronograma foi reajustado.');
+      } else {
+        setBacklogFeedbackTone('erro');
+        setBacklogFeedback('Nenhuma matéria foi reajustada. Talvez não haja espaço livre nos próximos dias.');
+      }
+    }, 10);
   };
 
   const [firstCycleAllSubjects, setFirstCycleAllSubjects] = useLocalStorage<boolean>(
@@ -404,6 +465,7 @@ export default function PlannerPage() {
   );
 
   const [showMapFilter, setShowMapFilter] = useState(false);
+  const [showFixedScheduleModal, setShowFixedScheduleModal] = useState(false);
   const [mapFilterSubject, setMapFilterSubject] = useState<string | null>(null);
   const [mapFilterPhase, setMapFilterPhase] = useState<string | null>(null);
   const [mapFilterStatus, setMapFilterStatus] = useState<string | null>(null);
@@ -418,9 +480,9 @@ export default function PlannerPage() {
     date: null,
   });
   const [newBlockSubjectId, setNewBlockSubjectId] = useState('');
-  // #13: o modal passou a oferecer dois fluxos além de "novo bloco" — realocar
-  // (move o bloco que já existe) e adiantar (puxa o bloco de um dia futuro).
-  const [blockModalMode, setBlockModalMode] = useState<'novo' | 'realocar' | 'adiantar'>('novo');
+  // #13: o modal passou a oferecer dois fluxos: "novo bloco" e "puxar"
+  const [blockModalMode, setBlockModalMode] = useState<'novo' | 'puxar'>('novo');
+  const [selectedBlockIdToMove, setSelectedBlockIdToMove] = useState<string | null>(null);
   const [blockMovePreview, setBlockMovePreview] = useState<string | null>(null);
   const [newBlockType, setNewBlockType] = useState<StudyBlock['type']>('AULA');
   // Duração e intervalo vêm da predefinição (wizard/Configurações): o modal não
@@ -493,6 +555,16 @@ export default function PlannerPage() {
     return buildDailyTimeWindowByDate(scheduleStartDate, scheduleEndDate, safeDailyAvailabilityByWeekday);
   }, [scheduleStartDate, scheduleEndDate, safeDailyAvailabilityByWeekday]);
 
+  const { pendingCount, runNow: runBacklogRescheduler } = useBacklogRescheduler({
+    blocks,
+    setBlocks,
+    allowedDays: allowedStudyDays,
+    dailyLimitByDate: dailyLimitsByDate,
+    fallbackDayMinutesByWeekday,
+    breakMinutes: breakMinutos,
+    enabled: true,
+  });
+
   const autoSlot = useMemo(() => {
     const date = addBlockModal.date;
     if (!date) return null;
@@ -503,7 +575,7 @@ export default function PlannerPage() {
       durationMinutes: configuredBlockMinutes,
       breakMinutes: configuredBreakMinutes,
       window: dailyTimeWindowsByDate[dayKey],
-      dayLimitMinutes: dailyLimitsByDate[dayKey],
+      dayLimitMinutes: undefined, // Removida a trava: o usuário pode adicionar além do limite diário
       usedStudyMinutes: dayBlocks
         .filter((b) => !b.isBreak)
         .reduce((sum, b) => sum + b.durationMinutes, 0),
@@ -608,7 +680,8 @@ export default function PlannerPage() {
     return { blocos: estudados.length, minutos };
   }, [blocosPreservados]);
 
-  const gerarCronograma = useCallback(async () => {
+  const gerarCronograma = useCallback(async (options?: { overridePrefs?: StudyPreferences; forceRecomputeDate?: boolean }) => {
+    const overridePrefs = options?.overridePrefs;
     const diffDays = Math.ceil(((plannerEndDate ?? new Date(displayedWeekStart.getTime() + 6*86400000)).getTime() - displayedWeekStart.getTime()) / 86400000) + 1;
     if (diffDays > 730) {
       setPlannerNotice('Período muito longo (máximo 2 anos / 730 dias).');
@@ -617,13 +690,41 @@ export default function PlannerPage() {
     setIsGenerating(true);
     setPlannerNotice(null);
 
+    const activePrefs = overridePrefs || studyPrefs;
+
     try {
-      const weekStart = displayedWeekStart;
-      const weekEnd = plannerEndDate ?? (() => { const d = new Date(displayedWeekStart); d.setDate(d.getDate() + 6); return d; })();
-      // As mesmas restrições que o Mapa de Carga exibe e que a API
-      // /api/planner/generate aplica. Antes o botão gerava sem restDays,
-      // dailyLimitByDate, janelas de disponibilidade e regras de simulado:
-      // para 3h seg-sex + 2h sab o botão produzia 22,8h/semana contra 17h da API.
+      // O cronograma sempre começa no dia de início do plano (configurado no
+      // assistente), não na semana que está aberta na tela — senão aplicar a
+      // estratégia em outra semana deixaria a semana inicial vazia.
+      const inicioPlano =
+        scheduleStartDate ??
+        (studyPrefs?.startDate ? parseKey(studyPrefs.startDate) : null);
+      const weekStart =
+        inicioPlano && !Number.isNaN(inicioPlano.getTime()) ? inicioPlano : displayedWeekStart;
+
+      let computedEndDate = options?.forceRecomputeDate ? null : plannerEndDate;
+      if (!computedEndDate) {
+        if (activePrefs.examDate) {
+          const d = parseKey(activePrefs.examDate);
+          if (!Number.isNaN(d.getTime())) computedEndDate = d;
+        } else if (userSettings?.examDate) {
+          const d = parseKey(userSettings.examDate);
+          if (!Number.isNaN(d.getTime())) computedEndDate = d;
+        } else {
+          const totalHours = userSettings?.totalHours;
+          if (totalHours) {
+             const remainingHours = Math.max(0, totalHours - (progressoAtual.minutos / 60));
+             const startKey = toLocalDateKey(displayedWeekStart);
+             const dailyHours = (userSettings?.dailyHoursByWeekday ?? DEFAULT_DAILY_HOURS_BY_WEEKDAY) as Record<string, number>;
+             const endKey = deriveEndDateFromHours(startKey, remainingHours, dailyHours as any);
+             const d = parseKey(endKey);
+             if (!Number.isNaN(d.getTime())) computedEndDate = d;
+          }
+        }
+      }
+
+      const weekEnd = computedEndDate ?? (() => { const d = new Date(displayedWeekStart); d.setDate(d.getDate() + 6); return d; })();
+
       const constraints = resolveScheduleConstraints({
         userSettings: {
           ...userSettings,
@@ -632,7 +733,7 @@ export default function PlannerPage() {
           dailyAvailabilityByWeekday:
             userSettings.dailyAvailabilityByWeekday ?? DEFAULT_DAILY_AVAILABILITY_BY_WEEKDAY,
         },
-        studyPrefs,
+        studyPrefs: activePrefs,
         startDate: weekStart,
         endDate: weekEnd,
         dailyLimitsOverride: dailyLimits,
@@ -659,13 +760,14 @@ export default function PlannerPage() {
 
       const scheduleComJanelas = await generateChronologicalSchedule({
         subjects,
-        preferences: studyPrefs,
+        preferences: activePrefs,
         startDate: weekStart,
         endDate: weekEnd,
         preferredStart: constraints.preferredStart,
         preferredEnd: constraints.preferredEnd,
         maxBlockMinutes: constraints.maxBlockMinutes,
         breakMinutes: constraints.breakMinutes,
+        adaptiveBlocks: constraints.adaptiveBlocks,
         restDays: constraints.restDays,
         dailyLimitByDate: constraints.dailyLimitByDate,
         dailyTimeWindowByDate: {
@@ -697,13 +799,14 @@ export default function PlannerPage() {
         startDate: toLocalKey(weekStart),
         endDate: toLocalKey(weekEnd),
       });
+      setPlannerEndDate(weekEnd); // Atualiza a UI para refletir a data longa
     } catch (error) {
       console.error('Erro ao gerar cronograma:', error);
       setPlannerNotice('❌ Erro ao gerar cronograma.');
     } finally {
       setIsGenerating(false);
     }
-  }, [subjects, studyPrefs, userSettings, dailyLimits, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate]);
+  }, [subjects, studyPrefs, userSettings, dailyLimits, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate, scheduleStartDate]);
 
   // Sensores do arrastar. O ponteiro exige 6px antes de virar arrasto, para
   // que um toque comum (ou a rolagem no celular) não reordene nada por acidente.
@@ -773,7 +876,7 @@ export default function PlannerPage() {
     ]);
   };
 
-  const handleGenerateSchedule = useCallback(async () => {
+  const handleGenerateSchedule = useCallback(async (overridePrefs?: StudyPreferences) => {
     if (subjects.length === 0) {
       setPlannerNotice('Adicione pelo menos uma matéria para gerar um cronograma.');
       return;
@@ -792,7 +895,7 @@ export default function PlannerPage() {
       });
       return;
     }
-    await gerarCronograma();
+    await gerarCronograma({ overridePrefs });
   }, [
     subjects,
     plannerEndDate,
@@ -811,10 +914,24 @@ export default function PlannerPage() {
   const handleOpenAddBlock = (date: Date) => {
     setAddBlockModal({ open: true, date });
     setNewBlockSubjectId(activeSubjects[0]?.id || '');
+    setSelectedBlockIdToMove(null);
     setNewBlockType('AULA');
     setBlockModalMode('novo');
     setBlockMovePreview(null);
   };
+
+  const movableBlocks = useMemo(() => {
+    if (blockModalMode !== 'puxar' || !addBlockModal.date) return [];
+    const targetKey = toLocalDateKey(addBlockModal.date);
+    return blocks
+      .filter((b) => isMovable(b) && dayKeyOf(b) !== targetKey)
+      .sort((a, b) => {
+        const aKey = dayKeyOf(a);
+        const bKey = dayKeyOf(b);
+        if (aKey !== bKey) return aKey < bKey ? -1 : 1;
+        return a.startTime.localeCompare(b.startTime);
+      });
+  }, [blocks, addBlockModal.date, blockModalMode]);
 
   /**
    * #13: prévia do impacto — qual bloco vai sair de onde e para onde, antes de
@@ -822,14 +939,13 @@ export default function PlannerPage() {
    */
   const movePreviewText = useMemo(() => {
     if (blockModalMode === 'novo') return null;
-    if (!addBlockModal.date || !newBlockSubjectId) return null;
+    if (!addBlockModal.date || !selectedBlockIdToMove) return null;
 
     const plan = planBlockMove({
       blocks,
       subjects: activeSubjects,
-      subjectId: newBlockSubjectId,
+      blockId: selectedBlockIdToMove,
       targetDate: addBlockModal.date,
-      mode: blockModalMode === 'adiantar' ? 'adiantar' : 'realocar',
       preferredStart: newBlockStart,
       breakMinutes: userSettings?.breakMinutes ?? 10,
     });
@@ -840,31 +956,67 @@ export default function PlannerPage() {
       month: '2-digit',
     });
     return `sai de ${origem} → ${plan.placedStart} · bloco movido, não duplicado`;
-  }, [blockModalMode, addBlockModal.date, newBlockSubjectId, blocks, activeSubjects, newBlockStart, userSettings?.breakMinutes]);
+  }, [blockModalMode, addBlockModal.date, selectedBlockIdToMove, blocks, activeSubjects, newBlockStart, userSettings?.breakMinutes]);
+
+  const rebuildDayWithBreaks = (currentBlocks: StudyBlock[], date: Date, breakLen: number): StudyBlock[] => {
+    const dayKey = toLocalDateKey(date);
+    const isSameDay = (b: StudyBlock) => toLocalDateKey(parseBlockDate(b.date) ?? b.date) === dayKey;
+    const dayStudy = currentBlocks.filter((b) => isSameDay(b) && !b.isBreak).sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+    
+    const rebuilt: StudyBlock[] = [];
+    let cursor = 0;
+    
+    for (let i = 0; i < dayStudy.length; i++) {
+      const b = dayStudy[i];
+      let bStart = timeToMinutes(b.startTime);
+      if (bStart < cursor) bStart = cursor;
+      const bEnd = bStart + b.durationMinutes;
+      rebuilt.push({ ...b, startTime: minutesToTime(bStart), endTime: minutesToTime(bEnd) });
+      cursor = bEnd;
+      
+      if (i < dayStudy.length - 1 && breakLen > 0) {
+        rebuilt.push({
+          id: `manual-break-${Date.now()}-${i}`,
+          userId: b.userId || 'local',
+          subjectId: 'break',
+          date: b.date,
+          startTime: minutesToTime(cursor),
+          endTime: minutesToTime(cursor + breakLen),
+          durationMinutes: breakLen,
+          status: 'scheduled',
+          isBreak: true,
+          isAutoGenerated: true,
+        } as StudyBlock);
+        cursor += breakLen;
+      }
+    }
+    
+    return [...currentBlocks.filter((b) => !isSameDay(b)), ...rebuilt];
+  };
 
   /** #13: realoca/adianta um bloco existente (nunca cria um novo). */
   const handleSaveBlockMove = () => {
     const date = addBlockModal.date;
-    if (!date || !newBlockSubjectId) return;
+    if (!date || !selectedBlockIdToMove) return;
 
     const plan = planBlockMove({
       blocks,
       subjects: activeSubjects,
-      subjectId: newBlockSubjectId,
+      blockId: selectedBlockIdToMove,
       targetDate: date,
-      mode: blockModalMode === 'adiantar' ? 'adiantar' : 'realocar',
       preferredStart: newBlockStart,
       breakMinutes: userSettings?.breakMinutes ?? 10,
     });
 
     if (!plan.ok || !plan.blocks) {
-      setPlannerNotice(`⚠️ ${plan.reason ?? 'Não foi possível mover o bloco.'}`);
+      setPlannerNotice(`⚠️ ${plan.reason ?? 'Não foi possível puxar o bloco.'}`);
       return;
     }
 
-    setBlocks(() => plan.blocks as StudyBlock[]);
+    const planBlocks = plan.blocks as StudyBlock[];
+    setBlocks(() => rebuildDayWithBreaks(planBlocks, date, userSettings?.breakMinutes ?? 10));
     setPlannerNotice(
-      `✅ ${plan.subjectName} ${blockModalMode === 'adiantar' ? 'adiantado' : 'realocado'} para ${plan.toDateKey} às ${plan.placedStart}.`
+      `✅ Bloco de ${plan.subjectName} puxado para ${plan.toDateKey} às ${plan.placedStart}.`
     );
     setBlockMovePreview(null);
     setAddBlockModal({ open: false, date: null });
@@ -913,42 +1065,26 @@ export default function PlannerPage() {
       const end = start + newBlockDuration;
       const adjusted: StudyBlock = { ...newBlock, startTime: minutesToTime(start), endTime: minutesToTime(end) };
 
-      const abutting = dayStudy.find((b) => timeToMinutes(b.startTime) === end);
-      if (!abutting || breakLen <= 0) {
-        return [...prev, adjusted];
-      }
-
-      // Intervalo obrigatório entre o bloco novo e o seguinte encostado,
-      // empurrando a cadeia consecutiva do dia para abrir espaço.
-      const breakBlock: StudyBlock = {
-        ...adjusted,
-        id: `manual-break-${Date.now()}`,
-        isBreak: true,
-        durationMinutes: breakLen,
-        startTime: minutesToTime(end),
-        endTime: minutesToTime(end + breakLen),
-        description: 'Intervalo',
-        type: undefined,
-      };
-      let cursor = end + breakLen;
-      const shifted = prev.map((b) => {
-        if (!isSameDay(b) || b.isBreak) return b;
-        const bStart = timeToMinutes(b.startTime);
-        if (bStart < end) return b;
-        const delta = Math.max(0, cursor - bStart);
-        const moved = {
-          ...b,
-          startTime: minutesToTime(bStart + delta),
-          endTime: minutesToTime(bStart + delta + b.durationMinutes),
-        };
-        cursor = bStart + delta + b.durationMinutes + breakLen;
-        return moved;
-      });
-      return [...shifted, adjusted, breakBlock];
+      return rebuildDayWithBreaks([...prev, adjusted], new Date(date), breakLen);
     });
     setAddBlockModal({ open: false, date: null });
     setPlannerNotice(`✅ Bloco de ${subject?.name || 'estudo'} adicionado com intervalo automático!`);
   };
+
+  const handleDeleteBlock = useCallback((blockId: string, date: Date) => {
+    setBlocks((prev) => {
+      const dayKey = toLocalDateKey(date);
+      const isSameDay = (b: StudyBlock) => toLocalDateKey(parseBlockDate(b.date) ?? b.date) === dayKey;
+      
+      const dayStudy = prev
+        .filter((b) => isSameDay(b) && !b.isBreak && b.id !== blockId)
+        .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+
+      const breakLen = userSettings?.breakMinutes ?? 10;
+      return rebuildDayWithBreaks([...prev.filter((b) => !isSameDay(b)), ...dayStudy], date, breakLen);
+    });
+    setPlannerNotice('🗑️ Bloco excluído e dia reorganizado.');
+  }, [setBlocks, userSettings?.breakMinutes]);
 
   const getBlockStatusInfo = (block: StudyBlock) => {
     if (block.pedagogicalStepIndex !== undefined && block.pedagogicalStepTotal) {
@@ -983,11 +1119,7 @@ export default function PlannerPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-text-primary">
-                    {blockModalMode === 'novo'
-                      ? 'Novo Bloco de Estudo'
-                      : blockModalMode === 'adiantar'
-                        ? 'Adiantar matéria'
-                        : 'Realocar matéria'}
+                    {blockModalMode === 'novo' ? 'Novo Bloco de Estudo' : 'Puxar Bloco Existente'}
                   </h3>
                   <p className="text-xs text-text-muted">
                     {addBlockModal.date?.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
@@ -1005,12 +1137,11 @@ export default function PlannerPage() {
             </div>
 
             {/* #13: três formas de mexer no dia */}
-            <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl border border-card-border bg-row-soft p-1">
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-card-border bg-row-soft p-1">
               {(
                 [
-                  { id: 'novo', label: 'Novo' },
-                  { id: 'realocar', label: 'Realocar' },
-                  { id: 'adiantar', label: 'Adiantar' },
+                  { id: 'novo', label: 'Criar Novo' },
+                  { id: 'puxar', label: 'Puxar Existente' },
                 ] as const
               ).map((option) => (
                 <button
@@ -1032,25 +1163,71 @@ export default function PlannerPage() {
               ))}
             </div>
 
-            {blockModalMode !== 'novo' && (
+            {blockModalMode === 'puxar' && (
               <p className="mb-4 rounded-xl border border-warning bg-warning-soft p-3 text-xs text-warning-strong">
-                {blockModalMode === 'adiantar'
-                  ? 'Puxa para este dia um bloco que está em um dia seguinte. O bloco original muda de lugar — não é criada uma segunda matéria.'
-                  : 'Move para este dia um bloco que já existe em outro dia. Nada é duplicado.'}
+                Move um bloco atrasado ou futuro para este dia. O bloco original muda de lugar — nada é duplicado.
               </p>
             )}
 
             <div className="space-y-4">
-              {/* Subject */}
+              {/* Subject ou Block Selection */}
               <div>
                 <label className="block text-sm font-semibold text-text-primary mb-2">
-                  Matéria
+                  {blockModalMode === 'novo' ? 'Matéria' : 'Escolha o bloco a puxar'}
                 </label>
                 {activeSubjects.length === 0 ? (
                   <p className="text-sm text-text-muted p-3 rounded-xl bg-surface-panel border border-card-border">
                     Nenhuma matéria ativa. Adicione matérias em Matérias.
                   </p>
+                ) : blockModalMode === 'puxar' ? (
+                  <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                    {movableBlocks.length === 0 ? (
+                      <p className="text-sm text-text-muted p-3 rounded-xl bg-surface-panel border border-card-border">
+                        Nenhum bloco disponível para puxar.
+                      </p>
+                    ) : (
+                      movableBlocks.map((b) => {
+                        const s = activeSubjects.find((sub) => sub.id === b.subjectId);
+                        if (!s) return null;
+                        const bKey = dayKeyOf(b);
+                        const targetKey = toLocalDateKey(addBlockModal.date!);
+                        const isPast = bKey < targetKey;
+                        const dateStr = parseBlockDate(b.date).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+
+                        return (
+                          <button
+                            key={b.id}
+                            onClick={() => setSelectedBlockIdToMove(b.id)}
+                            className={cn(
+                              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all border text-left',
+                              selectedBlockIdToMove === b.id
+                                ? 'shadow-sm'
+                                : 'bg-surface-panel border-border-subtle hover:border-card-border'
+                            )}
+                            style={selectedBlockIdToMove === b.id ? {
+                              backgroundColor: `${s.color}18`,
+                              borderColor: `${s.color}55`,
+                            } : {}}
+                          >
+                            <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold truncate leading-tight" style={{ color: selectedBlockIdToMove === b.id ? s.color : undefined }}>
+                                {s.name} - <span className="opacity-75 font-normal">{getStudyBlockTypeLabel(b.type)}</span>
+                              </p>
+                              <p className="text-[10px] text-text-muted truncate mt-0.5">
+                                {isPast ? '🔴 Atrasado' : '🔵 Agendado'} de {dateStr}
+                              </p>
+                            </div>
+                            <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-black/20 text-text-secondary">
+                              {b.durationMinutes}m
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 ) : (
+                  // ── Modo Novo: lista simples como antes ──
                   <div className="flex flex-wrap gap-2">
                     {activeSubjects.map((s) => (
                       <button
@@ -1076,34 +1253,6 @@ export default function PlannerPage() {
                 )}
               </div>
 
-              {/* Type */}
-              <div>
-                <label className="block text-sm font-semibold text-text-primary mb-2">
-                  Tipo de Sessão
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {([
-                    { value: 'AULA', label: 'Aula' },
-                    { value: 'EXERCICIOS', label: 'Exercícios' },
-                    { value: 'REVISAO', label: 'Revisão' },
-                    { value: 'SIMULADO_AREA', label: 'Simulado' },
-                    { value: 'ANALISE', label: 'Análise' },
-                  ] as const).map(({ value, label }) => (
-                    <button
-                      key={value}
-                      onClick={() => setNewBlockType(value)}
-                      className={cn(
-                        'px-3 py-1.5 rounded-xl text-sm font-medium transition-all border',
-                        newBlockType === value
-                          ? 'bg-neon-blue/15 text-neon-blue border-neon-blue/40'
-                          : 'bg-surface-panel border-border-subtle text-text-secondary hover:border-card-border'
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {/* #19: nada de escolher hora nem duração — só mostramos onde vai
                   entrar, com os números que o usuário já definiu na predefinição. */}
@@ -1119,14 +1268,18 @@ export default function PlannerPage() {
                   </p>
                 ) : (
                   <p className="rounded-xl border border-warning bg-warning-soft p-3 text-xs text-warning-strong">
-                    {`Este dia já está cheio com as ${Math.round(
-                      (dailyLimitsByDate[addBlockModal.date ? toLocalDateKey(addBlockModal.date) : ''] ?? 0) / 60
-                    )}h de estudo que você configurou. Escolha outro dia.`}
+                    Este dia está fora da sua janela de disponibilidade.
                   </p>
                 )
               )}
 
             </div>
+
+            {blockModalMode === 'puxar' && !selectedBlockIdToMove && movableBlocks.length > 0 && (
+              <p className="mt-4 text-xs text-center text-text-muted">
+                👆 Selecione um bloco na lista acima para puxar para este dia
+              </p>
+            )}
 
             <div className="flex gap-3 mt-6">
               <button
@@ -1137,18 +1290,19 @@ export default function PlannerPage() {
               </button>
               <button
                 onClick={blockModalMode === 'novo' ? handleSaveNewBlock : handleSaveBlockMove}
-                disabled={!newBlockSubjectId}
-                className="flex-1 h-11 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                disabled={blockModalMode === 'novo' ? !newBlockSubjectId : !selectedBlockIdToMove}
+                className="flex-1 h-11 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none transition-all flex items-center justify-center gap-2"
               >
                 {blockModalMode === 'novo' ? (
                   <>
                     <Plus className="h-4 w-4" />
                     Adicionar Bloco
                   </>
-                ) : blockModalMode === 'adiantar' ? (
-                  'Adiantar para este dia'
                 ) : (
-                  'Mover para este dia'
+                  <>
+                    <Navigation className="h-4 w-4" />
+                    Puxar para este dia
+                  </>
                 )}
               </button>
             </div>
@@ -1411,6 +1565,13 @@ export default function PlannerPage() {
                 </div>
               )}
               <button
+                onClick={() => setShowFixedScheduleModal(true)}
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-surface-panel hover:bg-card-border border border-card-border text-text-secondary hover:text-text-primary transition-all text-xs sm:text-sm font-medium"
+              >
+                <Layers className="h-4 w-4" />
+                <span className="hidden sm:inline">Estratégia</span>
+              </button>
+              <button
                 onClick={() => setShowMapFilter(true)}
                 className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-surface-panel hover:bg-card-border border border-card-border text-text-secondary hover:text-text-primary transition-all text-xs sm:text-sm font-medium"
               >
@@ -1440,6 +1601,20 @@ export default function PlannerPage() {
           </motion.div>
         )}
 
+        <FixedScheduleModal
+          open={showFixedScheduleModal}
+          onClose={() => setShowFixedScheduleModal(false)}
+          subjects={subjects}
+          studyPrefs={studyPrefs}
+          userSettings={userSettings}
+          onSave={async (prefs) => {
+            setStudyPrefs(prefs);
+            setShowFixedScheduleModal(false);
+            setPlannerNotice('✅ Estratégia salva! Gerando cronograma...');
+            await handleGenerateSchedule(prefs);
+          }}
+        />
+
         <div className="bg-card-bg rounded-3xl border border-card-border shadow-xl overflow-hidden">
           {/* Header organizado: título + controles */}
           <div className="p-3 sm:p-4 lg:p-6 pb-3 sm:pb-4">
@@ -1467,7 +1642,6 @@ export default function PlannerPage() {
                     Recalcular atrasados{pendingCount > 0 ? ` (${pendingCount})` : ''}
                   </button>
                   <button onClick={handleResetPlanner} className="h-9 px-3 sm:px-4 rounded-xl bg-card-bg border border-card-border text-text-secondary hover:text-text-primary hover:border-card-border text-xs sm:text-sm font-medium transition-colors whitespace-nowrap">Limpar tudo</button>
-                  <button onClick={handleGenerateSchedule} disabled={isGenerating} className="h-9 px-3 sm:px-5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-violet-600/20 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap max-[479px]:flex-1">{isGenerating ? 'Gerando...' : 'Gerar com IA'}</button>
                 </div>
               </div>
 
@@ -1487,34 +1661,7 @@ export default function PlannerPage() {
                 </p>
               )}
 
-              {/* #21: quando não há espaço para reagendar, explicar com números
-                  e dizer o que fazer — antes a tela só avisava "não havia
-                  espaço nos próximos dias" e a pessoa ficava sem saída. */}
-              {backlogCapacity && backlogCapacity.missingMinutes > 0 && (
-                <div className="rounded-xl border border-warning bg-warning-soft p-3">
-                  <p className="text-xs font-semibold text-warning-strong flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    Não há espaço para reagendar {backlogCapacity.pendingCount === 1 ? '1 bloco pendente' : `${backlogCapacity.pendingCount} blocos pendentes`}
-                    {backlogCapacity.pendingMinutes > 0 &&
-                      ` (${formatMinutesAsHours(backlogCapacity.pendingMinutes)} de estudo)`}
-                    .
-                  </p>
-                  <p className="mt-1 text-xs text-warning-strong">
-                    {backlogCapacity.noSpace
-                      ? scheduleEndDate
-                        ? `Seus próximos ${backlogCapacity.daysChecked} dias já estão cheios até ${scheduleEndDate.toLocaleDateString('pt-BR')}.`
-                        : `Seus próximos ${backlogCapacity.daysChecked} dias já estão cheios.`
-                      : `Dos ${formatMinutesAsHours(backlogCapacity.pendingMinutes)} pendentes, só cabem ${formatMinutesAsHours(backlogCapacity.usableMinutes)} nos próximos ${backlogCapacity.daysChecked} dias.`}{' '}
-                    Para reagendar você precisa estudar além do que está planejado:{' '}
-                    <strong>
-                      aumente as horas por dia em Ajustes
-                      {backlogCapacity.extraMinutesPerDay > 0 &&
-                        ` (faltam ${formatMinutesAsHours(backlogCapacity.extraMinutesPerDay)} por dia)`}
-                    </strong>{' '}
-                    ou gere o cronograma com uma data final mais distante.
-                  </p>
-                </div>
-              )}
+
 
               {/* Linha 2: Controles de período - layout idêntico à referência */}
               <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-background-light border border-card-border px-3 py-2.5">
@@ -1573,12 +1720,29 @@ export default function PlannerPage() {
                 {weekDays.map(({ date, key }) => {
                   const dateKey = toLocalKey(date);
                   const dayBlocks = blocksForMap.filter((block) => block.displayDate === dateKey);
-                  const isToday = date.toDateString() === new Date().toDateString();
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const dayDate = new Date(date);
+                  dayDate.setHours(0, 0, 0, 0);
+                  const isToday = dayDate.getTime() === today.getTime();
+                  const isPast = dayDate < today;
+
+                  // Mini-resumo para dias passados
+                  const pastStudyBlocks = isPast ? dayBlocks.filter((b) => !b.isBreak) : [];
+                  const pastDone = pastStudyBlocks.filter((b) => b.status === 'completed').length;
+                  const pastTotal = pastStudyBlocks.length;
+                  const pastStudiedMins = pastStudyBlocks
+                    .filter((b) => b.status === 'completed')
+                    .reduce((sum, b) => sum + studiedMinutes(b), 0);
+                  const pastStudiedHours = (pastStudiedMins / 60).toFixed(1);
+
                   return (
                     <div key={key} className={cn(
-                      "flex flex-col rounded-2xl border p-2 gap-1 min-w-0 transition-colors",
+                      "flex flex-col rounded-2xl border p-2 gap-1 min-w-0 transition-all duration-300",
                       isToday
                         ? "bg-neon-purple/5 border-neon-purple/25"
+                        : isPast
+                        ? "bg-white/[0.015] border-white/[0.04]"
                         : "bg-transparent border-transparent"
                     )}>
                       {/* Day Header */}
@@ -1588,16 +1752,21 @@ export default function PlannerPage() {
                       )}>
                         <span className={cn(
                           "text-[10px] font-black tracking-widest uppercase",
-                          isToday ? "text-white/80" : "text-text-muted"
+                          isToday ? "text-white/80" : isPast ? "text-text-muted/50" : "text-text-muted"
                         )}>{key}</span>
                         <span className={cn(
                           "text-lg font-extrabold leading-none mt-0.5",
-                          isToday ? "text-white" : "text-text-secondary"
+                          isToday ? "text-white" : isPast ? "text-text-muted/60" : "text-text-secondary"
                         )}>{date.getDate()}</span>
                         <span className={cn(
                           "text-[9px] font-medium",
-                          isToday ? "text-white/70" : "text-text-muted"
+                          isToday ? "text-white/70" : isPast ? "text-text-muted/40" : "text-text-muted"
                         )}>{date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}</span>
+                        {isPast && (
+                          <span className="text-[8px] text-text-muted/40 uppercase tracking-widest mt-0.5 font-medium">
+                            passado
+                          </span>
+                        )}
                       </div>
 
                       {/* Blocks */}
@@ -1605,15 +1774,15 @@ export default function PlannerPage() {
                         items={dayBlocks.filter((b) => !b.isBreak && !isPreservado(b)).map((b) => b.id)}
                         strategy={verticalListSortingStrategy}
                       >
-                      <div className="space-y-1.5 min-h-[80px]">
+                      <div className={cn("space-y-1.5 min-h-[80px]", isPast && "opacity-70")}>
                         {dayBlocks.map((block) => {
                           const subject = activeSubjects.find((s) => s.id === block.subjectId);
                           const displayName = subject?.name || block.subject?.name || block.type || 'Bloco';
                           const isBreak = block.isBreak;
                           const subjectColor = subject?.color || '#6366F1';
+                          const isMissed = isPast && !isBreak && (block.status === 'scheduled' || block.status === 'rescheduled');
 
                           if (isBreak) {
-                            // Breaks: subtle separator, much less visual weight
                             return (
                               <div key={block.id} className="flex items-center gap-1.5 px-1 py-0.5 my-0.5">
                                 <div className="flex-1 h-px bg-border-subtle" />
@@ -1625,39 +1794,84 @@ export default function PlannerPage() {
                             );
                           }
 
-                          // Study blocks: premium card with color integration
-                          if (isPreservado(block)) {
-                            // Já estudado / pulado / em andamento: mesmo visual,
-                            // mas sem arrastar — progresso não se reordena.
+                          // Bloco não feito em dia passado — visual discreto, sem parecer erro
+                          if (isMissed) {
                             return (
                               <div
                                 key={block.id}
-                                className="relative rounded-xl overflow-hidden cursor-default group transition-shadow duration-200 hover:shadow-md"
+                                className="relative rounded-xl overflow-hidden cursor-default opacity-45"
                                 style={{
-                                  background: `linear-gradient(135deg, ${subjectColor}18 0%, ${subjectColor}08 100%)`,
+                                  background: 'rgba(255,255,255,0.02)',
                                   borderWidth: '1px',
                                   borderStyle: 'solid',
-                                  borderColor: `${subjectColor}35`,
+                                  borderColor: 'rgba(255,255,255,0.06)',
                                 }}
-                                title="Este bloco já foi estudado e fica onde está."
+                                title="Bloco não realizado neste dia — use 'Recalcular atrasados' para recuperá-lo."
+                              >
+                                <div className="h-[2px] w-full" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }} />
+                                <div className="p-2 pt-1.5">
+                                  <div className="flex items-start justify-between gap-1">
+                                    <p
+                                      className="font-bold truncate text-[11px] leading-snug text-text-muted line-through"
+                                      title={displayName}
+                                    >
+                                      {displayName}
+                                    </p>
+                                    <span className="shrink-0 text-[9px] font-semibold text-text-muted/70 whitespace-nowrap">
+                                      não feito
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // Bloco concluído em dia passado ou preservado
+                          if (isPreservado(block)) {
+                            const isDone = block.status === 'completed';
+                            const studied = isDone ? studiedMinutes(block) : 0;
+                            const planned = plannedMinutes(block);
+                            return (
+                              <div
+                                key={block.id}
+                                className="relative rounded-xl overflow-hidden cursor-default transition-shadow duration-200 hover:shadow-md"
+                                style={{
+                                  background: `linear-gradient(135deg, ${subjectColor}${isDone ? '15' : '10'} 0%, ${subjectColor}06 100%)`,
+                                  borderWidth: '1px',
+                                  borderStyle: 'solid',
+                                  borderColor: `${subjectColor}${isDone ? '30' : '18'}`,
+                                }}
+                                title={isDone ? 'Bloco concluído.' : 'Bloco em andamento ou pulado.'}
                               >
                                 <div className="h-[2px] w-full" style={{ backgroundColor: subjectColor }} />
                                 <div className="p-2 pt-1.5">
-                                  <p
-                                    className="font-bold truncate text-[11px] leading-snug"
-                                    title={displayName}
-                                    style={{ color: subjectColor }}
-                                  >
-                                    {displayName}
-                                  </p>
-                                  <div className="flex items-center justify-between mt-1.5 gap-1">
-                                    <span className="text-[10px] text-text-muted font-medium">{block.startTime}</span>
-                                    <span
-                                      className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                                      style={{ color: subjectColor, backgroundColor: `${subjectColor}20` }}
+                                  <div className="flex items-start justify-between gap-1">
+                                    <p
+                                      className="font-bold truncate text-[11px] leading-snug"
+                                      title={displayName}
+                                      style={{ color: subjectColor }}
                                     >
-                                      {block.durationMinutes}m
-                                    </span>
+                                      {displayName}
+                                    </p>
+                                    {isDone && (
+                                      <span className="shrink-0 text-[10px]">✅</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center justify-end mt-1.5 gap-1">
+                                    {isDone && studied !== planned ? (
+                                      <span
+                                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-emerald-400 bg-emerald-400/10"
+                                      >
+                                        {studied}m estudados
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                                        style={{ color: subjectColor, backgroundColor: `${subjectColor}20` }}
+                                      >
+                                        {block.durationMinutes}m
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -1670,21 +1884,61 @@ export default function PlannerPage() {
                               block={block}
                               subject={subject}
                               displayName={displayName}
+                              onDelete={handleDeleteBlock}
+                              adaptiveBase={
+                                studyPrefs?.adaptiveBlocks ? configuredBlockMinutes : null
+                              }
                             />
                           );
                         })}
 
                         {dayBlocks.length === 0 && (
-                          <div className="grid place-items-center py-8 text-text-muted text-[11px] border border-dashed border-border-subtle rounded-xl">
-                            <span className="opacity-50">—</span>
+                          <div className={cn(
+                            "grid place-items-center py-8 text-text-muted text-[11px] border border-dashed rounded-xl",
+                            isPast ? "border-white/[0.05] opacity-40" : "border-border-subtle"
+                          )}>
+                            <span className="opacity-50">{isPast ? '—' : '—'}</span>
                           </div>
                         )}
-                        <button
-                          onClick={() => handleOpenAddBlock(date)}
-                          className="w-full h-7 mt-0.5 rounded-xl border border-dashed border-border-subtle bg-transparent hover:bg-surface-panel text-[10px] font-medium text-text-muted hover:text-text-secondary flex items-center justify-center gap-1 transition-colors"
-                        >
-                          <Plus className="h-3 w-3" /> Adicionar
-                        </button>
+
+                        {/* Mini-resumo do dia passado */}
+                        {isPast && pastTotal > 0 && (
+                          <div className="mt-1.5 px-1.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-0.5">
+                            <span className="text-[9px] font-bold text-text-muted/70">
+                              {pastDone}/{pastTotal} feitos
+                              {pastTotal - pastDone > 0 && (
+                                <span className="font-medium text-text-muted/50">
+                                  {' '}· {pastTotal - pastDone} não feitos
+                                </span>
+                              )}
+                            </span>
+                            {pastStudiedMins > 0 && (
+                              <span className="text-[9px] text-text-muted/50 font-medium">
+                                {pastStudiedHours}h estudadas
+                              </span>
+                            )}
+                            {pastTotal - pastDone > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleRecalculateBacklog}
+                                className="mt-0.5 self-start text-[9px] font-semibold text-neon-blue/80 hover:text-neon-blue hover:underline"
+                                title="Reagendar os blocos não feitos deste dia"
+                              >
+                                Recuperar atrasados →
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Botão Adicionar — escondido em dias passados */}
+                        {!isPast && (
+                          <button
+                            onClick={() => handleOpenAddBlock(date)}
+                            className="w-full h-7 mt-0.5 rounded-xl border border-dashed border-border-subtle bg-transparent hover:bg-surface-panel text-[10px] font-medium text-text-muted hover:text-text-secondary flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <Plus className="h-3 w-3" /> Adicionar
+                          </button>
+                        )}
                       </div>
                       </SortableContext>
                     </div>
@@ -1730,91 +1984,96 @@ export default function PlannerPage() {
           </div>
           </div>
 
-        <MapModal />
-        <RoadmapModal />
-        <AddBlockModal />
+        {mounted && createPortal(
+          <>
+            <MapModal />
+            <RoadmapModal />
+            <AddBlockModal />
 
-        {/* Confirmação do "Gerar com IA" quando já há progresso.
-            O app diz o que preserva antes de refazer o plano. */}
-        <AnimatePresence>
-          {regenConfirm && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              ref={regenDialog.dialogRef}
-              {...regenDialog.dialogProps}
-              className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-              onClick={() => setRegenConfirm(null)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 30 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 30 }}
-                className="bg-card-bg rounded-3xl border border-card-border p-6 w-full max-w-md shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="h-10 w-10 rounded-xl bg-warning/15 border border-warning/20 flex items-center justify-center">
-                    <RefreshCw className="h-5 w-5 text-warning" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading text-lg font-bold text-text-primary">
-                      Refazer o cronograma?
-                    </h3>
-                    <p className="text-xs text-text-muted">
-                      O que já foi estudado continua valendo.
+            {/* Confirmação do "Gerar com IA" quando já há progresso.
+                O app diz o que preserva antes de refazer o plano. */}
+            <AnimatePresence>
+              {regenConfirm && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  ref={regenDialog.dialogRef}
+                  {...regenDialog.dialogProps}
+                  className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+                  onClick={() => setRegenConfirm(null)}
+                >
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 30 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 30 }}
+                    className="bg-card-bg rounded-3xl border border-card-border p-6 w-full max-w-md shadow-2xl"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="h-10 w-10 rounded-xl bg-warning/15 border border-warning/20 flex items-center justify-center">
+                        <RefreshCw className="h-5 w-5 text-warning" />
+                      </div>
+                      <div>
+                        <h3 className="font-heading text-lg font-bold text-text-primary">
+                          Refazer o cronograma?
+                        </h3>
+                        <p className="text-xs text-text-muted">
+                          O que já foi estudado continua valendo.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 mb-6">
+                      <div className="flex items-center justify-between rounded-xl border border-card-border bg-background-light px-3 py-2.5">
+                        <span className="text-sm text-text-secondary">Blocos já estudados</span>
+                        <span className="text-sm font-bold text-text-primary">
+                          {regenConfirm.concluidos} · {formatHoursDuration(regenConfirm.horasEstudadas / 60)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-card-border bg-background-light px-3 py-2.5">
+                        <span className="text-sm text-text-secondary">Blocos pendentes a refazer</span>
+                        <span className="text-sm font-bold text-text-primary">
+                          {regenConfirm.pendentes}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-text-muted mb-6">
+                      Os {regenConfirm.concluidos} blocos estudados ficam exatamente como estão, com as
+                      horas já contadas. O app remonta só o que ainda está pendente, começando depois
+                      do que você já fez em cada dia.
                     </p>
-                  </div>
-                </div>
 
-                <div className="space-y-2 mb-6">
-                  <div className="flex items-center justify-between rounded-xl border border-card-border bg-background-light px-3 py-2.5">
-                    <span className="text-sm text-text-secondary">Blocos já estudados</span>
-                    <span className="text-sm font-bold text-text-primary">
-                      {regenConfirm.concluidos} · {formatHoursDuration(regenConfirm.horasEstudadas / 60)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl border border-card-border bg-background-light px-3 py-2.5">
-                    <span className="text-sm text-text-secondary">Blocos pendentes a refazer</span>
-                    <span className="text-sm font-bold text-text-primary">
-                      {regenConfirm.pendentes}
-                    </span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-text-muted mb-6">
-                  Os {regenConfirm.concluidos} blocos estudados ficam exatamente como estão, com as
-                  horas já contadas. O app remonta só o que ainda está pendente, começando depois
-                  do que você já fez em cada dia.
-                </p>
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setRegenConfirm(null)}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => {
-                      setRegenConfirm(null);
-                      void gerarCronograma();
-                    }}
-                  >
-                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                    Refazer
-                  </Button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setRegenConfirm(null)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          setRegenConfirm(null);
+                          void gerarCronograma();
+                        }}
+                      >
+                        <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                        Refazer
+                      </Button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>,
+          document.body
+        )}
       </div>
     </div>
     );

@@ -29,6 +29,7 @@ export const defaultSettings: UserSettings = {
   focusMode: false,
   autoSchedule: true,
   smartBreaks: true,
+  adaptiveBlocks: false,
 
   // Notificações
   dailyReminder: true,

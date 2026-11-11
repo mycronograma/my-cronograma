@@ -12,6 +12,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import BottomNav from './BottomNav';
 import AppContainer from './AppContainer';
+import { WelcomeTutorial } from '@/components/onboarding';
 import { useLocalStorage } from '@/hooks';
 import { useServerProgressSync } from '@/hooks/useServerProgressSync';
 import { defaultSettings } from '@/lib/defaultSettings';
@@ -108,6 +109,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
       </div>
 
       <BottomNav />
+
+      {/* Tutorial de primeira vez (aparece uma única vez) */}
+      <WelcomeTutorial />
     </div>
   );
 }

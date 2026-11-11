@@ -135,6 +135,69 @@ export default function StudyBlockSessionModal({
     return { mins: String(mins).padStart(2, '0'), secs: String(secs).padStart(2, '0') };
   };
 
+  // Media Session - exibe o cronômetro na tela de bloqueio
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Refs estáveis para os handlers de ação da Media Session (evita dep circular)
+  const sessionActionRef = useRef<{
+    start: () => void;
+    pauseResume: () => void;
+    finish: (spent: number) => void;
+  }>({
+    start: () => {},
+    pauseResume: () => {},
+    finish: () => {},
+  });
+
+  useEffect(() => {
+    // 1-second silent MP3 base64
+    const SILENT_MP3 = "data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gSWxpeWEgQmxhbmthAAAA//MUxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//MUxDSAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+    silentAudioRef.current = new Audio(SILENT_MP3);
+    silentAudioRef.current.loop = true;
+    return () => {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+        silentAudioRef.current.src = '';
+      }
+    };
+  }, []);
+
+  const updateMediaSession = useCallback((remaining: number, state: SessionState) => {
+    if (!('mediaSession' in navigator) || !block) return;
+    
+    const { mins, secs } = formatTimer(remaining);
+    const isBreak = block.isBreak;
+    const title = isBreak ? `☕ Intervalo: ${mins}:${secs}` : `📚 Estudando: ${mins}:${secs}`;
+    const artist = block.subject?.name || 'my cronograma';
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist,
+      album: 'Sessão Ativa',
+      artwork: [
+        { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png' },
+      ],
+    });
+
+    // Botões de ação na tela de bloqueio — usa refs para evitar dep. circular
+    navigator.mediaSession.setActionHandler('play', () => sessionActionRef.current.start());
+    navigator.mediaSession.setActionHandler('pause', () => sessionActionRef.current.pauseResume());
+    navigator.mediaSession.setActionHandler('stop', () => sessionActionRef.current.finish(initialTotalRef.current - remaining));
+
+    if (state === 'running') {
+      navigator.mediaSession.playbackState = 'playing';
+      silentAudioRef.current?.play().catch(() => {});
+    } else if (state === 'paused') {
+      navigator.mediaSession.playbackState = 'paused';
+      silentAudioRef.current?.pause();
+    } else {
+      navigator.mediaSession.playbackState = 'none';
+      silentAudioRef.current?.pause();
+    }
+  }, [block]);
+
+
+
   const ensureAudioContext = useCallback(() => {
     try {
       if (!audioRef.current) {
@@ -243,6 +306,7 @@ export default function StudyBlockSessionModal({
           : Math.max(1, Math.round(spentSeconds / 60));
       setCompletedOnce(true);
       setSessionState('completed');
+      updateMediaSession(0, 'completed');
       playAlarm();
       if (block && onComplete) {
         onComplete(block.id, minutesSpent, buildPerformancePayload());
@@ -258,13 +322,15 @@ export default function StudyBlockSessionModal({
     ensureAudioContext();
     runningUntilRef.current = Date.now() + (Math.max(0, timeRemaining) * 1000);
     setSessionState('running');
-  }, [ensureAudioContext, timeRemaining]);
+    updateMediaSession(timeRemaining, 'running');
+  }, [ensureAudioContext, timeRemaining, updateMediaSession]);
 
   const pauseOrResumeSession = useCallback(() => {
     if (sessionState === 'running') {
       if (runningUntilRef.current) {
         const liveRemaining = Math.max(0, Math.ceil((runningUntilRef.current - Date.now()) / 1000));
         setTimeRemaining(liveRemaining);
+        updateMediaSession(liveRemaining, 'paused');
       }
       runningUntilRef.current = null;
       setSessionState('paused');
@@ -274,8 +340,52 @@ export default function StudyBlockSessionModal({
     if (sessionState === 'paused') {
       runningUntilRef.current = Date.now() + (Math.max(0, timeRemaining) * 1000);
       setSessionState('running');
+      updateMediaSession(timeRemaining, 'running');
     }
-  }, [sessionState, timeRemaining]);
+  }, [sessionState, timeRemaining, updateMediaSession]);
+
+  // Mantém sessionActionRef sincronizado com as callbacks mais recentes
+  useEffect(() => {
+    sessionActionRef.current = {
+      start: startOrResumeSession,
+      pauseResume: pauseOrResumeSession,
+      finish: (spent: number) => finishSession(spent, 'manual'),
+    };
+  }, [startOrResumeSession, pauseOrResumeSession, finishSession]);
+
+  // Notificação persistente no Service Worker quando o app fica em background
+  useEffect(() => {
+    if (!block) return;
+
+    const sendToSW = (msg: object) => {
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage(msg);
+      }
+    };
+
+    if (sessionState === 'running') {
+      sendToSW({
+        type: 'SESSION_STARTED',
+        subjectName: block.isBreak ? 'Intervalo' : (block.subject?.name || 'Sessão'),
+        isBreak: block.isBreak,
+        runningUntil: runningUntilRef.current,
+        blockId: block.id,
+      });
+    } else if (sessionState === 'paused') {
+      sendToSW({ type: 'SESSION_PAUSED', blockId: block.id });
+    } else if (sessionState === 'completed' || sessionState === 'ready') {
+      sendToSW({ type: 'SESSION_ENDED', blockId: block.id });
+    }
+  }, [sessionState, block]);
+
+  // Limpa a notificação ao fechar o modal
+  useEffect(() => {
+    if (!isOpen && block) {
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'SESSION_ENDED', blockId: block.id });
+      }
+    }
+  }, [isOpen, block]);
 
   useEffect(() => {
     if (sessionState !== 'running') return;
@@ -288,6 +398,7 @@ export default function StudyBlockSessionModal({
       if (!runningUntilRef.current) return;
       const liveRemaining = Math.max(0, Math.ceil((runningUntilRef.current - Date.now()) / 1000));
       setTimeRemaining(liveRemaining);
+      updateMediaSession(liveRemaining, 'running');
       if (liveRemaining <= 0) {
         finishSession(initialTotalRef.current, 'auto');
       }
@@ -296,7 +407,7 @@ export default function StudyBlockSessionModal({
     tick();
     const interval = setInterval(tick, 250);
     return () => clearInterval(interval);
-  }, [sessionState, timeRemaining, finishSession]);
+  }, [sessionState, timeRemaining, finishSession, updateMediaSession]);
 
   // A11y: role/aria-modal, Escape e prisão de foco (antes era só uma div).
   // Precisa vir antes do early return para respeitar as regras dos hooks.

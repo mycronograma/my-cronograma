@@ -57,6 +57,8 @@ interface PresetSelectorProps {
     options?: { source: 'api' | 'local'; wizardAnswers?: PresetWizardAnswers; weeklyLoad?: WeeklyLoadLevel; selectedModules?: string[] }
   ) => Promise<void>;
   onSkip: () => void;
+  /** Chamado ao concluir o wizard no modo Personalizado: fecha o seletor e abre o formulário de disciplina. */
+  onCustomComplete?: () => void;
   userId: string;
   baseSettings: UserSettings;
   onApplyPreferences: (
@@ -182,6 +184,7 @@ function resolvePresetVisualKey(name: string): string {
 export default function PresetSelector({
   onImport,
   onSkip,
+  onCustomComplete,
   userId,
   baseSettings,
   onApplyPreferences,
@@ -238,6 +241,16 @@ export default function PresetSelector({
     () => presets.find((preset) => preset.id === selectedPreset) || null,
     [presets, selectedPreset]
   );
+
+  // Soma estimada das metas das matérias da predefinição (com a carga de partida
+  // aplicada) — o resumo do wizard usa para avisar se estoura a capacidade semanal.
+  const estimatedTargetHours = useMemo(() => {
+    if (!selectedPresetData || selectedPreset === 'custom') return null;
+    return selectedPresetData.subjects.reduce(
+      (sum, s) => sum + adjustWeeklyHours(s.recommendedWeeklyHours, weeklyLoad),
+      0
+    );
+  }, [selectedPresetData, selectedPreset, weeklyLoad]);
 
   const handleImport = async (wizardAnswers?: PresetWizardAnswers) => {
     if (!selectedPreset) return;
@@ -628,7 +641,7 @@ export default function PresetSelector({
           Pular esta etapa
         </Button>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-          {selectedPreset && selectedPreset !== 'custom' && (
+          {selectedPreset && (
             <Button
               variant="primary"
               onClick={() => setShowWizard(true)}
@@ -636,27 +649,38 @@ export default function PresetSelector({
               className="w-full sm:w-auto"
               leftIcon={isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             >
-              {isImporting ? 'Importando...' : 'Configurar modelo'}
-            </Button>
-          )}
-          {selectedPreset === 'custom' && (
-            <Button variant="primary" onClick={onSkip} className="w-full sm:w-auto">
-              Criar disciplinas manualmente
+              {isImporting
+                ? 'Importando...'
+                : selectedPreset === 'custom'
+                  ? 'Responder perguntas'
+                  : 'Configurar modelo'}
             </Button>
           )}
         </div>
       </div>
 
       <SetupWizard
-        isOpen={showWizard && !!selectedPreset && selectedPreset !== 'custom'}
+        isOpen={showWizard && !!selectedPreset}
         presetId={selectedPreset || ''}
-        presetName={presets.find((preset) => preset.id === selectedPreset)?.name || 'Modelo'}
+        weeklyLoad={weeklyLoad}
+        estimatedTargetHours={estimatedTargetHours}
+        presetName={
+          presets.find((preset) => preset.id === selectedPreset)?.name ||
+          (selectedPreset === 'custom' ? 'Personalizado' : 'Modelo')
+        }
         baseSettings={baseSettings}
         onClose={() => setShowWizard(false)}
         onApply={(settings, studyPrefs, answers) => {
           void (async () => {
             await onApplyPreferences(settings, studyPrefs, answers);
-            await handleImport(answers);
+            // 'custom' não tem predefinição para importar: aplica as preferências
+            // do wizard e cai na tela de disciplinas para criar manualmente.
+            if (selectedPreset === 'custom') {
+              if (onCustomComplete) onCustomComplete();
+              else onSkip();
+            } else {
+              await handleImport(answers);
+            }
           })();
         }}
       />

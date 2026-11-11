@@ -143,10 +143,10 @@ const comFlag = buildPeerItems([
   { id: 'a', priority: 8, difficulty: 7, targetHours: 6, targetHoursIsManual: true },
   { id: 'b', priority: 5, difficulty: 5, targetHours: 3 },
 ]);
-// Não existe mais meta fixada: mesmo com o flag (campo antigo), ninguém reserva
-// horas e a divisão é sempre proporcional ao peso.
-check('com flag: ninguém reserva horas',
-  comFlag[0].fixedHours === null && comFlag[1].fixedHours === null, JSON.stringify(comFlag));
+// Com o flag manual ligado, a meta vira fixa (reserva horas); sem flag,
+// continua automática e a divisão segue só o peso.
+check('com flag manual: a meta manual reserva horas fixas',
+  comFlag[0].fixedHours === 6 && comFlag[1].fixedHours === null, JSON.stringify(comFlag));
 
 check('buildPeerItems ignora a matéria sendo editada',
   buildPeerItems([{ id: 'eu', priority: 10, difficulty: 10 }, { id: 'outra', priority: 5, difficulty: 5 }], 'eu').length === 1);

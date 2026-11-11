@@ -5,8 +5,9 @@
  * Exibe uma disciplina com estatisticas e acoes
  */
 
+import { SubjectIcon } from '@/lib/subjectIcons';
+import { effectiveWeeklyTargetHours } from '@/services/weeklyTarget';
 import {
-  BookOpen,
   ClipboardList,
   Clock,
   Target,
@@ -33,6 +34,8 @@ interface SubjectCardProps {
   onDelete: (subjectId: string) => void;
   /** Abre o registro avulso de questões para esta matéria (#10). */
   onLogQuestions?: (subject: Subject) => void;
+  /** Tamanho do bloco usado no cronograma — a meta exibida é arredondada para múltiplos dele. */
+  blockMinutes?: number;
 }
 
 
@@ -41,8 +44,12 @@ export default function SubjectCard({
   onEdit,
   onDelete,
   onLogQuestions,
+  blockMinutes,
 }: SubjectCardProps) {
-  const completionPercent = percentage(subject.completedHours, subject.targetHours);
+  // Meta exibida arredondada para cima em blocos inteiros: é o que o cronograma
+  // consegue agendar de fato (blocos não são fracionados).
+  const displayTargetHours = effectiveWeeklyTargetHours(subject.targetHours, blockMinutes ?? 50);
+  const completionPercent = percentage(subject.completedHours, displayTargetHours);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
@@ -85,7 +92,7 @@ export default function SubjectCard({
                 border: `1px solid ${subject.color}30`,
               }}
             >
-              <BookOpen className="h-5 w-5" style={{ color: subject.color }} />
+              <SubjectIcon iconKey={subject.icon} className="h-5 w-5" style={{ color: subject.color }} />
             </div>
 
             <div className="min-w-0 flex flex-col justify-center">
@@ -144,7 +151,7 @@ export default function SubjectCard({
           <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
             <span className="min-w-0 text-xs font-semibold text-text-muted uppercase tracking-wider">Progresso Semanal</span>
             <span className="shrink-0 text-xs font-bold text-text-primary">
-              {formatHoursDuration(subject.completedHours)} <span className="text-text-muted font-medium">/ {formatHoursDuration(subject.targetHours)}</span>
+              {formatHoursDuration(subject.completedHours)} <span className="text-text-muted font-medium">/ {formatHoursDuration(displayTargetHours)}</span>
             </span>
           </div>
           
@@ -235,7 +242,7 @@ export default function SubjectCard({
                           border: `1px solid ${subject.color}30`,
                         }}
                       >
-                        <BookOpen className="h-7 w-7" style={{ color: subject.color }} />
+                        <SubjectIcon iconKey={subject.icon} className="h-7 w-7" style={{ color: subject.color }} />
                       </div>
                       <div>
                         <h2 className="text-xl font-bold text-text-primary mb-1">{subject.name}</h2>
@@ -276,7 +283,7 @@ export default function SubjectCard({
                       </div>
                       <div className="flex items-baseline gap-2">
                         <span className="text-2xl font-bold text-neon-cyan">{formatHoursDuration(subject.completedHours)}</span>
-                        <span className="text-sm text-text-secondary">/ {formatHoursDuration(subject.targetHours)}</span>
+                        <span className="text-sm text-text-secondary">/ {formatHoursDuration(displayTargetHours)}</span>
                       </div>
                     </div>
 

@@ -75,6 +75,7 @@ model User {
   plan             String    @default("free") // "free" | "pro" | "premium"
   planExpiresAt    DateTime?
   stripeCustomerId String?   @unique
+  subscription     Subscription?
 
   // Two-Factor Authentication (TOTP)
   twoFactorEnabled Boolean @default(false)
@@ -109,6 +110,7 @@ model UserPreferences {
   preferredEnd    String   @default("21:00")
   maxBlockMinutes Int      @default(120)
   breakMinutes    Int      @default(15)
+  adaptiveBlocks  Boolean  @default(false)
   alarmSound      String?  @default("pulse")
   dailyReminder   Boolean  @default(true)
   streakReminder  Boolean  @default(true)
@@ -138,6 +140,7 @@ model Subject {
   priority       Int   @default(5) // 1-10 scale
   difficulty     Int   @default(5) // 1-10 scale
   targetHours    Float @default(10.0) // Weekly target
+  targetHoursIsManual Boolean @default(false) // meta definida manualmente (fixa) vs automática por peso
   completedHours Float @default(0.0) // This week
 
   // Progress tracking
@@ -481,4 +484,23 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// Assinatura gerenciada por provedor de pagamento externo (ex.: Mercado Pago).
+// O provedor é abstraído em src/lib/billing — a tabela guarda o id genérico.
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  provider             String    // "mercadopago" | ...
+  providerCustomerId   String?
+  providerSubscriptionId String? @unique
+  planId               String    // id do plano no catálogo (src/lib/billing/plans.ts)
+  status               String    @default("pending") // pending | active | past_due | canceled | expired
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

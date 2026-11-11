@@ -67,6 +67,8 @@ export interface Subject {
   priority: number;          // 1-10 (alias de examWeight visual)
   difficulty: number;        // 1-10
   targetHours: number;       // Weekly target
+  /** true quando a pessoa definiu targetHours manualmente (meta fixa; o resto segue o peso). */
+  targetHoursIsManual?: boolean;
   completedHours: number;
   
   // Proficiência (Motor de Aprovação)
@@ -96,11 +98,15 @@ export interface StudyPreferences {
   blockDurationMinutes?: number;
   focusBlockMinutes?: number;
   breakDurationMinutes?: number;
+  /** Modo adaptativo: a duração varia em torno de blockDurationMinutes/focusBlockMinutes. */
+  adaptiveBlocks?: boolean;
   hardSubjectsPeriodPreference?: HardSubjectsPeriodPreference;
   studyStyle?: StudyStylePreference;
   studyContentPreference?: StudyContentPreference;
   intensity?: StudyIntensityLevel;
   dailyAvailabilityByWeekday?: DailyAvailabilityByWeekday;
+  scheduleMode?: 'dynamic' | 'fixed_weekly';
+  weeklyTemplate?: Record<string, string[]>;
 }
 
 // ============================================
@@ -501,6 +507,8 @@ export interface PresetWizardAnswers {
   focusMinutes: FocusDuration;
   focusBlockMinutes?: number;
   breakMinutes: BreakDuration;
+  /** Modo adaptativo ligado no assistente: focusMinutes vira a duração base. */
+  adaptiveBlocks?: boolean;
   firstCycleAllSubjects?: boolean;
   aiDifficulty?: AIDifficulty;
   focusMode?: boolean;
@@ -514,6 +522,9 @@ export interface PresetWizardAnswers {
   examDate?: string;
   startDate?: string;
   endDate?: string;
+  /** Janela de horário do dia escolhida no assistente (alimenta preferredStart/End). */
+  preferredStart?: string;
+  preferredEnd?: string;
   /** Como o fim do estudo foi definido: data final explícita ou carga horária total. */
   periodMode?: 'date' | 'hours';
   /** Carga horária total (horas) quando periodMode === 'hours'. */
@@ -547,6 +558,8 @@ export interface UserSettings {
   focusMode: boolean;
   autoSchedule: boolean;
   smartBreaks: boolean;
+  /** Modo adaptativo: o motor varia a duração dos blocos em torno da base. */
+  adaptiveBlocks?: boolean;
   dailyReminder: boolean;
   streakReminder: boolean;
   achievementAlerts: boolean;

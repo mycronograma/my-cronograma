@@ -36,6 +36,8 @@ export interface ScheduleConstraints {
   preferredEnd: string;
   maxBlockMinutes: number;
   breakMinutes: number;
+  /** Modo adaptativo: o motor pode variar a duração em torno de maxBlockMinutes. */
+  adaptiveBlocks: boolean;
   simuladoRules: SimuladoRules;
 }
 
@@ -220,6 +222,7 @@ export function resolveScheduleConstraints(params: {
         90
     ),
     breakMinutes: Math.max(5, studyPrefs.breakDurationMinutes ?? userSettings.breakMinutes ?? 10),
+    adaptiveBlocks: studyPrefs.adaptiveBlocks ?? userSettings.adaptiveBlocks ?? false,
     simuladoRules: resolveSimuladoRules(studyPrefs),
   };
 }

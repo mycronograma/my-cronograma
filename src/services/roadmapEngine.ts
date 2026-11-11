@@ -48,6 +48,7 @@ export interface ChronologicalScheduleConfig {
   preferredEnd: string;
   maxBlockMinutes: number;
   breakMinutes: number;
+  adaptiveBlocks?: boolean;
   restDays?: number[];
   dailyLimitByDate?: Record<string, number>;
   dailyTimeWindowByDate?: Record<string, { start: string; end: string }>;
@@ -362,9 +363,10 @@ function computeBlockMinutes(
   meta: SubjectMeta,
   baseMax: number,
   sessionType: SessionType,
-  adaptivePriorityScore?: number
+  adaptivePriorityScore?: number,
+  adaptiveBlocks?: boolean,
+  performanceProfile?: SubjectPerformanceProfile
 ) {
-  void subject;
   void meta;
   void adaptivePriorityScore;
   let duration = Math.max(25, baseMax);
@@ -373,6 +375,22 @@ function computeBlockMinutes(
   }
   if (sessionType === 'simulado') {
     duration = Math.max(baseMax, 90);
+  }
+  // Modo adaptativo: varia a duração em torno da base de forma determinística
+  // (hash do id da matéria), para blocos de uma mesma matéria ficarem estáveis.
+  // Revisões e simulados mantêm a regra própria.
+  if (adaptiveBlocks && sessionType !== 'revisao' && sessionType !== 'simulado') {
+    const hash = Array.from(subject.id).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    let delta = (hash % 3 - 1) * 15; // -15, 0 ou +15
+    // Aprendizado real: com dados suficientes da matéria, pior rendimento
+    // (foco/produtividade baixos) encurta o bloco; ótimo rendimento alonga.
+    if (performanceProfile && performanceProfile.totalSessions >= 3) {
+      const rendimento =
+        (performanceProfile.averageFocusScore + performanceProfile.averageProductivityScore) / 2;
+      if (rendimento < 50) delta -= 15;
+      else if (rendimento >= 75) delta += 15;
+    }
+    duration = Math.min(120, Math.max(25, duration + delta));
   }
   return Math.max(25, duration);
 }
@@ -507,6 +525,7 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
         preferredEnd: config.preferredEnd,
         maxBlockMinutes: config.maxBlockMinutes,
         breakMinutes: config.breakMinutes,
+        adaptiveBlocks: config.adaptiveBlocks ?? false,
         restDays: config.restDays,
         dailyLimitByDate: config.dailyLimitByDate,
         dailyTimeWindowByDate: config.dailyTimeWindowByDate,
@@ -651,6 +670,20 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
     return dailyMinutes;
   };
   const slotSize = Math.max(25, config.maxBlockMinutes);
+  // Teto semanal por matéria: no máximo ceil(meta semanal / slot) blocos por
+  // semana (mínimo 1), para o cronograma não passar da meta exibida no card.
+  const weekKeyOf = (d: Date) => {
+    const copy = new Date(d);
+    const dow = (copy.getDay() + 6) % 7; // segunda = início da semana
+    copy.setDate(copy.getDate() - dow);
+    return toLocalDateKey(copy);
+  };
+  const weeklyCapSlots = (s: Subject) => {
+    const minutes = (s.targetHours || 0) * 60;
+    if (minutes <= 0) return Number.POSITIVE_INFINITY;
+    return Math.max(1, Math.ceil(minutes / slotSize));
+  };
+  const weeklyPlannedSlots = new Map<string, Map<string, number>>();
   const totalSlots = Math.max(
     1,
     dates
@@ -709,6 +742,7 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
     if (excludeDays.includes(date.getDay())) continue;
     const phase = getPhaseForDate(date, config.startDate);
     const dayKey = toLocalDateKey(date);
+    const weekKey = weekKeyOf(date);
     phaseByDate[dayKey] = phase.label;
 
     let lastSubjectId = globalLastSubjectId;
@@ -730,106 +764,129 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
     if (endTime <= currentTime) continue;
     let plannedMinutes = 0;
 
+    const weekdayKeys: string[] = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+    const currentDayKey = weekdayKeys[date.getDay()];
+    const isFixed = config.preferences.scheduleMode === 'fixed_weekly' && config.preferences.weeklyTemplate;
+    const templateForDay = isFixed ? config.preferences.weeklyTemplate![currentDayKey] : null;
+    let templateIndex = 0;
+
     while (
       currentTime + 25 <= endTime &&
       plannedMinutes < dailyMinutesLimit
     ) {
-      const desiredArea = AREA_ROTATION[areaCursor % AREA_ROTATION.length];
       const availableMinutes = Math.min(dailyMinutesLimit - plannedMinutes, endTime - currentTime);
+      let chosenSubject: Subject | undefined;
+      let chosenAdaptivePriority = 1;
 
-      let candidatePool = config.subjects.filter((subject) => {
-        const count = dailyCount.get(subject.id) || 0;
-        return count < maxDailyRepeatsPerSubject;
-      });
+      if (templateForDay) {
+        if (templateIndex >= templateForDay.length) break;
+        const sid = templateForDay[templateIndex++];
+        chosenSubject = config.subjects.find((s) => s.id === sid);
+        if (!chosenSubject) continue;
+        chosenAdaptivePriority = adaptiveScoreBySubject.get(chosenSubject.id) || 1;
+      } else {
+        const desiredArea = AREA_ROTATION[areaCursor % AREA_ROTATION.length];
 
-      if (candidatePool.length === 0) break;
-
-      if (config.firstCycleAllSubjects) {
-        const pendingFirstLesson = candidatePool.filter((subject) => {
-          const hasLesson =
-            (completedLessonsBySubject[subject.id] || 0) > 0 ||
-            (plannedLessonsBySubject.get(subject.id) || 0) > 0;
-          return !hasLesson;
+        let candidatePool = config.subjects.filter((subject) => {
+          const count = dailyCount.get(subject.id) || 0;
+          if (count >= maxDailyRepeatsPerSubject) return false;
+          // Teto semanal da meta: matéria já cumpriu a meta da semana não entra.
+          const weekPlanned = weeklyPlannedSlots.get(weekKey)?.get(subject.id) || 0;
+          return weekPlanned < weeklyCapSlots(subject);
         });
-        if (pendingFirstLesson.length > 0) {
-          candidatePool = pendingFirstLesson;
+
+        if (candidatePool.length === 0) break;
+
+        if (config.firstCycleAllSubjects) {
+          const pendingFirstLesson = candidatePool.filter((subject) => {
+            const hasLesson =
+              (completedLessonsBySubject[subject.id] || 0) > 0 ||
+              (plannedLessonsBySubject.get(subject.id) || 0) > 0;
+            return !hasLesson;
+          });
+          if (pendingFirstLesson.length > 0) {
+            candidatePool = pendingFirstLesson;
+          }
         }
+
+        const reviewCandidates = candidatePool.filter((subject) => (reviewIndex.get(subject.id) || 0) > 0);
+
+        const ranked = (reviewCandidates.length > 0 ? reviewCandidates : candidatePool)
+          .map((subject) => {
+            const meta = subjectMeta.get(subject.id)!;
+            const weight = meta.pesoNoExame;
+            const enemWeight = meta.enemWeight;
+            const remaining = remainingSlots.get(subject.id) || 0;
+            const hasLesson =
+              (completedLessonsBySubject[subject.id] || 0) > 0 ||
+              (plannedLessonsBySubject.get(subject.id) || 0) > 0;
+            const profile = performanceMetricsBySubject[subject.id];
+            const adaptivePriority = adaptiveScoreBySubject.get(subject.id) || 1;
+            const sameSubject = subject.id === lastSubjectId;
+            const recentPenalty = recentSubjects.includes(subject.id) ? -12 : 0;
+            const globalPenalty = globalRecentSubjects.includes(subject.id) ? -10 : 0;
+            const isFirstBlock = plannedMinutes === 0;
+            const prevDayPenalty = lastDaySubjects.has(subject.id)
+              ? isFirstBlock
+                ? -16
+                : -6
+              : 0;
+            const sameArea = meta.area === desiredArea;
+            const timeMinutes = currentTime;
+            const bucket = timeMinutes < 12 * 60 ? 'manha' : timeMinutes < 18 * 60 ? 'tarde' : 'noite';
+            const usagePenalty = (globalUsage.get(subject.id) || 0) * 3;
+            const periodPreferenceScore = getHardSubjectPeriodScore(
+              hardSubjectsPeriodPreference,
+              subject,
+              meta,
+              bucket,
+              isFirstBlock
+            );
+            let score =
+              weight * 7 +
+              enemWeight * 16 +
+              remaining * 2 +
+              adaptivePriority * 18 -
+              usagePenalty;
+            if (sameArea) score += 12;
+            if (!sameSubject) score += 8;
+            if (!hasLesson) score += 18;
+            score += getDisciplinePriorityBonus(subject);
+            score += recentPenalty + globalPenalty + prevDayPenalty;
+            if ((profile?.accuracyRate ?? 0.65) < 0.55) score += 10;
+            if ((profile?.daysWithoutStudy ?? 0) >= 4) score += 8;
+            if (bucket === 'manha' && meta.nivel === 'avancado') score += 6;
+            if (bucket === 'noite' && meta.nivel === 'basico') score += 4;
+            score += periodPreferenceScore;
+            return { subject, score, adaptivePriority };
+          })
+          .sort((a, b) => b.score - a.score);
+
+        let chosen = ranked.find((item) => item.subject.id !== lastSubjectId);
+        if (!chosen) chosen = ranked[0];
+        if (!chosen) break;
+
+        chosenSubject = chosen.subject;
+        chosenAdaptivePriority = chosen.adaptivePriority;
       }
 
-      const reviewCandidates = candidatePool.filter((subject) => (reviewIndex.get(subject.id) || 0) > 0);
-
-      const ranked = (reviewCandidates.length > 0 ? reviewCandidates : candidatePool)
-        .map((subject) => {
-          const meta = subjectMeta.get(subject.id)!;
-          const weight = meta.pesoNoExame;
-          const enemWeight = meta.enemWeight;
-          const remaining = remainingSlots.get(subject.id) || 0;
-          const hasLesson =
-            (completedLessonsBySubject[subject.id] || 0) > 0 ||
-            (plannedLessonsBySubject.get(subject.id) || 0) > 0;
-          const profile = performanceMetricsBySubject[subject.id];
-          const adaptivePriority = adaptiveScoreBySubject.get(subject.id) || 1;
-          const sameSubject = subject.id === lastSubjectId;
-          const recentPenalty = recentSubjects.includes(subject.id) ? -12 : 0;
-          const globalPenalty = globalRecentSubjects.includes(subject.id) ? -10 : 0;
-          const isFirstBlock = plannedMinutes === 0;
-          const prevDayPenalty = lastDaySubjects.has(subject.id)
-            ? isFirstBlock
-              ? -16
-              : -6
-            : 0;
-          const sameArea = meta.area === desiredArea;
-          const timeMinutes = currentTime;
-          const bucket = timeMinutes < 12 * 60 ? 'manha' : timeMinutes < 18 * 60 ? 'tarde' : 'noite';
-          const usagePenalty = (globalUsage.get(subject.id) || 0) * 3;
-          const periodPreferenceScore = getHardSubjectPeriodScore(
-            hardSubjectsPeriodPreference,
-            subject,
-            meta,
-            bucket,
-            isFirstBlock
-          );
-          let score =
-            weight * 7 +
-            enemWeight * 16 +
-            remaining * 2 +
-            adaptivePriority * 18 -
-            usagePenalty;
-          if (sameArea) score += 12;
-          if (!sameSubject) score += 8;
-          if (!hasLesson) score += 18;
-          score += getDisciplinePriorityBonus(subject);
-          score += recentPenalty + globalPenalty + prevDayPenalty;
-          if ((profile?.accuracyRate ?? 0.65) < 0.55) score += 10;
-          if ((profile?.daysWithoutStudy ?? 0) >= 4) score += 8;
-          if (bucket === 'manha' && meta.nivel === 'avancado') score += 6;
-          if (bucket === 'noite' && meta.nivel === 'basico') score += 4;
-          score += periodPreferenceScore;
-          return { subject, score, adaptivePriority };
-        })
-        .sort((a, b) => b.score - a.score);
-
-      let chosen = ranked.find((item) => item.subject.id !== lastSubjectId);
-      if (!chosen) chosen = ranked[0];
-      if (!chosen) break;
-
-      const meta = subjectMeta.get(chosen.subject.id)!;
+      const meta = subjectMeta.get(chosenSubject.id)!;
       let sessionType: SessionType = 'teoria';
       const alreadyHasLesson =
-        (completedLessonsBySubject[chosen.subject.id] || 0) > 0 ||
-        (plannedLessonsBySubject.get(chosen.subject.id) || 0) > 0;
+        (completedLessonsBySubject[chosenSubject.id] || 0) > 0 ||
+        (plannedLessonsBySubject.get(chosenSubject.id) || 0) > 0;
       const expectedCycleStage = pickTaskType(
         meta.nivel,
-        cycleStateBySubject.get(chosen.subject.id),
+        cycleStateBySubject.get(chosenSubject.id),
         alreadyHasLesson,
         userLevel
       );
       let cycleStageMatched = false;
       let queuedReviewOverride = false;
 
-      if (reviewIndex.get(chosen.subject.id) && alreadyHasLesson) {
+      if (reviewIndex.get(chosenSubject.id) && alreadyHasLesson) {
         sessionType = 'revisao';
-        reviewIndex.set(chosen.subject.id, (reviewIndex.get(chosen.subject.id) || 1) - 1);
+        reviewIndex.set(chosenSubject.id, (reviewIndex.get(chosenSubject.id) || 1) - 1);
         blocksSinceReview = 0;
         queuedReviewOverride = expectedCycleStage !== 'revisao';
         cycleStageMatched = expectedCycleStage === 'revisao';
@@ -854,11 +911,8 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
       }
 
       if (sessionType === 'simulado') {
-        // Simulados de área foram removidos: exercícios por matéria já cumprem esse papel.
-        // Só agendamos simulados completos.
         const shouldCompleto = canScheduleSimuladoCompleto(date);
         if (!shouldCompleto) {
-          // Keep the cycle waiting for simulado and reinforce with practice meanwhile.
           sessionType = alreadyHasLesson ? 'pratica' : 'teoria';
           cycleStageMatched = false;
         }
@@ -871,20 +925,19 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
       let blockType = SESSION_TO_BLOCK_TYPE[sessionType];
       let simuladoAreaLabel: string | undefined;
       if (sessionType === 'simulado') {
-        // Apenas simulados completos.
         blockType = 'SIMULADO_COMPLETO';
       }
 
       const isSimulado = blockType === 'SIMULADO_AREA' || blockType === 'SIMULADO_COMPLETO';
-      const blockSubject = isSimulado ? simuladoSubject : chosen.subject;
+      const blockSubject = isSimulado ? simuladoSubject : chosenSubject;
       const blockMeta = isSimulado ? simuladoMeta : meta;
       const topicCandidates =
         (Array.isArray(meta.prerequisitos) && meta.prerequisitos.length > 0
           ? meta.prerequisitos
-          : Array.isArray(chosen.subject.topicos)
-          ? chosen.subject.topicos
+          : Array.isArray(chosenSubject.topicos)
+          ? chosenSubject.topicos
           : []) ?? [];
-      const topicIndex = topicIndexBySubject.get(chosen.subject.id) || 0;
+      const topicIndex = topicIndexBySubject.get(chosenSubject.id) || 0;
       const topicName =
         !isSimulado && topicCandidates.length > 0
           ? topicCandidates[topicIndex % topicCandidates.length]
@@ -900,7 +953,9 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
         blockMeta,
         baseMax,
         sessionType,
-        chosen.adaptivePriority
+        chosenAdaptivePriority,
+        config.adaptiveBlocks ?? false,
+        performanceMetricsBySubject[blockSubject.id]
       );
       blockMinutes = Math.min(blockMinutes, availableMinutes);
       if (blockMinutes < 25) break;
@@ -927,24 +982,27 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
         area: blockMeta.area,
         type: blockType,
         description: buildBlockDescription(blockType, config.preferences.goal, simuladoAreaLabel),
-        relatedSubjectId: sessionType === 'revisao' ? chosen.subject.id : undefined,
+        relatedSubjectId: sessionType === 'revisao' ? chosenSubject.id : undefined,
         topicName,
         pedagogicalStepIndex: PEDAGOGICAL_STEP_INDEX[sessionType],
         pedagogicalStepTotal: PEDAGOGICAL_STEP_TOTAL,
-        adaptiveScore: Number((chosen.adaptivePriority || 0).toFixed(4)),
+        adaptiveScore: Number((chosenAdaptivePriority || 0).toFixed(4)),
       } as StudyBlock;
 
       blocks.push(block);
       if (!isSimulado) {
-        dailyCount.set(chosen.subject.id, (dailyCount.get(chosen.subject.id) || 0) + 1);
-        remainingSlots.set(chosen.subject.id, Math.max(0, (remainingSlots.get(chosen.subject.id) || 0) - 1));
-        globalUsage.set(chosen.subject.id, (globalUsage.get(chosen.subject.id) || 0) + 1);
-        daySubjects.add(chosen.subject.id);
-        recentSubjects.push(chosen.subject.id);
+        dailyCount.set(chosenSubject.id, (dailyCount.get(chosenSubject.id) || 0) + 1);
+        remainingSlots.set(chosenSubject.id, Math.max(0, (remainingSlots.get(chosenSubject.id) || 0) - 1));
+        const weekMap = weeklyPlannedSlots.get(weekKey) ?? new Map<string, number>();
+        weekMap.set(chosenSubject.id, (weekMap.get(chosenSubject.id) || 0) + 1);
+        weeklyPlannedSlots.set(weekKey, weekMap);
+        globalUsage.set(chosenSubject.id, (globalUsage.get(chosenSubject.id) || 0) + 1);
+        daySubjects.add(chosenSubject.id);
+        recentSubjects.push(chosenSubject.id);
       }
       if (recentSubjects.length > 3) recentSubjects.shift();
       if (!isSimulado) {
-        globalRecentSubjects.push(chosen.subject.id);
+        globalRecentSubjects.push(chosenSubject.id);
       } else {
         globalRecentSubjects.push(simuladoSubject.id);
       }
@@ -960,23 +1018,23 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
         (sessionType === expectedCycleStage || (expectedCycleStage === 'simulado' && sessionType === 'simulado'))
       ) {
         cycleStateBySubject.set(
-          chosen.subject.id,
+          chosenSubject.id,
           advanceCycleState(
-            cycleStateBySubject.get(chosen.subject.id),
+            cycleStateBySubject.get(chosenSubject.id),
             meta.nivel,
             userLevel,
             contentPreference
           )
         );
         if (expectedCycleStage === 'simulado' && topicCandidates.length > 0) {
-          topicIndexBySubject.set(chosen.subject.id, (topicIndex + 1) % topicCandidates.length);
+          topicIndexBySubject.set(chosenSubject.id, (topicIndex + 1) % topicCandidates.length);
         }
       }
 
       if (sessionType === 'teoria') {
         plannedLessonsBySubject.set(
-          chosen.subject.id,
-          (plannedLessonsBySubject.get(chosen.subject.id) || 0) + 1
+          chosenSubject.id,
+          (plannedLessonsBySubject.get(chosenSubject.id) || 0) + 1
         );
         reviewOffsets.forEach((offset) => {
           const reviewDate = new Date(date);
@@ -984,14 +1042,14 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
           if (reviewDate < config.startDate || reviewDate > config.endDate) return;
           const key = toLocalDateKey(reviewDate);
           const list = reviewQueue.get(key) || [];
-          list.push(chosen.subject.id);
+          list.push(chosenSubject.id);
           reviewQueue.set(key, list);
         });
       }
       if (sessionType === 'pratica') {
         plannedPracticeBySubject.set(
-          chosen.subject.id,
-          (plannedPracticeBySubject.get(chosen.subject.id) || 0) + 1
+          chosenSubject.id,
+          (plannedPracticeBySubject.get(chosenSubject.id) || 0) + 1
         );
       }
 
@@ -1026,7 +1084,7 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
             area: simuladoMeta.area,
             type: 'ANALISE',
             description: buildAnalysisDescription(config.preferences.goal),
-            relatedSubjectId: chosen.subject.id,
+            relatedSubjectId: chosenSubject.id,
           } as StudyBlock;
           blocks.push(analysisBlock);
           currentTime += analysisMinutes;
@@ -1098,3 +1156,29 @@ export function generateChronologicalSchedule(config: ChronologicalScheduleConfi
   return cloneScheduleResult(result, false);
 }
 
+export function generateWeeklyTemplate(config: ChronologicalScheduleConfig): Record<string, string[]> {
+  const template: Record<string, string[]> = {
+    dom: [], seg: [], ter: [], qua: [], qui: [], sex: [], sab: []
+  };
+  const weekDays = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+  
+  // Roda uma semana inteira fictícia para gerar o molde ideal dinâmico
+  const tempConfig = {
+    ...config,
+    startDate: new Date('2024-01-07T00:00:00'), // Sunday
+    endDate: new Date('2024-01-13T00:00:00'),   // Saturday
+    preferences: { ...config.preferences, scheduleMode: 'dynamic' as const },
+    enableScheduleCache: false,
+  };
+  
+  const result = generateChronologicalSchedule(tempConfig);
+  
+  for (const block of result.blocks) {
+    if (block.isBreak || block.type === 'ANALISE' || block.subjectId === 'simulado') continue;
+    const dayIndex = block.date.getDay();
+    const dayKey = weekDays[dayIndex];
+    template[dayKey].push(block.subjectId);
+  }
+  
+  return template;
+}

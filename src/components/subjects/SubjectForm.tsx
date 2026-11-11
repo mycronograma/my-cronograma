@@ -17,6 +17,11 @@ import { X, Info, RotateCcw, Pin } from 'lucide-react';
 import { cn, subjectColors, formatHoursDuration } from '@/lib/utils';
 import { Button, Card, Badge } from '@/components/ui';
 import { buildPeerItems, computeAutoTargetHours, describeAutoTarget } from '@/services/weeklyTarget';
+import {
+  SUBJECT_ICON_OPTIONS,
+  autoIconForSubjectName,
+  getSubjectIconComponent,
+} from '@/lib/subjectIcons';
 import type { Subject } from '@/types';
 
 interface SubjectFormProps {
@@ -84,6 +89,12 @@ export default function SubjectForm({
 }: SubjectFormProps) {
   const [name, setName] = useState(subject?.name || '');
   const [color, setColor] = useState(subject?.color || subjectColors[0]);
+  const [icon, setIcon] = useState(subject?.icon || 'book-open');
+  // Meta semanal: automática (regra do peso) ou definida manualmente.
+  const [manualTarget, setManualTarget] = useState(subject?.targetHoursIsManual ?? false);
+  const [manualHours, setManualHours] = useState(() =>
+    subject?.targetHoursIsManual && subject.targetHours > 0 ? subject.targetHours : 1
+  );
   // Um controle só. Matéria antiga com prioridade diferente de dificuldade
   // entra com a média: a tela não tem mais dois sliders para escolher entre.
   const [weight, setWeight] = useState(() => pesoUnico(subject));
@@ -154,8 +165,11 @@ export default function SubjectForm({
     onSubmit({
       name: trimmedName,
       color,
+      icon,
       priority: weight,
       difficulty: weight,
+      targetHoursIsManual: manualTarget,
+      ...(manualTarget ? { targetHours: Math.max(0.5, manualHours) } : {}),
     });
   };
 
@@ -228,6 +242,43 @@ export default function SubjectForm({
               </div>
             </div>
 
+            {/* Ícone da matéria — sugere automaticamente pelo nome ao criar */}
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <label className="text-sm font-medium text-text-secondary">Ícone</label>
+                <button
+                  type="button"
+                  onClick={() => setIcon(autoIconForSubjectName(name))}
+                  className="text-xs font-medium text-violet-600 hover:underline"
+                  title="Sugerir ícone pelo nome da matéria"
+                >
+                  Sugerir pelo nome
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {SUBJECT_ICON_OPTIONS.map((opt) => {
+                  const IconCmp = getSubjectIconComponent(opt.key);
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setIcon(opt.key)}
+                      aria-label={opt.label}
+                      title={opt.label}
+                      className={cn(
+                        'flex h-8 w-8 items-center justify-center rounded-lg border transition-all',
+                        icon === opt.key
+                          ? 'border-violet-500 bg-violet-500/10 text-violet-600'
+                          : 'border-card-border text-text-muted hover:border-violet-400'
+                      )}
+                    >
+                      <IconCmp className="h-4 w-4" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Peso no plano — um controle só, com as horas ao vivo */}
             <div>
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -256,6 +307,60 @@ export default function SubjectForm({
                 Junta o quanto a matéria vale e o quanto ela te trava. Peso 10 recebe 4× as
                 horas de peso 5.
               </p>
+            </div>
+
+            {/* Meta semanal — duas formas: automática por peso ou horas manuais */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-text-secondary">
+                Meta semanal de horas
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setManualTarget(false)}
+                  className={cn(
+                    'rounded-xl border p-2.5 text-left text-xs font-semibold transition-all',
+                    !manualTarget
+                      ? 'border-violet-500 bg-violet-500/10 text-text-primary'
+                      : 'border-card-border text-text-secondary hover:border-violet-400'
+                  )}
+                >
+                  Automática (por peso)
+                  <span className="mt-0.5 block text-[11px] font-normal text-text-muted">
+                    {formatHoursDuration(autoTarget)}/semana pela regra do peso
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualTarget(true)}
+                  className={cn(
+                    'rounded-xl border p-2.5 text-left text-xs font-semibold transition-all',
+                    manualTarget
+                      ? 'border-violet-500 bg-violet-500/10 text-text-primary'
+                      : 'border-card-border text-text-secondary hover:border-violet-400'
+                  )}
+                >
+                  Definir horas manualmente
+                  <span className="mt-0.5 block text-[11px] font-normal text-text-muted">
+                    Você fixa a meta; as outras seguem o peso
+                  </span>
+                </button>
+              </div>
+              {manualTarget && (
+                <div className="mt-2 flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="40"
+                    step="0.5"
+                    value={manualHours}
+                    onChange={(e) => setManualHours(Number(e.target.value))}
+                    className="input-field w-28"
+                    aria-label="Horas por semana (manual)"
+                  />
+                  <span className="text-sm text-text-muted">horas/semana</span>
+                </div>
+              )}
             </div>
 
             {error && <p className="text-sm text-danger">{error}</p>}

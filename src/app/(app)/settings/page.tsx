@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSession } from 'next-auth/react';
 import { signOut } from 'next-auth/react';
@@ -1383,6 +1384,34 @@ export default function SettingsPage() {
             </p>
           </div>
 
+          {/* Horário preferido do dia */}
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-2">
+              Horário preferido para estudar
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="time"
+                value={settings.preferredStart || '09:00'}
+                onChange={(e) => updateSetting('preferredStart', e.target.value)}
+                className="input-field w-32"
+                aria-label="Horário de início preferido"
+              />
+              <span className="text-text-muted text-sm">até</span>
+              <input
+                type="time"
+                value={settings.preferredEnd || '21:00'}
+                onChange={(e) => updateSetting('preferredEnd', e.target.value)}
+                className="input-field w-32"
+                aria-label="Horário de término preferido"
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-text-muted">
+              O cronograma só coloca blocos dentro dessa janela. Depois dá para ligar com Google
+              Calendar / Apple Calendar para considerar seus compromissos reais.
+            </p>
+          </div>
+
           <div className="rounded-xl border border-card-border bg-card-bg/50 p-4 overflow-hidden">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div>
@@ -1527,6 +1556,19 @@ export default function SettingsPage() {
             </p>
           </div>
 
+          <Link
+            href="/planos"
+            className="flex items-center justify-between gap-3 rounded-xl border border-card-border bg-card-bg p-4 text-left transition-colors hover:border-violet-400"
+          >
+            <div>
+              <div className="font-medium text-text-primary">Plano e assinatura</div>
+              <div className="text-sm text-text-secondary">
+                Veja seu plano atual ou faça upgrade (Mercado Pago)
+              </div>
+            </div>
+            <span className="text-sm font-semibold text-violet-600">Ver planos →</span>
+          </Link>
+
           {/* Duração dos Blocos */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1558,6 +1600,35 @@ export default function SettingsPage() {
               />
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => updateSetting('adaptiveBlocks', !settings.adaptiveBlocks)}
+            aria-pressed={settings.adaptiveBlocks}
+            className="w-full flex items-center justify-between gap-3 p-4 rounded-xl bg-card-bg border border-card-border text-left touch-manipulation active:scale-[0.995]"
+          >
+            <div className="min-w-0 pr-2">
+              <div className="font-medium text-text-primary">Modo adaptativo de blocos</div>
+              <div className="text-sm text-text-secondary">
+                {settings.adaptiveBlocks
+                  ? `Ligado: os blocos variam em torno de ${settings.maxBlockMinutes} min.`
+                  : 'Desligado: todos os blocos usam a duração fixa acima.'}
+              </div>
+            </div>
+            <span
+              className={cn(
+                'relative inline-flex h-6 w-14 flex-shrink-0 items-center rounded-full transition-colors',
+                settings.adaptiveBlocks ? 'bg-violet-500' : 'bg-card-border'
+              )}
+            >
+              <span
+                className={cn(
+                  'pointer-events-none inline-block h-5 w-5 rounded-full bg-white transition-transform duration-200',
+                  settings.adaptiveBlocks ? 'translate-x-8' : 'translate-x-1'
+                )}
+              />
+            </span>
+          </button>
 
           {/* Dia descansado: sem bloco na agenda. E o mesmo que 0 horas na
               lista acima — la o numero, aqui so o rotulo, para o usuario nao

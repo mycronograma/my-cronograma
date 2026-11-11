@@ -508,3 +508,214 @@ assert.strictEqual(
 );
 
 console.log('wizard-driven roadmap tests passed');
+
+// --- Modo adaptativo de blocos ---
+const adaptiveSchedule = generateChronologicalSchedule({
+  subjects,
+  preferences,
+  startDate,
+  endDate,
+  preferredStart: '09:00',
+  preferredEnd: '18:00',
+  maxBlockMinutes: 60,
+  breakMinutes: 10,
+  adaptiveBlocks: true,
+  restDays: [0],
+  firstCycleAllSubjects: true,
+  completedLessonsTotal: 0,
+  completedLessonsBySubject: {},
+  simuladoRules: {
+    minLessonsBeforeSimulated: 20,
+    minLessonsPerSubject: 2,
+    minDaysBeforeSimulated: 14,
+    frequencyDays: 7,
+    minLessonsBeforeAreaSimulated: 6,
+    minDaysBeforeAreaSimulated: 7,
+  },
+  debug: false,
+});
+const adaptiveBlocks = adaptiveSchedule.blocks.filter((b) => !b.isBreak);
+assert.ok(adaptiveBlocks.length > 0, 'adaptive mode should generate blocks');
+const durations = adaptiveBlocks.map((b) => b.durationMinutes);
+assert.ok(
+  durations.every((d) => d >= 25 && d <= 120),
+  'adaptive durations must stay within [25, 120]'
+);
+assert.ok(
+  durations.every((d) => Math.abs(d - 60) <= 15),
+  'adaptive durations must vary around the 60min base by at most 15min'
+);
+assert.ok(
+  durations.some((d) => d !== 60),
+  'adaptive mode should actually vary some block durations'
+);
+const fixedSchedule2 = generateChronologicalSchedule({
+  subjects,
+  preferences,
+  startDate,
+  endDate,
+  preferredStart: '09:00',
+  preferredEnd: '18:00',
+  maxBlockMinutes: 60,
+  breakMinutes: 10,
+  adaptiveBlocks: false,
+  restDays: [0],
+  firstCycleAllSubjects: true,
+  completedLessonsTotal: 0,
+  completedLessonsBySubject: {},
+  simuladoRules: {
+    minLessonsBeforeSimulated: 20,
+    minLessonsPerSubject: 2,
+    minDaysBeforeSimulated: 14,
+    frequencyDays: 7,
+    minLessonsBeforeAreaSimulated: 6,
+    minDaysBeforeAreaSimulated: 7,
+  },
+  debug: false,
+});
+const fixedDurations = fixedSchedule2.blocks
+  .filter((b) => !b.isBreak)
+  .map((b) => b.durationMinutes);
+assert.ok(
+  fixedDurations.every((d) => d <= 60),
+  'fixed mode must never exceed the base duration (only tail blocks may shrink to fit the day)'
+);
+assert.ok(
+  fixedDurations.every((d) => d !== 75),
+  'fixed mode must not apply the +15min adaptive variation'
+);
+
+console.log('adaptive blocks tests passed');
+
+// --- Edge case: modo adaptativo + último bloco do dia encolhido para caber na janela ---
+const edgeStart = new Date();
+edgeStart.setHours(0, 0, 0, 0);
+const edgeEnd = new Date(edgeStart);
+edgeEnd.setDate(edgeStart.getDate() + 1);
+const edgeKey = edgeStart.toISOString().slice(0, 10);
+const edgeSchedule = generateChronologicalSchedule({
+  subjects,
+  preferences,
+  startDate: edgeStart,
+  endDate: edgeEnd,
+  preferredStart: '09:00',
+  preferredEnd: '18:00',
+  maxBlockMinutes: 60,
+  breakMinutes: 10,
+  adaptiveBlocks: true,
+  restDays: [0],
+  firstCycleAllSubjects: true,
+  completedLessonsTotal: 0,
+  completedLessonsBySubject: {},
+  // Dia com janela curta: o bloco precisa encolher para caber.
+  dailyLimitByDate: { [edgeKey]: 40 },
+  simuladoRules: {
+    minLessonsBeforeSimulated: 20,
+    minLessonsPerSubject: 2,
+    minDaysBeforeSimulated: 14,
+    frequencyDays: 7,
+    minLessonsBeforeAreaSimulated: 6,
+    minDaysBeforeAreaSimulated: 7,
+  },
+  debug: false,
+});
+const edgeBlocks = edgeSchedule.blocks.filter((b) => !b.isBreak);
+assert.ok(
+  edgeBlocks.every((b) => b.durationMinutes >= 25),
+  'adaptive + tail shrink must never produce a block below 25min'
+);
+
+// Aprendizado real: perfil ruim encurta, perfil ótimo alonga (>=3 sessões).
+const lowPerf = { ...subjects[0] };
+const learnedSchedule = generateChronologicalSchedule({
+  subjects: [lowPerf],
+  preferences,
+  startDate,
+  endDate,
+  preferredStart: '09:00',
+  preferredEnd: '18:00',
+  maxBlockMinutes: 60,
+  breakMinutes: 10,
+  adaptiveBlocks: true,
+  restDays: [0],
+  firstCycleAllSubjects: true,
+  completedLessonsTotal: 0,
+  completedLessonsBySubject: {},
+  performanceMetricsBySubject: {
+    [lowPerf.id]: {
+      subjectId: lowPerf.id,
+      accuracyRate: 0.3,
+      errorRate: 0.7,
+      averageFocusScore: 20,
+      averageProductivityScore: 20,
+      averageDifficultyScore: 8,
+      totalSessions: 10,
+      lessonSessions: 5,
+      exerciseSessions: 5,
+      reviewSessions: 0,
+      simulatedSessions: 0,
+    },
+  },
+  simuladoRules: {
+    minLessonsBeforeSimulated: 20,
+    minLessonsPerSubject: 2,
+    minDaysBeforeSimulated: 14,
+    frequencyDays: 7,
+    minLessonsBeforeAreaSimulated: 6,
+    minDaysBeforeAreaSimulated: 7,
+  },
+  debug: false,
+});
+const learnedDurations = learnedSchedule.blocks
+  .filter((b) => !b.isBreak && b.type !== 'SIMULADO')
+  .map((b) => b.durationMinutes);
+assert.ok(learnedDurations.length > 0, 'learned adaptive should generate blocks');
+assert.ok(
+  learnedDurations.every((d) => d <= 60),
+  'low performance profile should shorten or keep blocks at/below the base'
+);
+
+console.log('adaptive edge-case and learned tests passed');
+
+// --- Teto semanal por matéria (meta semanal vira limite de blocos/semana) ---
+const cappedSubjects = subjects.map((s, i) =>
+  i === 0 ? { ...s, targetHours: 0.5 } : { ...s, targetHours: 10 } // 30min -> 1 bloco de 60 por semana
+);
+// Início numa segunda-feira: 14 dias = exatamente 2 semanas.
+const capStart = new Date();
+capStart.setHours(0, 0, 0, 0);
+capStart.setDate(capStart.getDate() + ((8 - capStart.getDay()) % 7)); // próxima segunda
+const capEnd = new Date(capStart);
+capEnd.setDate(capStart.getDate() + 13); // buildDateRange é inclusivo: 14 dias = 2 semanas exatas
+const cappedSchedule = generateChronologicalSchedule({
+  subjects: cappedSubjects,
+  preferences,
+  startDate: capStart,
+  endDate: capEnd, // 14 dias = 2 semanas
+  preferredStart: '09:00',
+  preferredEnd: '18:00',
+  maxBlockMinutes: 60,
+  breakMinutes: 10,
+  restDays: [0, 6],
+  firstCycleAllSubjects: false,
+  completedLessonsTotal: 0,
+  completedLessonsBySubject: {},
+  simuladoRules: {
+    minLessonsBeforeSimulated: 20,
+    minLessonsPerSubject: 2,
+    minDaysBeforeSimulated: 14,
+    frequencyDays: 7,
+    minLessonsBeforeAreaSimulated: 6,
+    minDaysBeforeAreaSimulated: 7,
+  },
+  debug: false,
+});
+const cappedId = cappedSubjects[0].id;
+const cappedBlocks = cappedSchedule.blocks.filter((b) => !b.isBreak && b.subjectId === cappedId);
+// 14 dias com 2 semanas (dom e sab descansam): no máximo 1 bloco/semana = 2 blocos no período
+assert.ok(
+  cappedBlocks.length <= 2,
+  `subject with 30min weekly target should get at most 1 block/week (got ${cappedBlocks.length} in 14 days)`
+);
+
+console.log('weekly target cap tests passed');

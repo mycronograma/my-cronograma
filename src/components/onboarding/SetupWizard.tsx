@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
@@ -56,12 +57,36 @@ interface SetupWizardProps {
   presetId: string;
   presetName: string;
   baseSettings: UserSettings;
+  /** Carga de partida escolhida no seletor de predefinição — vira sugestão de horas/dia. */
+  weeklyLoad?: 'leve' | 'normal' | 'intensivo';
+  /** Soma estimada das metas das matérias da predefinição (para o resumo checar overflow). */
+  estimatedTargetHours?: number | null;
   onClose: () => void;
   onApply: (
     settings: UserSettings,
     studyPrefs: StudyPreferences,
     answers: PresetWizardAnswers
   ) => void;
+}
+
+/** Horas por dia sugeridas por carga de partida (seg–sex; intensiva inclui sábado). */
+const CARGA_HORAS_POR_DIA: Record<'leve' | 'normal' | 'intensivo', number> = {
+  leve: 2,
+  normal: 4,
+  intensivo: 6,
+};
+
+function dailyHoursFromLoad(load: 'leve' | 'normal' | 'intensivo'): Record<WeekdayKey, number> {
+  const horasDia = CARGA_HORAS_POR_DIA[load];
+  return {
+    seg: horasDia,
+    ter: horasDia,
+    qua: horasDia,
+    qui: horasDia,
+    sex: horasDia,
+    sab: load === 'intensivo' ? 3 : 0,
+    dom: 0,
+  };
 }
 
 /** Ordem de exibição: começa na segunda, como no app. */
@@ -94,15 +119,20 @@ const NIVEIS = [
 ] as const;
 
 const BLOCOS: { minutos: FocusDuration; titulo: string; descricao: string }[] = [
-  { minutos: 25, titulo: '25 minutos', descricao: 'Blocos curtos, pausas frequentes.' },
+  { minutos: 25, titulo: '25 minutos', descricao: 'Pomodoro clássico, foco rápido.' },
+  { minutos: 30, titulo: '30 minutos', descricao: 'Blocos curtos, pausas frequentes.' },
+  { minutos: 45, titulo: '45 minutos', descricao: 'Tempo padrão de uma aula.' },
   { minutos: 50, titulo: '50 minutos', descricao: 'O equilíbrio que funciona para a maioria.' },
-  { minutos: 90, titulo: '90 minutos', descricao: 'Imersão longa, para quem já tem o hábito.' },
+  { minutos: 60, titulo: '60 minutos', descricao: 'Foco profundo de uma hora inteira.' },
+  { minutos: 90, titulo: '90 minutos', descricao: 'Imersão longa, para quem tem o hábito.' },
+  { minutos: 120, titulo: '120 minutos', descricao: 'Resistência extrema para provas.' },
 ];
 
 const INTERVALOS: { minutos: BreakDuration; titulo: string }[] = [
-  { minutos: 5, titulo: '5 minutos' },
-  { minutos: 10, titulo: '10 minutos' },
-  { minutos: 15, titulo: '15 minutos' },
+  { minutos: 5, titulo: '5 min' },
+  { minutos: 10, titulo: '10 min' },
+  { minutos: 15, titulo: '15 min' },
+  { minutos: 20, titulo: '20 min' },
 ];
 
 const TOTAL_TELAS = 5;
@@ -132,10 +162,14 @@ export default function SetupWizard({
   presetId,
   presetName,
   baseSettings,
+  weeklyLoad,
+  estimatedTargetHours,
   onClose,
   onApply,
 }: SetupWizardProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const [step, setStep] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
@@ -144,11 +178,22 @@ export default function SetupWizard({
   const [horas, setHoras] = useState<Record<WeekdayKey, number>>(() =>
     defaultDailyHours(resolveGoal(presetId, presetName))
   );
+  // Se o usuário editou as horas manualmente, a sugestão da carga não sobrescreve.
+  const [horasEditadas, setHorasEditadas] = useState(false);
+
+  // A carga de partida do seletor vira sugestão de horas por dia (editável).
+  useEffect(() => {
+    if (!weeklyLoad || horasEditadas) return;
+    setHoras(dailyHoursFromLoad(weeklyLoad));
+  }, [weeklyLoad, horasEditadas]);
   const [temProva, setTemProva] = useState(false);
   const [examDate, setExamDate] = useState('');
-  const [cargaTotal, setCargaTotal] = useState('');
+  // Quando o plano começa: hoje (padrão), amanhã ou uma data escolhida.
+  const [inicio, setInicio] = useState<'hoje' | 'amanha' | 'data'>('hoje');
+  const [dataInicio, setDataInicio] = useState('');
   const [bloco, setBloco] = useState<FocusDuration>(50);
   const [intervalo, setIntervalo] = useState<BreakDuration>(10);
+  const [adaptativo, setAdaptativo] = useState(false);
 
   const goal = useMemo(() => resolveGoal(presetId, presetName), [presetId, presetName]);
 
@@ -176,6 +221,7 @@ export default function SetupWizard({
   );
 
   const ajustarHora = (key: WeekdayKey, delta: number) => {
+    setHorasEditadas(true);
     setHoras((prev) => {
       const atual = Number(prev[key]) || 0;
       const proximo = Math.min(14, Math.max(0, Math.round((atual + delta) * 2) / 2));
@@ -183,23 +229,26 @@ export default function SetupWizard({
     });
   };
 
-  const cargaNumero = useMemo(() => {
-    const limpo = cargaTotal.replace(',', '.').trim();
-    if (!limpo) return null;
-    const valor = Number(limpo);
-    return Number.isFinite(valor) && valor > 0 ? valor : null;
-  }, [cargaTotal]);
+  /** Data de início efetiva do plano, conforme a escolha da tela 3. */
+  const dataInicioEfetiva = useMemo(() => {
+    if (inicio === 'amanha') {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      return toDateKey(d);
+    }
+    if (inicio === 'data' && dataInicio) return dataInicio;
+    return toDateKey(new Date());
+  }, [inicio, dataInicio]);
 
-  /** Cálculo ao vivo da tela 3 — depende das horas por dia da tela 2. */
+  /** Cálculo ao vivo da tela 3 — depende do início e das horas por dia da tela 2. */
   const plano = useMemo(
     () =>
       computeLoadPlan({
-        startKey: toDateKey(new Date()),
+        startKey: dataInicioEfetiva,
         examDate: temProva && examDate ? examDate : undefined,
-        totalHours: cargaNumero,
         daily: horas,
       }),
-    [temProva, examDate, cargaNumero, horas]
+    [temProva, examDate, dataInicioEfetiva, horas]
   );
 
   const podeAvancar = (): boolean => {
@@ -228,7 +277,7 @@ export default function SetupWizard({
   const concluir = () => {
     if (!podeAvancar()) return;
 
-    const startDate = toDateKey(new Date());
+    const startDate = dataInicioEfetiva;
     const endDate = plano.dataFim;
 
     const answers: PresetWizardAnswers = {
@@ -246,6 +295,7 @@ export default function SetupWizard({
       focusMinutes: bloco,
       focusBlockMinutes: bloco,
       breakMinutes: intervalo,
+      adaptiveBlocks: adaptativo,
       firstCycleAllSubjects: true,
       aiDifficulty: baseSettings.aiDifficulty ?? 'adaptive',
       focusMode: false,
@@ -258,7 +308,6 @@ export default function SetupWizard({
       startDate,
       endDate,
       periodMode: 'date',
-      totalHours: cargaNumero ?? undefined,
       examDate: temProva && examDate ? examDate : '',
     };
 
@@ -266,25 +315,24 @@ export default function SetupWizard({
     onApply(resumo.settings, resumo.studyPrefs, answers);
   };
 
-  if (!isOpen) return null;
-
-  return (
+  const modalContent = (
     <AnimatePresence>
-      <motion.div
-        ref={dialogRef}
-        className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto"
-        variants={overlayVariants}
-        initial="hidden"
-        animate="visible"
-        exit="hidden"
-      >
+      {isOpen && (
         <motion.div
-          variants={modalVariants}
+          ref={dialogRef}
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md overflow-y-auto"
+          variants={overlayVariants}
           initial="hidden"
           animate="visible"
           exit="hidden"
-          className="w-full max-w-xl bg-card-bg rounded-[28px] shadow-2xl border border-card-border flex flex-col my-auto max-h-[90vh] overflow-hidden"
         >
+          <motion.div
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            className="w-full max-w-xl bg-card-bg rounded-[28px] shadow-2xl border border-card-border flex flex-col my-auto max-h-[90vh] overflow-hidden"
+          >
           {/* CABEÇALHO */}
           <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-card-border">
             <div className="flex items-center gap-3">
@@ -414,7 +462,22 @@ export default function SetupWizard({
                     {formatarHoras(plano.horasPorSemana)}
                   </span>
                   <span className="text-text-secondary"> em {diasAtivos} dia(s).</span>
+                  {weeklyLoad && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHoras(dailyHoursFromLoad(weeklyLoad));
+                        setHorasEditadas(true);
+                      }}
+                      className="ml-2 text-xs font-semibold text-violet-600 hover:underline"
+                      title="Aplicar a sugestão da carga de partida escolhida"
+                    >
+                      usar sugestão ({weeklyLoad === 'leve' ? 'Leve' : weeklyLoad === 'normal' ? 'Normal' : 'Intensivo'})
+                    </button>
+                  )}
                 </div>
+
+                {/* Janela de horário do dia fica em Configurações (Perfil), não no assistente. */}
               </div>
             )}
 
@@ -423,7 +486,7 @@ export default function SetupWizard({
                 <div>
                   <h3 className="text-xl font-bold text-text-primary">Até quando?</h3>
                   <p className="mt-1 text-sm text-text-secondary">
-                    Os dois campos são opcionais. Com os dois, o app diz se o plano fecha.
+                    A data da prova é opcional — o app mostra quanto tempo você terá até ela.
                   </p>
                 </div>
 
@@ -494,32 +557,58 @@ export default function SetupWizard({
                   )}
                 </div>
 
-                {/* Carga horária total */}
-                <div className="space-y-2">
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-text-secondary">
-                      Quanto tempo quer estudar no total?
-                    </span>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={cargaTotal}
-                        onChange={(event) => {
-                          setCargaTotal(event.target.value.replace(/[^\d.,]/g, ''));
+                {/* Quando começar */}
+                <div className="space-y-3">
+                  <span className="block text-sm font-medium text-text-secondary">
+                    Quando quer começar?
+                  </span>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {(
+                      [
+                        { id: 'hoje', titulo: 'Hoje', descricao: 'o plano começa agora' },
+                        { id: 'amanha', titulo: 'Amanhã', descricao: 'começa no próximo dia' },
+                        { id: 'data', titulo: 'Escolher data', descricao: 'você define o primeiro dia' },
+                      ] as const
+                    ).map((opcao) => (
+                      <button
+                        key={opcao.id}
+                        type="button"
+                        onClick={() => {
+                          setInicio(opcao.id);
                           setErro(null);
                         }}
-                        placeholder="ex.: 400"
-                        className="input-field pr-14"
-                      />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-text-muted">
-                        horas
+                        className={`rounded-2xl border p-3 text-left transition-all ${
+                          inicio === opcao.id
+                            ? 'border-violet-500 bg-violet-500/10'
+                            : 'border-card-border hover:border-violet-400'
+                        }`}
+                      >
+                        <span className="block text-sm font-semibold text-text-primary">
+                          {opcao.titulo}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-text-secondary">
+                          {opcao.descricao}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  {inicio === 'data' && (
+                    <label className="block">
+                      <span className="mb-1.5 block text-xs text-text-secondary">
+                        Primeiro dia de estudo
                       </span>
-                    </div>
-                  </label>
-                  <p className="text-xs text-text-muted">
-                    Deixe vazio se não souber. É o total que você quer estudar até estar pronto.
-                  </p>
+                      <input
+                        type="date"
+                        value={dataInicio}
+                        min={toDateKey(new Date())}
+                        onChange={(event) => {
+                          setDataInicio(event.target.value);
+                          setErro(null);
+                        }}
+                        className="input-field"
+                      />
+                    </label>
+                  )}
                 </div>
 
                 {/* Cálculo ao vivo */}
@@ -547,15 +636,6 @@ export default function SetupWizard({
                       </div>
                     )}
 
-                    {cargaNumero !== null && plano.diasRestantes !== null && (
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-text-secondary">Precisa estudar</span>
-                        <span className="font-semibold text-text-primary">
-                          {formatarHoras(plano.horasPorDiaAtivoNecessarias ?? 0)} por dia
-                        </span>
-                      </div>
-                    )}
-
                     {plano.horasCobertasAteProva !== null && (
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-text-secondary">Vai cobrir</span>
@@ -567,11 +647,7 @@ export default function SetupWizard({
 
                     <div className="flex items-center justify-between gap-3 border-t border-card-border pt-2">
                       <span className="text-text-secondary">
-                        {plano.origemDataFim === 'prova'
-                          ? 'Plano termina em'
-                          : plano.origemDataFim === 'carga'
-                            ? 'Termina a carga em'
-                            : 'Plano cobre'}
+                        {plano.origemDataFim === 'prova' ? 'Plano termina em' : 'Plano cobre'}
                       </span>
                       <span className="font-bold text-violet-600">
                         {plano.origemDataFim === 'semana'
@@ -581,30 +657,10 @@ export default function SetupWizard({
                     </div>
                   </div>
 
-                  {plano.viavel === false && (
-                    <div className="mt-3 flex gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-                      <p className="text-xs text-amber-200">
-                        Com esse ritmo a carga <b>não fecha</b> até a prova — faltariam{' '}
-                        <b>{formatarHoras(plano.faltamHoras ?? 0)}</b>. Aumente as horas por dia,
-                        some mais dias à semana, ou diminua a carga total.
-                      </p>
-                    </div>
-                  )}
-
-                  {plano.viavel === true && cargaNumero !== null && plano.diasRestantes !== null && (
-                    <div className="mt-3 flex gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
-                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
-                      <p className="text-xs text-emerald-200">
-                        Fecha! Sobram <b>{formatarHoras(plano.sobramHoras ?? 0)}</b> de folga até a
-                        prova.
-                      </p>
-                    </div>
-                  )}
-
-                  {plano.origemDataFim === 'carga' && (
+                  {plano.diasRestantes !== null && plano.horasCobertasAteProva !== null && (
                     <p className="mt-3 text-xs text-text-muted">
-                      Sem data de prova, o plano termina quando a carga total estiver completa.
+                      Com esse ritmo, de <b>{formatarDataLonga(dataInicioEfetiva)}</b> até a prova você
+                      acumula <b>{formatarHoras(plano.horasCobertasAteProva)}</b> de estudo.
                     </p>
                   )}
                 </div>
@@ -620,9 +676,43 @@ export default function SetupWizard({
                   </p>
                 </div>
 
+                <button
+                  type="button"
+                  onClick={() => setAdaptativo((v) => !v)}
+                  aria-pressed={adaptativo}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-card-border bg-card-bg p-3 text-left transition-all hover:border-violet-400"
+                >
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Sparkles
+                      className={`h-4 w-4 flex-shrink-0 ${adaptativo ? 'text-violet-600' : 'text-text-muted'}`}
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-sm font-semibold text-text-primary">
+                        Ajustar blocos automaticamente
+                      </span>
+                      <span className="mt-0.5 block text-xs text-text-secondary">
+                        {adaptativo
+                          ? `Blocos variam em torno de ${bloco} min.`
+                          : 'Usa sempre a duração abaixo.'}
+                      </span>
+                    </div>
+                  </div>
+                  <span
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                      adaptativo ? 'bg-violet-500' : 'bg-card-border'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white transition-transform duration-200 ${
+                        adaptativo ? 'translate-x-5' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </span>
+                </button>
+
                 <div className="space-y-3">
                   <span className="block text-sm font-medium text-text-secondary">
-                    Duração de cada bloco
+                    {adaptativo ? 'Duração base de cada bloco' : 'Duração de cada bloco'}
                   </span>
                   {BLOCOS.map((opcao) => (
                     <button
@@ -656,7 +746,7 @@ export default function SetupWizard({
                   <span className="block text-sm font-medium text-text-secondary">
                     Intervalo entre blocos
                   </span>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {INTERVALOS.map((opcao) => (
                       <button
                         key={opcao.minutos}
@@ -691,32 +781,83 @@ export default function SetupWizard({
 
                 <div className="divide-y divide-card-border rounded-2xl border border-card-border">
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Objetivo</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Objetivo
+                    </span>
                     <span className="flex items-center gap-2 text-sm font-semibold text-text-primary">
                       <GraduationCap className="h-4 w-4 text-violet-600" />
                       {presetName}
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Nível</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Nível
+                    </span>
                     <span className="text-sm font-semibold text-text-primary">
                       {NIVEIS.find((opcao) => opcao.id === nivel)?.titulo}
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Tempo por semana</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Tempo por semana
+                    </span>
                     <span className="text-sm font-semibold text-text-primary">
                       {formatarHoras(plano.horasPorSemana)} em {diasAtivos} dia(s)
                     </span>
                   </div>
+                  {typeof estimatedTargetHours === 'number' && estimatedTargetHours > 0 && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <span className="flex items-center gap-2 text-sm text-text-secondary">
+                        {estimatedTargetHours <= plano.horasPorSemana + 1e-9 ? (
+                          <Check className="h-4 w-4 text-emerald-500" />
+                        ) : (
+                          <AlertTriangle className="h-4 w-4 text-amber-500" />
+                        )}
+                        Metas das matérias
+                      </span>
+                      <span
+                        className={`text-sm font-semibold ${
+                          estimatedTargetHours <= plano.horasPorSemana + 1e-9
+                            ? 'text-text-primary'
+                            : 'text-amber-500'
+                        }`}
+                      >
+                        {formatarHoras(estimatedTargetHours)} / {formatarHoras(plano.horasPorSemana)}
+                        {estimatedTargetHours > plano.horasPorSemana + 1e-9 && ' — acima da capacidade'}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Carga total</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Horário do dia
+                    </span>
                     <span className="text-sm font-semibold text-text-primary">
-                      {cargaNumero !== null ? formatarHoras(cargaNumero) : 'não definida'}
+                      {baseSettings.preferredStart || '09:00'} às{' '}
+                      {baseSettings.preferredEnd || '21:00'}{' '}
+                      <span className="text-xs font-normal text-text-muted">(ajustável em Perfil)</span>
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Começa em
+                    </span>
+                    <span className="text-sm font-semibold text-text-primary">
+                      {formatarDataLonga(dataInicioEfetiva)}
+                    </span>
+                  </div>
+                  {plano.horasCobertasAteProva !== null && (
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <span className="flex items-center gap-2 text-sm text-text-secondary">
+                        <Check className="h-4 w-4 text-emerald-500" /> Total até a prova
+                      </span>
+                      <span className="text-sm font-semibold text-text-primary">
+                        {formatarHoras(plano.horasCobertasAteProva)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" />
                       {plano.origemDataFim === 'prova' ? 'Prova' : 'Termina em'}
                     </span>
                     <span className="text-sm font-semibold text-text-primary">
@@ -726,9 +867,13 @@ export default function SetupWizard({
                     </span>
                   </div>
                   <div className="flex items-center justify-between px-4 py-3">
-                    <span className="text-sm text-text-secondary">Blocos</span>
+                    <span className="flex items-center gap-2 text-sm text-text-secondary">
+                      <Check className="h-4 w-4 text-emerald-500" /> Blocos
+                    </span>
                     <span className="text-sm font-semibold text-text-primary">
-                      {bloco} min com {intervalo} min de intervalo
+                      {adaptativo
+                        ? `Modo adaptativo (base ${bloco} min) com ${intervalo} min de intervalo`
+                        : `${bloco} min com ${intervalo} min de intervalo`}
                     </span>
                   </div>
                 </div>
@@ -781,8 +926,11 @@ export default function SetupWizard({
               </Button>
             )}
           </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      )}
     </AnimatePresence>
   );
+
+  return mounted ? createPortal(modalContent, document.body) : null;
 }
