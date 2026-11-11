@@ -123,18 +123,21 @@ export default function EstudosPage() {
         </div>
       )}
 
-      <AnimatePresence>
-        {modalSubject && (
-          <RegisterStudyModal
-            subject={modalSubject}
-            onClose={() => setModalSubject(null)}
-            onSaved={() => {
-              setModalSubject(null);
-              refresh();
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {mounted && createPortal(
+        <AnimatePresence>
+          {modalSubject && (
+            <RegisterStudyModal
+              subject={modalSubject}
+              onClose={() => setModalSubject(null)}
+              onSaved={() => {
+                setModalSubject(null);
+                refresh();
+              }}
+            />
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }
@@ -377,6 +380,14 @@ function HistoryRow(props: {
 function RegisterStudyModal(props: { subject: Subject; onClose: () => void; onSaved: () => void }) {
   const { subject } = props;
   const [kind, setKind] = useState<StudyLogKind>('conteudo');
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
   const [studied, setStudied] = useState('');
   const [stoppedAt, setStoppedAt] = useState('');
   const [correct, setCorrect] = useState('');
