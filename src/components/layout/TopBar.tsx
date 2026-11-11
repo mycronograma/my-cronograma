@@ -19,6 +19,11 @@ import {
   LogOut,
   Moon,
   Sun,
+  Award,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  RefreshCw,
 } from 'lucide-react';
 import { percentage, formatNumber, cn } from '@/lib/utils';
 import { useLocalStorage } from '@/hooks';
@@ -37,6 +42,10 @@ interface TopBarProps {
     xpToNextLevel: number;
     streak: number;
   };
+  /** Status real do dia (blocos de hoje), igual ao design Trilha. */
+  today?: { done: number; total: number; minutes: number };
+  examDate?: string;
+  examLabel?: string;
 }
 
 interface TopBarMobileProps {
@@ -89,8 +98,14 @@ function TopBarMobile({
 
   return (
     <AppContainer className="flex h-14 min-w-0 items-center justify-between gap-2 sm:gap-3 lg:hidden">
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate text-base max-[374px]:text-sm font-heading font-semibold text-text-primary">{routeTitle}</h1>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 shadow-sm ring-2 ring-indigo-500/20">
+          <span className="font-mono text-lg font-bold tracking-tighter text-white">T</span>
+        </div>
+        <div className="min-w-0">
+          <h1 className="truncate text-base font-extrabold tracking-tight text-stone-900 dark:text-stone-100">Trilha</h1>
+          <p className="truncate text-[10px] leading-tight font-medium text-stone-500 dark:text-stone-400">{routeTitle}</p>
+        </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
@@ -98,39 +113,33 @@ function TopBarMobile({
           ref={notificationButtonRef}
           whileTap={{ scale: 0.94 }}
           onClick={onToggleNotifications}
-          className="relative flex h-11 w-11 items-center justify-center rounded-xl hover:bg-card-bg transition-colors"
+          className="relative flex h-11 w-11 items-center justify-center rounded-xl transition-colors hover:bg-stone-200/60 dark:hover:bg-stone-800/60"
           aria-label="Abrir notificações"
         >
-          <Bell className="h-5 w-5 text-text-secondary" />
+          <Bell className="h-5 w-5 text-stone-600 dark:text-stone-300" />
           {unreadCount > 0 && (
-            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-neon-cyan" />
+            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-indigo-500" />
           )}
         </motion.button>
 
         <motion.button
           whileTap={{ scale: 0.94 }}
           onClick={onToggleTheme}
-          className="relative flex h-11 w-11 items-center justify-center rounded-xl hover:bg-card-bg transition-colors"
+          className="relative flex h-11 w-11 items-center justify-center rounded-xl transition-colors hover:bg-stone-200/60 dark:hover:bg-stone-800/60"
           aria-label={theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}
         >
-          <ThemeIcon className="h-5 w-5 text-text-secondary" />
+          <ThemeIcon className="h-5 w-5 text-stone-600 dark:text-stone-300" />
         </motion.button>
 
         <Link
           href="/settings"
-          className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-card-bg transition-colors"
+          className="flex h-11 w-11 items-center justify-center rounded-xl transition-colors hover:bg-stone-200/60 dark:hover:bg-stone-800/60"
           aria-label="Abrir perfil"
         >
           {user.avatar ? (
-            <Image
-              src={user.avatar}
-              alt={user.name}
-              width={32}
-              height={32}
-              className="h-8 w-8 rounded-full object-cover border-2 border-neon-blue/50"
-            />
+            <Image src={user.avatar} alt={user.name} width={32} height={32} className="h-8 w-8 rounded-full object-cover ring-2 ring-indigo-500/40" />
           ) : (
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-neon-blue to-neon-purple">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600">
               <User className="h-4 w-4 text-white" />
             </div>
           )}
@@ -150,145 +159,116 @@ function TopBarDesktop({
   onSignOut,
   onSearch,
   notificationButtonRef,
-}: TopBarDesktopProps & { onSearch: (query: string) => void }) {
+  today,
+  examDate,
+  examLabel,
+}: TopBarDesktopProps & {
+  onSearch: (query: string) => void;
+  today?: TopBarProps['today'];
+  examDate?: string;
+  examLabel?: string;
+}) {
   const ThemeIcon = theme === 'light' ? Moon : Sun;
+  const daysLeft = examDate
+    ? Math.max(0, Math.ceil((new Date(examDate).getTime() - Date.now()) / 86400000))
+    : null;
 
   return (
-    <AppContainer className="hidden h-16 min-w-0 items-center gap-3 lg:flex">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <form
-          className="relative w-full min-w-0 max-w-xs xl:max-w-sm"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const data = new FormData(e.currentTarget);
-            onSearch(String(data.get('q') ?? ''));
-          }}
-        >
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <input
-            name="q"
-            type="text"
-            placeholder="Buscar disciplinas, sessões..."
-            className="input-field w-full py-2 pl-10 text-sm"
-          />
+    <AppContainer className="hidden min-w-0 items-center justify-between gap-3 py-3 lg:flex">
+      {/* Marca e prova alvo */}
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 shadow-sm ring-2 ring-indigo-500/20">
+          <span className="font-mono text-xl font-bold tracking-tighter text-white">T</span>
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-extrabold tracking-tight text-stone-900 dark:text-stone-100">Trilha</span>
+            <span className="hidden rounded-md bg-stone-200/60 px-2 py-0.5 text-xs font-semibold text-stone-700 dark:bg-stone-800 dark:text-stone-300 xl:inline-block">
+              Cronograma Inteligente
+            </span>
+          </div>
+          <p className="flex items-center gap-1.5 truncate text-xs font-medium text-stone-500 dark:text-stone-400">
+            <Calendar className="h-3 w-3 shrink-0 text-indigo-500" />
+            {examLabel ?? 'Planejamento & Evolução'}
+            {daysLeft !== null && <span className="text-stone-400 dark:text-stone-500">• Faltam {daysLeft} dias</span>}
+          </p>
+        </div>
+      </div>
+
+      {/* Status do dia, sequencia, nivel e acoes */}
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        {today && (
+          <div className="hidden items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-1.5 shadow-sm dark:border-stone-800 dark:bg-stone-900 md:flex">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-stone-700 dark:text-stone-300">
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Hoje: {today.done}/{today.total}</span>
+            </div>
+            <span className="text-stone-300 dark:text-stone-700">|</span>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-stone-400">
+              <Clock className="h-3.5 w-3.5 text-indigo-500" />
+              <span>{today.minutes}m estudados</span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50/80 px-2.5 py-1.5 text-xs font-bold text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300" title="Sequência de dias estudando">
+          <Flame className="h-4 w-4 fill-amber-500 text-amber-500" />
+          <span>{user.streak}</span>
+          <span className="hidden font-semibold text-amber-700 dark:text-amber-400 2xl:inline">dias</span>
+        </div>
+
+        <Link href="/analytics" className="flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-2.5 py-1.5 text-left transition-all hover:border-indigo-300 hover:bg-indigo-100/60 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:hover:border-indigo-800" title="Ver progresso e nível">
+          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-600 text-xs font-extrabold text-white">{user.level}</div>
+          <div className="hidden sm:block">
+            <div className="flex items-center gap-1 text-[11px] font-bold text-indigo-950 dark:text-indigo-200">
+              <Award className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+              <span>Nível {user.level}</span>
+            </div>
+            <div className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">
+              {formatNumber(user.xp)} XP ({Math.round(xpProgress)}%)
+            </div>
+          </div>
+        </Link>
+
+        <form className="relative hidden 2xl:block" onSubmit={(e) => { e.preventDefault(); const data = new FormData(e.currentTarget); onSearch(String(data.get('q') ?? '')); }}>
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+          <input name="q" type="text" placeholder="Buscar matérias..." className="w-44 rounded-xl border border-stone-200 bg-white py-1.5 pl-9 pr-3 text-xs text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-200" />
         </form>
-      </div>
 
-      <div className="hidden shrink-0 items-center gap-4 2xl:gap-6 xl:flex">
-        <motion.div whileHover={{ scale: 1.05 }} className="flex cursor-pointer items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500/20">
-            <Flame className="h-4 w-4 text-orange-500" />
-          </div>
-          <div className="text-sm">
-            <span className="font-bold text-text-primary">{user.streak}</span>
-            <span className="ml-1 hidden text-text-secondary 2xl:inline">dias seguidos</span>
-          </div>
-        </motion.div>
+        <Link href="/planner" className="flex items-center gap-1.5 rounded-xl border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-700 transition hover:bg-stone-100 hover:text-stone-900 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300 dark:hover:bg-stone-800 dark:hover:text-stone-100" title="Ir para o cronograma e recalcular">
+          <RefreshCw className="h-3.5 w-3.5 text-stone-500 dark:text-stone-400" />
+          <span className="hidden xl:inline">Recalcular</span>
+        </Link>
 
-        <motion.div whileHover={{ scale: 1.02 }} className="flex cursor-pointer items-center gap-3">
-          <div className="relative">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-neon-purple to-neon-blue">
-              <span className="text-sm font-bold text-white">{user.level}</span>
-            </div>
-            <svg className="absolute inset-0 h-10 w-10 -rotate-90" viewBox="0 0 40 40">
-              <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(127, 0, 255, 0.2)" strokeWidth="3" />
-              <circle
-                cx="20"
-                cy="20"
-                r="18"
-                fill="none"
-                stroke="url(#xpGradient)"
-                strokeWidth="3"
-                strokeDasharray={`${xpProgress * 1.13} 113`}
-                strokeLinecap="round"
-              />
-              <defs>
-                <linearGradient id="xpGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#7F00FF" />
-                  <stop offset="100%" stopColor="#00B4FF" />
-                </linearGradient>
-              </defs>
-            </svg>
-          </div>
-          <div className="hidden text-sm 2xl:block">
-            <div className="font-bold text-text-primary">Nivel {user.level}</div>
-            <div className="text-xs text-text-secondary">
-              {formatNumber(user.xp)} / {formatNumber(user.xpToNextLevel)} XP
-            </div>
-          </div>
-        </motion.div>
-      </div>
-
-      <div className="flex min-w-0 shrink-0 items-center justify-end gap-2 xl:gap-3">
-
-        <motion.button
-          type="button"
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={onToggleTheme}
-          className="relative flex h-11 w-11 items-center justify-center rounded-xl hover:bg-card-bg transition-colors"
-          aria-label={theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}
-        >
-          <ThemeIcon className="h-5 w-5 text-text-secondary" />
+        <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={onToggleTheme} className="relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-stone-200/60 dark:hover:bg-stone-800/60" aria-label={theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}>
+          <ThemeIcon className="h-5 w-5 text-stone-600 dark:text-stone-300" />
         </motion.button>
 
-        <motion.button
-          ref={notificationButtonRef}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={onToggleNotifications}
-          className="relative flex h-11 w-11 items-center justify-center rounded-xl hover:bg-card-bg transition-colors"
-          aria-label="Abrir notificações"
-        >
-          <Bell className="h-5 w-5 text-text-secondary" />
-          {unreadCount > 0 && (
-            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-neon-cyan" />
-          )}
+        <motion.button ref={notificationButtonRef} type="button" whileTap={{ scale: 0.9 }} onClick={onToggleNotifications} className="relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-stone-200/60 dark:hover:bg-stone-800/60" aria-label="Abrir notificações">
+          <Bell className="h-5 w-5 text-stone-600 dark:text-stone-300" />
+          {unreadCount > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-indigo-500" />}
         </motion.button>
 
-        {/* Perfil: no desktop o avatar levava direto ao logout (um clique
-            acidental derrubava a sessão). Agora abre as configurações, igual ao
-            mobile, e o logout fica em um botão próprio. */}
-        <Link
-          href="/settings"
-          className="flex max-w-full items-center gap-2 xl:gap-3 rounded-xl p-2 transition-colors hover:bg-card-bg"
-          aria-label="Abrir perfil e configurações"
-        >
+        <Link href="/settings" className="flex max-w-full items-center gap-2 rounded-xl p-1.5 transition-colors hover:bg-stone-200/60 dark:hover:bg-stone-800/60" aria-label="Abrir perfil e configurações">
           {user.avatar ? (
-            <Image
-              src={user.avatar}
-              alt={user.name}
-              width={32}
-              height={32}
-              className="h-8 w-8 rounded-full object-cover border-2 border-neon-blue/50"
-            />
+            <Image src={user.avatar} alt={user.name} width={32} height={32} className="h-8 w-8 rounded-full object-cover ring-2 ring-indigo-500/40" />
           ) : (
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-neon-blue to-neon-purple">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600">
               <User className="h-4 w-4 text-white" />
             </div>
           )}
-          <span className="hidden max-w-[10rem] truncate text-sm font-medium text-text-primary 2xl:inline">
-            {user.name}
-          </span>
+          <span className="hidden max-w-[10rem] truncate text-sm font-medium text-stone-800 dark:text-stone-200 2xl:inline">{user.name}</span>
         </Link>
 
-        <motion.button
-          type="button"
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={onSignOut}
-          className="flex h-11 w-11 items-center justify-center rounded-xl hover:bg-card-bg transition-colors"
-          aria-label="Sair da conta"
-          title="Sair da conta"
-        >
-          <LogOut className="h-5 w-5 text-text-secondary" />
+        <motion.button type="button" whileTap={{ scale: 0.9 }} onClick={onSignOut} className="flex h-10 w-10 items-center justify-center rounded-xl transition-colors hover:bg-stone-200/60 dark:hover:bg-stone-800/60" aria-label="Sair da conta" title="Sair da conta">
+          <LogOut className="h-5 w-5 text-stone-600 dark:text-stone-300" />
         </motion.button>
       </div>
     </AppContainer>
   );
 }
 
-export default function TopBar({ user }: TopBarProps) {
+export default function TopBar({ user, today, examDate, examLabel }: TopBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { status } = useSession();
@@ -542,7 +522,7 @@ export default function TopBar({ user }: TopBarProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 w-full min-w-0 border-b border-card-border bg-background-light/85 backdrop-blur-glass">
+      <header className="sticky top-0 z-30 w-full min-w-0 border-b border-stone-200 bg-stone-50/95 backdrop-blur-md dark:border-stone-800 dark:bg-stone-950/95">
         <div className="safe-area-top">
           <TopBarMobile
             routeTitle={routeTitle}
@@ -563,6 +543,9 @@ export default function TopBar({ user }: TopBarProps) {
             onSearch={handleSearch}
             onSignOut={handleSignOut}
             notificationButtonRef={desktopButtonRef}
+            today={today}
+            examDate={examDate}
+            examLabel={examLabel}
           />
         </div>
       </header>

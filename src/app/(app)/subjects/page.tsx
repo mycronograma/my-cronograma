@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Subjects Manager Page
+ * Página de Matérias
  * Gerenciar disciplinas com prioridade e dificuldade
  */
 
@@ -773,13 +773,13 @@ function SubjectsPageContent() {
       className="app-page"
     >
       {/* Cabeçalho */}
-      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-stone-900 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-2xl font-heading font-bold text-white">
-            Disciplinas
+          <h1 className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">
+            Matérias & Áreas de Estudo
           </h1>
-          <p className="text-sm text-text-secondary mt-1">
-            Gerencie suas matérias e metas de estudo
+          <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">
+            Gerencie pesos, níveis de dificuldade e acompanhe o progresso detalhado de cada disciplina
           </p>
         </div>
 

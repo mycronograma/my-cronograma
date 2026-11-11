@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { StatsCard, Card, Button } from '@/components/ui';
 import { useLocalStorage } from '@/hooks';
+import { computeGamificationSnapshot } from '@/lib/progressSnapshot';
 import {
   ProductivityChart,
   SubjectDistribution,
@@ -225,7 +226,7 @@ export default function AnalyticsPage() {
     return (
       <div className="space-y-6 max-[479px]:space-y-4">
         <div className="glass-card p-6 max-[479px]:p-4 animate-pulse">
-          <h1 className="text-2xl font-heading font-bold text-white">Análises</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">Progresso</h1>
           <p className="text-sm text-text-secondary mt-1">Carregando insights...</p>
         </div>
       </div>
@@ -241,11 +242,29 @@ export default function AnalyticsPage() {
     >
       {/* Cabeçalho */}
       <motion.div variants={itemVariants} className="min-w-0">
-        <h1 className="text-2xl max-[479px]:text-xl font-heading font-bold text-white">Análises</h1>
+        <h1 className="text-2xl max-[479px]:text-xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">Progresso</h1>
         <p className="text-sm max-[479px]:text-xs text-text-secondary mt-1">
           Acompanhe seu desempenho e progresso nos estudos
         </p>
       </motion.div>
+
+      {/* Nivel e XP (progresso gamificado) */}
+      {(() => {
+        const g = computeGamificationSnapshot({ plannerBlocks, analytics });
+        const pct = Math.min(100, Math.round((g.xpInCurrentLevel / Math.max(1, g.xpToNextLevel)) * 100));
+        return (
+          <motion.div variants={itemVariants} className="flex flex-col gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-5 dark:border-indigo-900/50 dark:bg-indigo-950/40 sm:flex-row sm:items-center">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-xl font-extrabold text-white">{g.level}</div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-extrabold text-indigo-950 dark:text-indigo-100">Nível {g.level} · {g.totalXp} XP no total</p>
+              <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-indigo-200/70 dark:bg-indigo-900">
+                <div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${pct}%` }} />
+              </div>
+              <p className="mt-1.5 text-xs text-indigo-600 dark:text-indigo-400">{g.xpInCurrentLevel}/{g.xpToNextLevel} XP para o próximo nível · sequência atual: {g.streak} dia(s) · recorde: {g.longestStreak}</p>
+            </div>
+          </motion.div>
+        );
+      })()}
 
       {/* Estatísticas de Resumo */}
       <motion.div

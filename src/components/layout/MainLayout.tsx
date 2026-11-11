@@ -8,15 +8,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
-import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import BottomNav from './BottomNav';
+import NavigationTabs from './NavigationTabs';
 import AppContainer from './AppContainer';
 import { WelcomeTutorial } from '@/components/onboarding';
 import { useLocalStorage } from '@/hooks';
 import { useServerProgressSync } from '@/hooks/useServerProgressSync';
 import { defaultSettings } from '@/lib/defaultSettings';
 import { computeGamificationSnapshot } from '@/lib/progressSnapshot';
+import { parseBlockDate, studiedMinutes, toLocalDateKey } from '@/lib/utils';
 import type { AnalyticsStore, StudyBlock, UserSettings } from '@/types';
 
 interface MainLayoutProps {
@@ -27,8 +28,6 @@ const emptyAnalytics: AnalyticsStore = { daily: {} };
 
 export default function MainLayout({ children }: MainLayoutProps) {
   useServerProgressSync();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const { data: session } = useSession();
   const pathname = usePathname();
   const [userSettings] = useLocalStorage<UserSettings>('nexora_user_settings', defaultSettings);
@@ -40,51 +39,31 @@ export default function MainLayout({ children }: MainLayoutProps) {
     [plannerBlocks, analytics]
   );
 
-  // Gerenciar sidebar responsiva
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(max-width: 1023px)');
-    const applyViewportState = (mobile: boolean) => {
-      setIsMobile(mobile);
-      if (mobile) {
-        setSidebarCollapsed(true);
-      }
+  // Status real do dia para a Navbar (padrao do design Trilha):
+  // blocos de hoje concluidos/total e minutos efetivamente estudados.
+  const today = useMemo(() => {
+    const todayKey = toLocalDateKey(new Date());
+    const blocksToday = plannerBlocks.filter(
+      (block) => !block.isBreak && toLocalDateKey(parseBlockDate(block.date)) === todayKey
+    );
+    return {
+      done: blocksToday.filter((block) => block.status === 'completed').length,
+      total: blocksToday.length,
+      minutes: Math.round(
+        blocksToday
+          .filter((block) => block.status === 'completed')
+          .reduce((sum, block) => sum + studiedMinutes(block), 0)
+      ),
     };
+  }, [plannerBlocks]);
 
-    applyViewportState(mediaQuery.matches);
-
-    const handleChange = (event: MediaQueryListEvent) => {
-      applyViewportState(event.matches);
-    };
-
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
-
-
-  const sidebarWidth = sidebarCollapsed ? 80 : 260;
-  const contentOffset = isMobile ? 0 : sidebarWidth;
-  const contentStyle = isMobile
-    ? undefined
-    : {
-        marginLeft: contentOffset,
-      };
+  const examLabel = userSettings.examDate ? 'Prova alvo' : undefined;
 
   return (
-    <div className="h-[100dvh] min-h-[100dvh] w-full max-w-full overflow-x-hidden overflow-y-hidden bg-background flex">
-      {/* Sidebar */}
-      {!isMobile && (
-        <Sidebar
-          isCollapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        />
-      )}
-
+    <div className="h-[100dvh] min-h-[100dvh] w-full max-w-full overflow-x-hidden overflow-y-hidden bg-stone-50 text-stone-900 dark:bg-stone-950 dark:text-stone-100 flex">
       {/* Area de conteudo principal */}
-      <div
-        style={contentStyle}
-        className="relative flex h-[100dvh] min-h-0 flex-1 min-w-0 flex-col overflow-x-hidden overflow-y-hidden transition-[margin-left] duration-300 ease-in-out"
-      >
-        {/* Barra superior */}
+      <div className="relative flex h-[100dvh] min-h-0 flex-1 min-w-0 flex-col overflow-x-hidden overflow-y-hidden">
+        {/* Barra superior (Navbar do design) */}
         <div className="shrink-0">
           <TopBar
             user={{
@@ -95,7 +74,12 @@ export default function MainLayout({ children }: MainLayoutProps) {
               xpToNextLevel: gamification.xpToNextLevel,
               streak: gamification.streak,
             }}
+            today={today}
+            examDate={userSettings.examDate}
+            examLabel={examLabel}
           />
+          {/* Abas de navegacao no topo (desktop) */}
+          <NavigationTabs badges={{ dashboard: today.total - today.done }} />
         </div>
 
         {/* Conteudo da pagina */}

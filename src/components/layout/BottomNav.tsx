@@ -10,7 +10,7 @@ export default function BottomNav() {
   const pathname = usePathname();
   const isActiveRoute = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-  const primaryNavItems = navItems.filter((item) => ['dashboard', 'planner', 'subjects', 'analytics', 'settings'].includes(item.id));
+  const primaryNavItems = navItems.filter((item) => ['dashboard', 'planner', 'subjects', 'studies', 'analytics', 'settings'].includes(item.id));
 
   return (
     <nav
@@ -36,14 +36,14 @@ export default function BottomNav() {
                       'relative flex w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2.5',
                       'min-h-[56px] touch-manipulation text-[10px] sm:text-[11px] font-medium transition-all',
                       isActive
-                        ? 'text-neon-blue'
-                        : 'text-text-secondary hover:text-white'
+                        ? 'text-indigo-600 dark:text-indigo-400'
+                        : 'text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200'
                     )}
                   >
                     <Icon
                       className={cn(
                         'h-5 w-5 mb-0.5',
-                        isActive && 'text-neon-blue'
+                        isActive && 'text-indigo-600 dark:text-indigo-400'
                       )}
                     />
                     <span className="max-w-full truncate leading-tight">{item.label}</span>

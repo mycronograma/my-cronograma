@@ -450,7 +450,7 @@ export default function StudyBlockSessionModal({
           onClick={(e) => e.stopPropagation()}
           className="relative w-full max-w-sm overflow-hidden rounded-3xl border shadow-2xl"
           style={{
-            background: 'linear-gradient(135deg, rgba(15,15,30,0.98) 0%, rgba(10,10,25,0.98) 100%)',
+            background: 'linear-gradient(135deg, rgba(28,25,23,0.98) 0%, rgba(12,10,9,0.98) 100%)',
             borderColor: `${accentColor}30`,
             boxShadow: `0 0 60px ${accentColor}20, 0 25px 50px rgba(0,0,0,0.5)`,
           }}

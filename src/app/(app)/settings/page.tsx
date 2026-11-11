@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Settings Page
+ * Página de Configurações
  * Perfil do usuário, preferências de estudo e parâmetros da IA
  */
 
@@ -1082,7 +1082,7 @@ export default function SettingsPage() {
         {!activeSection ? (
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="text-2xl font-heading font-bold text-text-primary">Configurações</h1>
+              <h1 className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">Perfil & Rotina</h1>
               <p className="text-sm text-text-secondary mt-1">Personalize sua experiência de estudos</p>
             </div>
             {showActionButtons && (

@@ -1,6 +1,7 @@
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
+  darkMode: 'class',
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -14,10 +15,10 @@ const config: Config = {
         'background-light': '#0A1020',
         'card-bg': 'rgba(15, 25, 45, 0.6)',
         'card-border': 'rgba(0, 180, 255, 0.15)',
-        'neon-blue': '#00B4FF',
-        'neon-purple': '#7F00FF',
-        'neon-cyan': '#00FFC8',
-        'neon-pink': '#FF00AA',
+        'neon-blue': '#6366F1',
+        'neon-purple': '#4F46E5',
+        'neon-cyan': '#10B981',
+        'neon-pink': '#F43F5E',
         'text-primary': '#FFFFFF',
         'text-secondary': '#8892A6',
         'text-muted': '#4A5568',

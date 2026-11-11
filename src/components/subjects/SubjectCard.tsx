@@ -68,15 +68,13 @@ export default function SubjectCard({
 
   return (
     <>
-      <Card 
-        className="group relative overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-pointer" 
-        glow="none" 
+      <Card
+        className="group relative overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition hover:border-stone-300 hover:shadow-md dark:border-stone-800 dark:bg-stone-900 dark:hover:border-stone-700 cursor-pointer"
+        glow="none"
         padding="none"
         onClick={() => setIsDetailsOpen(true)}
       style={{
-        background: `linear-gradient(135deg, ${subject.color}10 0%, ${subject.color}03 100%)`,
         borderColor: `${subject.color}30`,
-        boxShadow: `0 8px 32px -8px ${subject.color}15`,
       }}
     >
       {/* Top accent line */}
@@ -96,7 +94,7 @@ export default function SubjectCard({
             </div>
 
             <div className="min-w-0 flex flex-col justify-center">
-              <h3 className="truncate text-base font-bold text-text-primary leading-tight mb-1" title={subject.name}>
+              <h3 className="truncate text-base font-bold leading-tight mb-1 text-stone-900 dark:text-stone-100" title={subject.name}>
                 {subject.name}
               </h3>
               <div className="flex flex-wrap items-center gap-2">

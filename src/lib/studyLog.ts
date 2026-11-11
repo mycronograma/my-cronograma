@@ -65,7 +65,10 @@ export function writeReviewOverrides(overrides: Record<string, ReviewOverride>) 
 export function addStudyLogEntry(entry: Omit<StudyLogEntry, 'id' | 'createdAt'>): StudyLogEntry {
   const full: StudyLogEntry = {
     ...entry,
-    id: `sl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id:
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? `sl_${crypto.randomUUID()}`
+        : `sl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
   };
   const entries = readStudyLog();
@@ -155,7 +158,10 @@ export function summarizeSubject(
   let nextReviewDate: Date | null = null;
   let nextReviewManual = false;
   if (override) {
-    nextReviewDate = new Date(`${override.date}T12:00:00`);
+    // Constrói a data no fuso local a partir de yyyy-mm-dd (sem hack de meio-dia UTC).
+    const [y, m, d] = override.date.split('-').map(Number);
+    nextReviewDate =
+      y && m && d ? new Date(y, m - 1, d) : new Date(`${override.date}T12:00:00`);
     nextReviewManual = true;
   } else {
     const base = lastReview ?? lastContent;
@@ -193,7 +199,11 @@ export function setReviewOverride(subjectId: string, dateISO: string | null) {
 export function formatRelativeReview(date: Date, now: Date = new Date()): string {
   const dayMs = 24 * 60 * 60 * 1000;
   const diffDays = Math.round((new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / dayMs);
-  if (diffDays <= 0) return 'hoje';
+  if (diffDays < 0) {
+    const atraso = Math.abs(diffDays);
+    return `atrasada em ${atraso} dia${atraso === 1 ? '' : 's'}`;
+  }
+  if (diffDays === 0) return 'hoje';
   if (diffDays === 1) return 'amanhã';
   const dateStr = date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
   return `em ${diffDays} dias (${dateStr})`;

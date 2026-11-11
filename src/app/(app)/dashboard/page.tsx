@@ -44,6 +44,7 @@ import { applyBlockCompletionMetrics } from '@/services/adaptiveStudyIntelligenc
 import { checkSequentialLock } from '@/services/sequentialLock';
 import { reportCompletedSession } from '@/lib/sessionSync';
 import { getStudyBlockDisplayTitle } from '@/lib/studyBlockLabels';
+import { readReviewOverrides, readStudyLog, summarizeSubject } from '@/lib/studyLog';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -473,57 +474,109 @@ const handleCompleteBlock = (
         )}
       </AnimatePresence>
 
-      <div className="grid gap-6 lg:grid-cols-12">
-        <div className="lg:col-span-8">
-          <div className="space-y-6">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-              <div className="flex items-center justify-between mb-4">
+              <div className="mb-5 flex flex-col justify-between gap-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-stone-900 sm:flex-row sm:items-center sm:p-6">
                 <div>
-                  <h1 className="text-2xl font-heading font-bold text-text-primary">
-                    Olá, {displayName}! 🎓
-                  </h1>
-                  <p className="text-text-secondary mt-1">
-                    {clientNow
-                      ? `${formatDate(clientNow)}, dia ${['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'][clientNow.getDay()]}`
-                      : '\u00A0'}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-2xl font-black tracking-tight text-stone-900 dark:text-stone-100">
+                      {clientNow ? (clientNow.getHours() < 12 ? 'Bom dia' : clientNow.getHours() < 18 ? 'Boa tarde' : 'Boa noite') : 'Olá'}, {displayName}!
+                    </h1>
+                    {todayBlocksAll.length > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                        <Zap className="h-3 w-3 fill-emerald-500 text-emerald-500" /> Rotina Ativa
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm text-stone-600 dark:text-stone-400">
+                    {todayBlocks.length > 0
+                      ? `Você tem ${todayBlocks.length} ${todayBlocks.length === 1 ? 'tarefa prioritária programada' : 'tarefas prioritárias programadas'} para hoje.`
+                      : todayBlocksAll.length > 0
+                        ? 'Sensacional! Você já concluiu todas as tarefas programadas para hoje! 🎉'
+                        : 'Nenhuma tarefa programada para hoje. Gere seu cronograma para começar.'}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="hidden sm:flex items-center gap-2">
-                    <div className="text-right">
-                      <p className="text-xs text-text-muted">Meta Semanal</p>
-                      <p className="text-sm font-bold text-neon-blue">
-                        {formatHoursDuration(totalWeeklyHours)} / {formatHoursDuration(weeklyGoalHours)}
-                      </p>
-                    </div>
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-neon-blue to-neon-purple flex items-center justify-center">
-                      <TrendingUp className="w-5 h-5 text-white" />
+                  <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-2 dark:border-amber-900/50 dark:bg-amber-950/40">
+                    <Flame className="h-5 w-5 fill-amber-500 text-amber-500" />
+                    <div>
+                      <span className="block whitespace-nowrap text-xs font-bold leading-none text-amber-900 dark:text-amber-300">{gamificationData.streakDays} dias seguidos</span>
+                      <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400">Sequência mantida</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Flame className="w-4 h-4 text-orange-500" />
-                    <span className="text-sm font-bold text-orange-400">🔥 {gamificationData.streakDays} dias</span>
-                  </div>
+                  <a href="/analytics" className="flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3.5 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/40">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-xs font-extrabold text-white">{gamificationData.level}</div>
+                    <div>
+                      <span className="block whitespace-nowrap text-xs font-bold leading-none text-indigo-950 dark:text-indigo-200">Nível {gamificationData.level}</span>
+                      <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">{gamificationData.xp} XP neste nível</span>
+                    </div>
+                  </a>
                 </div>
               </div>
+
+              {(() => {
+                const endToday = clientNow ? new Date(clientNow) : new Date();
+                endToday.setHours(23, 59, 59, 999);
+                const logEntries = readStudyLog();
+                const logOverrides = readReviewOverrides();
+                const dueReviews = subjects.filter((s) => {
+                  const summary = summarizeSubject(s.id, logEntries, logOverrides);
+                  return summary.nextReviewDate !== null && summary.nextReviewDate <= endToday && (summary.lastContent !== null || summary.lastReview !== null);
+                }).length;
+                const studiedToday = Math.round((dailyAnalytics.hours || 0) * 60);
+                const plannedToday = todayBlocksAll.reduce((sum, b) => sum + plannedMinutes(b), 0);
+                return (
+                  <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm dark:border-stone-800 dark:bg-stone-900">
+                      <span className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">Tempo Dedicado Hoje</span>
+                      <div className="mt-1 flex items-baseline gap-1.5">
+                        <span className="text-2xl font-black text-stone-900 dark:text-stone-100">{studiedToday}m</span>
+                        <span className="text-xs text-stone-400">de {plannedToday}m meta</span>
+                      </div>
+                      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-stone-100 dark:bg-stone-800">
+                        <div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${Math.min(100, (studiedToday / Math.max(1, plannedToday)) * 100)}%` }} />
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm dark:border-stone-800 dark:bg-stone-900">
+                      <span className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">Tarefas de Hoje</span>
+                      <div className="mt-1 flex items-baseline gap-1.5">
+                        <span className="text-2xl font-black text-stone-900 dark:text-stone-100">{completedTodayCount}</span>
+                        <span className="text-xs text-stone-400">de {todayBlocksAll.length} concluídas</span>
+                      </div>
+                      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-stone-100 dark:bg-stone-800">
+                        <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${todayBlocksAll.length > 0 ? (completedTodayCount / todayBlocksAll.length) * 100 : 0}%` }} />
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm dark:border-stone-800 dark:bg-stone-900">
+                      <span className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400">Revisões Espaçadas</span>
+                      <div className="mt-1 flex items-baseline gap-1.5">
+                        <span className="text-2xl font-black text-stone-900 dark:text-stone-100">{dueReviews}</span>
+                        <span className="text-xs text-stone-400">para hoje</span>
+                      </div>
+                      <a href="/estudos" className="mt-2 inline-block text-xs font-bold text-indigo-600 hover:underline dark:text-indigo-400">Ver revisões →</a>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {recommendedBlock && (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.2 }}
-                  className="relative overflow-hidden rounded-2xl border border-neon-purple/20 bg-gradient-to-br from-neon-purple/10 to-transparent p-5 sm:p-7 backdrop-blur-glass shadow-lg"
+                  className="relative overflow-hidden rounded-2xl border-2 border-indigo-500/30 bg-gradient-to-br from-indigo-50/80 via-white to-stone-50 p-6 shadow-sm dark:border-indigo-500/40 dark:from-indigo-950/40 dark:via-stone-900 dark:to-stone-900 sm:p-7"
                 >
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Zap className="w-4 h-4 text-neon-purple flex-shrink-0" />
-                      <span className="text-xs font-bold tracking-widest text-neon-purple uppercase truncate">
-                        {recommendedBlock.isBreak ? 'INTERVALO' : 'SESSÃO RECOMENDADA'}
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-extrabold uppercase tracking-wider text-white">
+                      <Sparkles className="h-3 w-3" />
+                      {recommendedBlock.isBreak ? 'INTERVALO' : 'PRÓXIMA TAREFA RECOMENDADA'}
+                    </span>
+                    {!recommendedBlock.isBreak && getSubjectById(recommendedBlock.subjectId) && (
+                      <span className="inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-xs font-bold" style={{ backgroundColor: `${getSubjectById(recommendedBlock.subjectId)?.color}20`, color: getSubjectById(recommendedBlock.subjectId)?.color }}>
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: getSubjectById(recommendedBlock.subjectId)?.color }} />
+                        {getSubjectById(recommendedBlock.subjectId)?.name}
                       </span>
-                    </div>
-                    <span className="shrink-0 rounded-full bg-neon-purple/20 px-2.5 py-1 text-[10px] font-bold tracking-widest text-neon-purple uppercase flex items-center gap-1.5 border-b border-l border-neon-purple/20 backdrop-blur-sm">
-                      <div className="w-1.5 h-1.5 rounded-full bg-neon-purple animate-pulse-slow" />
-                      Agora
+                    )}
+                    <span className="rounded-md bg-stone-100 px-2.5 py-0.5 text-xs font-semibold uppercase text-stone-600 dark:bg-stone-800 dark:text-stone-300">
+                      {getStudyBlockTypeLabel(recommendedBlock.type)}
                     </span>
                   </div>
 
@@ -532,11 +585,26 @@ const handleCompleteBlock = (
                       <h2 className="text-xl font-heading font-bold text-text-primary mb-2">
                         {getStudyBlockDisplayTitle(recommendedBlock)}
                       </h2>
-                      <p className="text-sm text-text-secondary mb-4 line-clamp-2">
+                      <p className="text-sm text-text-secondary mb-3 line-clamp-2">
                         {recommendedBlock.isBreak
                           ? 'Descanse agora: o intervalo faz o próximo bloco render mais. Ele já está reservado no seu plano.'
-                          : 'Reforço de prioridade alta baseado no seu ritmo de estudo recente'}
+                          : `Tempo estimado: ${formatDuration(plannedMinutes(recommendedBlock))} de foco com objetivos estruturados.`}
                       </p>
+                      {!recommendedBlock.isBreak && (
+                        <div className="mb-4 space-y-1.5">
+                          {(recommendedBlock.sessionType === 'pratica' || recommendedBlock.type === 'EXERCICIOS'
+                            ? [`Resolver questões de ${getStudyBlockDisplayTitle(recommendedBlock)}`, 'Corrigir e revisar os erros', 'Anotar dúvidas para revisar']
+                            : recommendedBlock.sessionType === 'revisao' || recommendedBlock.type === 'REVISAO'
+                              ? [`Revisar ${getStudyBlockDisplayTitle(recommendedBlock)}`, 'Refazer questões marcadas', 'Atualizar resumo com pontos fracos']
+                              : [`Compreender conceitos essenciais de ${getStudyBlockDisplayTitle(recommendedBlock)}`, 'Elaborar resumo esquemático ou mapa mental com pontos-chave', 'Identificar pegadinhas e regras principais']
+                          ).map((obj, i) => (
+                            <div key={obj} className="flex items-center gap-2 text-xs text-stone-700 dark:text-stone-300">
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">{i + 1}</span>
+                              <span>{obj}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {/* Ritmo do dia: o que vem depois, e a regra de bloco/intervalo. */}
                       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-muted">
                         {blockAfterRecommended && (
@@ -595,6 +663,11 @@ const handleCompleteBlock = (
                 </motion.div>
               )}
 
+
+      <div className="grid gap-6 lg:grid-cols-12">
+        <div className="lg:col-span-8">
+          <div className="space-y-6">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
               {lockNotice && (
                 <motion.div
                   initial={{ opacity: 0, y: -8 }}

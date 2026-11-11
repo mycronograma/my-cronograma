@@ -8,7 +8,7 @@
  * desempenho (acerto, questões, tendência) e histórico expansível.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -27,6 +27,7 @@ import {
   RotateCw,
 } from 'lucide-react';
 import { useLocalStorage } from '@/hooks';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 import type { Subject } from '@/types';
 import { cn } from '@/lib/utils';
 import {
@@ -43,6 +44,7 @@ import {
   type StudyLogKind,
   type SubjectStudySummary,
 } from '@/lib/studyLog';
+import { fetchAndMergeStudyLogs, pushStudyLogs } from '@/lib/studyLogSync';
 
 export default function EstudosPage() {
   const [subjects] = useLocalStorage<Subject[]>('nexora_subjects', []);
@@ -51,8 +53,33 @@ export default function EstudosPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [serverSynced, setServerSynced] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  // Sync com o servidor: busca e mescla ao abrir; envia o snapshot a cada
+  // mudança depois disso. O localStorage segue como cache offline.
+  useEffect(() => {
+    if (!mounted) return;
+    let cancelled = false;
+    fetchAndMergeStudyLogs().then(() => {
+      if (cancelled) return;
+      setServerSynced(true);
+      refresh();
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!serverSynced || entriesVersion === 0) return;
+    const timer = window.setTimeout(() => {
+      void pushStudyLogs();
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [serverSynced, entriesVersion]);
 
   const activeSubjects = useMemo(
     () => subjects.filter((s) => s.isActive !== false),
@@ -75,8 +102,8 @@ export default function EstudosPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 pb-24">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+      <header className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-stone-900 mb-6">
+        <h1 className="text-2xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100 flex items-center gap-2">
           <BookOpen className="h-6 w-6 text-violet-400" />
           Registro de Estudos
         </h1>
@@ -84,6 +111,37 @@ export default function EstudosPage() {
           Anote o que estudou e onde parou — o app calcula sua próxima revisão.
         </p>
       </header>
+
+      {/* Revisões devidas (curva de esquecimento, datas reais calculadas) */}
+      {(() => {
+        const endToday = new Date();
+        endToday.setHours(23, 59, 59, 999);
+        const due = summaries
+          .filter(({ summary }) => summary.nextReviewDate && summary.nextReviewDate <= endToday)
+          .sort((a, b) => (a.summary.nextReviewDate?.getTime() ?? 0) - (b.summary.nextReviewDate?.getTime() ?? 0));
+        if (due.length === 0) return null;
+        return (
+          <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/30">
+            <h2 className="flex items-center gap-2 text-sm font-extrabold tracking-tight text-amber-900 dark:text-amber-200">
+              <RotateCw className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              Revisões para hoje ({due.length})
+            </h2>
+            <ul className="mt-3 space-y-2">
+              {due.map(({ subject, summary }) => (
+                <li key={subject.id} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-sm shadow-sm dark:bg-stone-900">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: subject.color }} />
+                    <span className="truncate font-semibold text-stone-800 dark:text-stone-200">{subject.name}</span>
+                  </span>
+                  <span className="shrink-0 text-xs font-medium text-amber-700 dark:text-amber-300">
+                    {summary.nextReviewDate ? formatRelativeReview(summary.nextReviewDate) : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })()}
 
       {activeSubjects.length === 0 ? (
         <div className="rounded-2xl border border-card-border bg-surface-panel p-6 text-center text-sm text-text-secondary">
@@ -159,6 +217,7 @@ function SubjectStudyCard(props: {
   onEditEntry: (id: string, note: string) => void;
 }) {
   const { subject, summary } = props;
+  const reviewDateRef = useRef<HTMLInputElement>(null);
   const acc = summary.rollingAccuracy;
   const accPct = acc !== null ? Math.round(acc * 100) : null;
   const concluded = accPct !== null && accPct >= 80;
@@ -264,13 +323,12 @@ function SubjectStudyCard(props: {
           <input
             type="date"
             defaultValue={summary.nextReviewDate ? toISODate(summary.nextReviewDate) : ''}
-            id={`review-date-${subject.id}`}
+            ref={reviewDateRef}
             className="h-9 rounded-lg bg-surface-panel border border-border-subtle px-2 text-sm text-text-primary"
           />
           <button
             onClick={() => {
-              const el = document.getElementById(`review-date-${subject.id}`) as HTMLInputElement | null;
-              if (el?.value) props.onSaveReview(el.value);
+              if (reviewDateRef.current?.value) props.onSaveReview(reviewDateRef.current.value);
             }}
             className="h-9 px-3 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold inline-flex items-center gap-1"
           >
@@ -381,14 +439,7 @@ function HistoryRow(props: {
 function RegisterStudyModal(props: { subject: Subject; onClose: () => void; onSaved: () => void }) {
   const { subject } = props;
   const [kind, setKind] = useState<StudyLogKind>('conteudo');
-
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+  const dialog = useDialogA11y({ open: true, onClose: props.onClose, ariaLabel: `Registrar estudo — ${subject.name}` });
   const [studied, setStudied] = useState('');
   const [stoppedAt, setStoppedAt] = useState('');
   const [correct, setCorrect] = useState('');
@@ -397,8 +448,12 @@ function RegisterStudyModal(props: { subject: Subject; onClose: () => void; onSa
   const canSave = studied.trim().length > 0 || stoppedAt.trim().length > 0;
 
   const handleSave = () => {
-    const parts = [studied.trim(), stoppedAt.trim()].filter(Boolean);
-    const note = parts.length > 0 ? parts.join(' — parei em ') : '—';
+    const studiedText = studied.trim();
+    const stoppedText = stoppedAt.trim();
+    const note =
+      studiedText && stoppedText
+        ? `${studiedText} — parei em ${stoppedText}`
+        : studiedText || (stoppedText ? `parei em ${stoppedText}` : '—');
     const totalQ = total.trim() === '' ? null : Math.max(0, parseInt(total, 10) || 0);
     const correctQ = correct.trim() === '' ? null : Math.max(0, parseInt(correct, 10) || 0);
     addStudyLogEntry({
@@ -424,10 +479,13 @@ function RegisterStudyModal(props: { subject: Subject; onClose: () => void; onSa
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 12 }}
         onClick={(e) => e.stopPropagation()}
+        ref={dialog.dialogRef}
+        {...dialog.dialogProps}
+        aria-labelledby="registrar-estudo-titulo"
         className="w-full max-w-md my-auto rounded-2xl border border-card-border bg-surface-panel p-5 shadow-2xl shadow-black/60"
       >
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-text-primary flex items-center gap-2">
+          <h3 id="registrar-estudo-titulo" className="font-bold text-text-primary flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: subject.color }} />
             Registrar estudo — {subject.name}
           </h3>

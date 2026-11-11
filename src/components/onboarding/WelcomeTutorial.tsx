@@ -53,12 +53,14 @@ export default function WelcomeTutorial() {
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     const prevOutline = el.style.outline;
     const prevOffset = el.style.outlineOffset;
+    const prevBorderRadius = el.style.borderRadius;
     el.style.outline = '2px solid rgba(139, 92, 246, 0.9)';
     el.style.outlineOffset = '3px';
     el.style.borderRadius = '12px';
     return () => {
       el.style.outline = prevOutline;
       el.style.outlineOffset = prevOffset;
+      el.style.borderRadius = prevBorderRadius;
     };
   }, [visible, step, current?.selector]);
 
@@ -73,7 +75,7 @@ export default function WelcomeTutorial() {
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center p-4 sm:items-center pointer-events-none">
+    <div className="fixed inset-0 z-[90] flex items-end justify-center p-4 sm:items-center bg-black/50 backdrop-blur-[2px]">
       <div className="pointer-events-auto w-full max-w-md rounded-2xl border border-violet-500/40 bg-card-bg p-5 shadow-2xl shadow-violet-600/20">
         <div className="flex items-start justify-between gap-3">
           <div>

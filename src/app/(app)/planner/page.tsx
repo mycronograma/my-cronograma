@@ -18,6 +18,8 @@ import {
   toLocalDateKey,
 } from '@/lib/utils';
 import { getStudyBlockTypeLabel } from '@/lib/studyBlockLabels';
+import { calculateBlockPriority } from '@/lib/blockPriority';
+import { readReviewOverrides, readStudyLog, summarizeSubject } from '@/lib/studyLog';
 import { isEnemGoal, upgradeSubjectsToOfficialEnemStructure } from '@/lib/enemCatalog';
 import { generateChronologicalSchedule, getPhaseForDate } from '@/services/roadmapEngine';
 import { resolveScheduleConstraints } from '@/services/scheduleConstraints';
@@ -419,7 +421,7 @@ export default function PlannerPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [plannerNotice, setPlannerNotice] = useState<string | null>(null);
   // Confirmação do "Gerar com IA" quando já existe progresso: o app diz o
-  // que vai preservar antes de refazer anything.
+  // que vai preservar antes de refazer qualquer coisa.
   const [regenConfirm, setRegenConfirm] = useState<{
     concluidos: number;
     horasEstudadas: number;
@@ -474,7 +476,9 @@ export default function PlannerPage() {
   const [plannerEndDate, setPlannerEndDate] = useState<Date | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
 
-  // Add Block Modal state
+  // Estado do modal de adicionar bloco
+  const [plannerView, setPlannerView] = useState<'diaria' | 'semanal'>('diaria');
+  const [selectedDayKey, setSelectedDayKey] = useState<string>(() => toLocalDateKey(new Date()));
   const [addBlockModal, setAddBlockModal] = useState<{ open: boolean; date: Date | null }>({
     open: false,
     date: null,
@@ -483,7 +487,6 @@ export default function PlannerPage() {
   // #13: o modal passou a oferecer dois fluxos: "novo bloco" e "puxar"
   const [blockModalMode, setBlockModalMode] = useState<'novo' | 'puxar'>('novo');
   const [selectedBlockIdToMove, setSelectedBlockIdToMove] = useState<string | null>(null);
-  const [blockMovePreview, setBlockMovePreview] = useState<string | null>(null);
   const [newBlockType, setNewBlockType] = useState<StudyBlock['type']>('AULA');
   // Duração e intervalo vêm da predefinição (wizard/Configurações): o modal não
   // pergunta mais nada disso. O horário é o primeiro espaço livre do dia.
@@ -580,7 +583,7 @@ export default function PlannerPage() {
         .filter((b) => !b.isBreak)
         .reduce((sum, b) => sum + b.durationMinutes, 0),
     });
-  }, [addBlockModal.date, blocks, configuredBlockMinutes, configuredBreakMinutes, dailyTimeWindowsByDate, dailyLimitsByDate]);
+  }, [addBlockModal.date, blocks, configuredBlockMinutes, configuredBreakMinutes, dailyTimeWindowsByDate]);
 
   // Derivados da predefinição: horário = primeiro espaço livre; duração = a
   // que o usuário configurou. Nada disso é perguntado no modal.
@@ -806,7 +809,7 @@ export default function PlannerPage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [subjects, studyPrefs, userSettings, dailyLimits, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate, scheduleStartDate]);
+  }, [subjects, studyPrefs, userSettings, dailyLimits, firstCycleAllSubjects, setBlocks, setScheduleRange, displayedWeekStart, plannerEndDate, scheduleStartDate, blocosPreservados, progressoAtual]);
 
   // Sensores do arrastar. O ponteiro exige 6px antes de virar arrasto, para
   // que um toque comum (ou a rolagem no celular) não reordene nada por acidente.
@@ -917,7 +920,6 @@ export default function PlannerPage() {
     setSelectedBlockIdToMove(null);
     setNewBlockType('AULA');
     setBlockModalMode('novo');
-    setBlockMovePreview(null);
   };
 
   const movableBlocks = useMemo(() => {
@@ -1018,7 +1020,6 @@ export default function PlannerPage() {
     setPlannerNotice(
       `✅ Bloco de ${plan.subjectName} puxado para ${plan.toDateKey} às ${plan.placedStart}.`
     );
-    setBlockMovePreview(null);
     setAddBlockModal({ open: false, date: null });
   };
 
@@ -1149,8 +1150,7 @@ export default function PlannerPage() {
                   type="button"
                   onClick={() => {
                     setBlockModalMode(option.id);
-                    setBlockMovePreview(null);
-                  }}
+                                  }}
                   className={cn(
                     'h-9 rounded-lg text-sm font-medium transition-colors',
                     blockModalMode === option.id
@@ -1166,6 +1166,12 @@ export default function PlannerPage() {
             {blockModalMode === 'puxar' && (
               <p className="mb-4 rounded-xl border border-warning bg-warning-soft p-3 text-xs text-warning-strong">
                 Move um bloco atrasado ou futuro para este dia. O bloco original muda de lugar — nada é duplicado.
+              </p>
+            )}
+
+            {blockModalMode === 'puxar' && movePreviewText && (
+              <p className="mb-4 rounded-xl border border-card-border bg-surface-panel p-3 text-xs text-text-secondary">
+                Prévia: <strong className="text-text-primary">{movePreviewText}</strong>
               </p>
             )}
 
@@ -1513,28 +1519,24 @@ export default function PlannerPage() {
                 value={`${Object.values(hoursByDate).reduce((a, b) => a + b, 0).toFixed(1)}`}
                 subvalue="Meta semanal vs disponível"
                 icon={Clock}
-                trend="+12% esta semana"
               />
               <MapStatsCard
                 title="Matérias ativas"
                 value={subjects.filter((s) => s.isActive).length}
                 subvalue={`${subjects.length} total`}
                 icon={BookOpen}
-                trend="+1 esta semana"
               />
               <MapStatsCard
                 title="Blocos planejados"
                 value={blocks.length}
                 subvalue="Horários ocupados"
                 icon={Target}
-                trend="+3 hoje"
               />
               <MapStatsCard
                 title="Taxa de conclusão"
                 value={`${((blocks.filter((b) => b.status === 'completed').length / Math.max(blocks.length, 1)) * 100).toFixed(0)}%`}
                 subvalue="Esta semana"
                 icon={TrendingUp}
-                trend="+5% geral"
               />
             </div>
           </motion.div>
@@ -1615,7 +1617,134 @@ export default function PlannerPage() {
           }}
         />
 
-        <div className="bg-card-bg rounded-3xl border border-card-border shadow-xl overflow-hidden">
+        {/* ── Design Trilha: cabecalho, visoes, cards de dias e tarefas ── */}
+        <div className="mb-6 flex flex-col justify-between gap-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-stone-900 sm:flex-row sm:items-center">
+          <div>
+            <h2 className="flex items-center gap-2 text-xl font-extrabold tracking-tight text-stone-900 dark:text-stone-100">
+              <Calendar className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              Cronograma Inteligente de Estudos
+            </h2>
+            <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+              Distribuição ponderada por peso do conteúdo, curva do esquecimento e seu histórico
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-xl border border-stone-200 bg-stone-100 p-1 text-xs font-semibold dark:border-stone-800 dark:bg-stone-800/80">
+              <button onClick={() => setPlannerView('semanal')} className={cn('rounded-lg px-3 py-1 transition', plannerView === 'semanal' ? 'bg-white font-bold text-indigo-900 shadow-sm dark:bg-stone-900 dark:text-indigo-300' : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200')}>Visão Semanal</button>
+              <button onClick={() => setPlannerView('diaria')} className={cn('rounded-lg px-3 py-1 transition', plannerView === 'diaria' ? 'bg-white font-bold text-indigo-900 shadow-sm dark:bg-stone-900 dark:text-indigo-300' : 'text-stone-600 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-200')}>Visão Diária</button>
+            </div>
+            <button onClick={handleRecalculateBacklog} disabled={pendingCount === 0} className="flex items-center gap-1.5 rounded-xl bg-stone-900 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-stone-800 disabled:opacity-40 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-white" title={pendingCount === 0 ? 'Nenhum bloco atrasado' : `Recalcular ${pendingCount} bloco(s) atrasado(s)`}>
+              <RefreshCw className="h-3.5 w-3.5" /> Recalcular
+            </button>
+          </div>
+        </div>
+
+        {plannerView === 'diaria' && (
+          <div className="mb-6 space-y-6">
+            {/* Cards dos 7 dias */}
+            <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+              {weekDays.map(({ date, key }) => {
+                const dayKeyStr = toLocalKey(date);
+                const dayBlocks = blocksForMap.filter((b) => b.displayDate === dayKeyStr && !b.isBreak);
+                const doneCount = dayBlocks.filter((b) => b.status === 'completed').length;
+                const isTodayDay = dayKeyStr === toLocalDateKey(new Date());
+                const isSelected = selectedDayKey === dayKeyStr;
+                const weekday = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '').toUpperCase();
+                return (
+                  <button key={key} onClick={() => setSelectedDayKey(dayKeyStr)} className={cn('flex flex-col items-center rounded-2xl border px-1 py-3 transition-all sm:py-4', isSelected ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500/20 dark:border-indigo-500 dark:bg-indigo-950/40' : 'border-stone-200 bg-white hover:border-stone-300 dark:border-stone-800 dark:bg-stone-900 dark:hover:border-stone-700')}>
+                    <span className={cn('text-[10px] font-bold tracking-widest', isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-stone-400')}>{weekday}</span>
+                    <span className={cn('mt-1 text-xl font-extrabold leading-none sm:text-2xl', isSelected ? 'text-indigo-900 dark:text-indigo-200' : 'text-stone-800 dark:text-stone-200')}>{date.getDate()}</span>
+                    {isTodayDay && <span className="mt-1.5 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold text-white">Hoje</span>}
+                    <span className="mt-1.5 text-[10px] font-medium text-stone-400">{dayBlocks.length === 0 ? 'Livre' : `${doneCount}/${dayBlocks.length}`}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Tarefas do dia selecionado */}
+            <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm dark:border-stone-800 dark:bg-stone-900 sm:p-5">
+              {(() => {
+                const selDate = parseLocalKey(selectedDayKey) ?? new Date();
+                const dayTasks = blocksForMap.filter((b) => b.displayDate === selectedDayKey);
+                const studyTasks = dayTasks.filter((b) => !b.isBreak);
+                return (
+                  <>
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <h3 className="text-base font-extrabold tracking-tight text-stone-900 dark:text-stone-100 sm:text-lg">
+                        Tarefas para {selDate.toLocaleDateString('pt-BR', { weekday: 'long' })}, {selDate.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </h3>
+                      <span className="shrink-0 text-xs font-medium text-stone-400">{studyTasks.length} {studyTasks.length === 1 ? 'tarefa' : 'tarefas'}</span>
+                    </div>
+                    {studyTasks.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-stone-300 p-6 text-center dark:border-stone-700">
+                        <p className="text-sm text-stone-500 dark:text-stone-400">Nenhuma tarefa neste dia.</p>
+                        <button onClick={() => handleOpenAddBlock(selDate)} className="mt-3 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-indigo-700">+ Adicionar bloco</button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {studyTasks.map((block) => {
+                          const subject = activeSubjects.find((s) => s.id === block.subjectId);
+                          const color = subject?.color || '#6366f1';
+                          const isDone = block.status === 'completed';
+                          const typeLabel = getStudyBlockTypeLabel(block.type) ?? 'Estudo';
+                          const topic = block.topicName || block.description || '';
+                          const priorityPts = calculateBlockPriority(block, subject, { examDate: userSettings?.examDate });
+                          const lastStudy = (() => {
+                            const summary = summarizeSubject(block.subjectId, readStudyLog(), readReviewOverrides());
+                            const candidates = [summary.lastContent, summary.lastReview].filter(Boolean) as { createdAt: string; note: string }[];
+                            candidates.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+                            return candidates[0] ?? null;
+                          })();
+                          return (
+                            <div key={block.id} className={cn('rounded-2xl border p-4 transition', isDone ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/40 dark:bg-emerald-950/20' : 'border-stone-200 bg-stone-50/60 dark:border-stone-800 dark:bg-stone-800/40')}>
+                              <div className="flex items-start gap-3">
+                                <span className={cn('mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-white', isDone ? 'bg-emerald-500' : 'bg-stone-300 dark:bg-stone-700')} style={!isDone ? { backgroundColor: color } : undefined}>
+                                  {isDone ? <Check className="h-4 w-4" /> : <span className="h-2 w-2 rounded-full bg-white" />}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-widest" style={{ color }}>{subject?.name || 'Matéria'}</span>
+                                    <span className="rounded-full bg-stone-200/70 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-stone-600 dark:bg-stone-700 dark:text-stone-300">{typeLabel}</span>
+                                    {studyPrefs?.adaptiveBlocks && <span title="Modo adaptativo ativo" className="text-indigo-500"><Sparkles className="h-3.5 w-3.5" /></span>}
+                                  </div>
+                                  <p className={cn('mt-1 truncate text-sm font-bold text-stone-900 dark:text-stone-100', isDone && 'text-stone-400 line-through dark:text-stone-500')} title={topic || subject?.name}>{topic || subject?.name || 'Bloco de estudo'}</p>
+                                  <p className="mt-1 flex items-center gap-1.5 text-xs text-stone-500 dark:text-stone-400">
+                                    <Clock className="h-3.5 w-3.5" /> {block.durationMinutes} minutos
+                                    <> • Prioridade calculada: {priorityPts} pts</>
+                                  </p>
+{lastStudy ? (
+                                    <p className="mt-2 text-xs text-stone-500 dark:text-stone-400">
+                                      Último registro: <span className="italic text-stone-600 dark:text-stone-300">“{lastStudy.note}”</span>
+                                    </p>
+                                  ) : (
+                                    <p className="mt-2 text-xs text-stone-400 dark:text-stone-500">
+                                      Nenhum registro de estudo ainda.{' '}
+                                      <a href="/estudos" className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400">Registrar em Estudos</a>
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex shrink-0 flex-col items-end gap-2">
+                                  {isDone ? (
+                                    <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"><Check className="h-3 w-3" /> Concluído</span>
+                                  ) : (
+                                    <button onClick={() => handleOpenAddBlock(selDate)} className="rounded-full bg-stone-200/70 px-2.5 py-1 text-[11px] font-bold text-stone-600 transition hover:bg-stone-200 dark:bg-stone-700 dark:text-stone-300" title="Adicionar outro bloco neste dia">+ Bloco</button>
+                                  )}
+                                  <button onClick={() => handleDeleteBlock(block.id, selDate)} className="text-[11px] font-medium text-stone-400 transition hover:text-red-500" title="Excluir bloco">Excluir</button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        <div className={cn("rounded-2xl border border-stone-200 bg-white shadow-sm overflow-hidden dark:border-stone-800 dark:bg-stone-900", plannerView === 'diaria' && 'hidden')}>
           {/* Header organizado: título + controles */}
           <div className="p-3 sm:p-4 lg:p-6 pb-3 sm:pb-4">
             <div className="flex flex-col gap-4">
@@ -1740,15 +1869,15 @@ export default function PlannerPage() {
                     <div key={key} className={cn(
                       "flex flex-col rounded-2xl border p-2 gap-1 min-w-0 transition-all duration-300",
                       isToday
-                        ? "bg-neon-purple/5 border-neon-purple/25"
+                        ? "border-indigo-300 bg-indigo-50/70 dark:border-indigo-800 dark:bg-indigo-950/30"
                         : isPast
-                        ? "bg-white/[0.015] border-white/[0.04]"
-                        : "bg-transparent border-transparent"
+                        ? "border-stone-200/70 bg-stone-50/50 dark:border-stone-800/70 dark:bg-stone-800/20"
+                        : "border-stone-200 bg-stone-50/40 dark:border-stone-800 dark:bg-stone-800/30"
                     )}>
                       {/* Day Header */}
                       <div className={cn(
                         "flex flex-col items-center justify-center py-2 rounded-xl mb-1 flex-shrink-0",
-                        isToday ? "bg-neon-purple text-white" : "bg-transparent"
+                        isToday ? "bg-indigo-600 text-white" : "bg-transparent"
                       )}>
                         <span className={cn(
                           "text-[10px] font-black tracking-widest uppercase",
