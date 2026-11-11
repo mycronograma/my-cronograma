@@ -243,8 +243,7 @@ function SortableStudyBlock({
         >
           {displayName}
         </p>
-        <div className="flex items-center justify-between mt-1.5 gap-1">
-          <span className="text-[10px] text-text-muted font-medium">{block.startTime}</span>
+        <div className="flex items-center justify-end mt-1.5 gap-1">
           <span
             className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full whitespace-nowrap"
             style={{ color: subjectColor, backgroundColor: `${subjectColor}20` }}
@@ -1822,7 +1821,6 @@ export default function PlannerPage() {
                                       não feito
                                     </span>
                                   </div>
-                                  <span className="text-[10px] text-text-muted/50 font-medium">{block.startTime}</span>
                                 </div>
                               </div>
                             );
@@ -1859,8 +1857,7 @@ export default function PlannerPage() {
                                       <span className="shrink-0 text-[10px]">✅</span>
                                     )}
                                   </div>
-                                  <div className="flex items-center justify-between mt-1.5 gap-1">
-                                    <span className="text-[10px] text-text-muted font-medium">{block.startTime}</span>
+                                  <div className="flex items-center justify-end mt-1.5 gap-1">
                                     {isDone && studied !== planned ? (
                                       <span
                                         className="text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap text-emerald-400 bg-emerald-400/10"

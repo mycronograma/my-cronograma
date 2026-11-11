@@ -2,6 +2,7 @@ import {
   Home,
   CalendarDays,
   BookOpen,
+  ClipboardList,
   TrendingUp,
   RotateCw,
   Trophy,
@@ -24,6 +25,7 @@ export const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Início', icon: Home, href: '/dashboard' },
   { id: 'planner', label: 'Cronograma', icon: CalendarDays, href: '/planner' },
   { id: 'subjects', label: 'Matérias', icon: BookOpen, href: '/subjects' },
+  { id: 'studies', label: 'Estudos', icon: ClipboardList, href: '/estudos' },
   { id: 'analytics', label: 'Progresso', icon: TrendingUp, href: '/analytics' },
   { id: 'settings', label: 'Perfil', icon: User, href: '/settings' },
 ];
