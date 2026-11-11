@@ -416,15 +416,15 @@ function RegisterStudyModal(props: { subject: Subject; onClose: () => void; onSa
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={props.onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
+        initial={{ scale: 0.95, opacity: 0, y: 12 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 12 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-2xl border border-card-border bg-surface-panel p-5"
+        className="w-full max-w-md my-auto rounded-2xl border border-card-border bg-surface-panel p-5 shadow-2xl shadow-black/60"
       >
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-text-primary flex items-center gap-2">
